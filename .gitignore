@@ -39,8 +39,8 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Docker local volumes
-docker/data/
+# Docker bind-mount volumes (resolved at project root via --project-directory .)
+/data/
 
 # TypeScript
 *.tsbuildinfo
