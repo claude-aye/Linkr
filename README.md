@@ -42,8 +42,11 @@ Step 3.1 (Monorepo Foundation) complete. See [CLAUDE.md](./CLAUDE.md) for the fu
 # Install dependencies
 pnpm install
 
+# Copy env file and edit as needed
+cp .env.example .env
+
 # Start infrastructure (PostgreSQL 16/PostGIS, Redis 7, pgAdmin)
-docker compose -f docker/docker-compose.yml up -d
+docker compose --project-directory . -f docker/docker-compose.yml up -d
 ```
 
 pgAdmin is available at http://localhost:5050 (credentials in `.env`).
