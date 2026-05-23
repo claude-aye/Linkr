@@ -53,7 +53,7 @@ It is built for **blue-collar professionals** (electricians, plumbers, carpenter
 | **Backend Framework** | NestJS + TypeScript | Modular by design, decorator-based RBAC, official Stripe/Auth modules |
 | **ORM** | TypeORM | Native PostGIS support (spatial columns, ST_DWithin), synergistic with NestJS decorators |
 | **Database** | PostgreSQL 16 + PostGIS 3.4 | Geo queries are core to the product (proximity-based discovery) |
-| **Cache / Queues** | Redis 7 + Bull | Async tasks: webhooks Stripe, cron jobs (expired licenses), notifications |
+| **Cache / Queues** | Redis 7 + BullMQ | Async tasks: webhooks Stripe, cron jobs (expired licenses), notifications |
 | **Mobile** | React Native + Expo | Full TypeScript stack, OTA updates, EAS Build |
 | **Web Portal** | Next.js | SSR for SEO of public org pages, App Router |
 | **API Style** | REST + OpenAPI/Swagger | Universal, B2B-friendly, simple file uploads, NestJS-native via `@nestjs/swagger` |
@@ -661,7 +661,7 @@ NONE → EMAIL → PHONE → IDENTITY
 
 ## 9. Async Tasks (Redis + Bull)
 
-The following operations MUST be queued (never executed synchronously in HTTP handlers):
+The following operations MUST be queued via **BullMQ** (never executed synchronously in HTTP handlers):
 
 1. **Stripe webhooks** — Verify signature → enqueue → respond 200 OK to Stripe within 5 seconds. Process asynchronously.
 2. **Email sending** — Transactional emails (booking confirmations, receipts, etc.)
