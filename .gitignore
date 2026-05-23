@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Turborepo
+.turbo/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+
+# Coverage
+coverage/
+*.lcov
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker local volumes
+docker/data/
+
+# TypeScript
+*.tsbuildinfo
