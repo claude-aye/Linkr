@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { validate } from './config/env.validation';
 import { getDatabaseConfig } from './config/database.config';
 import { getRedisConfig } from './config/redis.config';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { getRedisConfig } from './config/redis.config';
       inject: [ConfigService],
       useFactory: getRedisConfig,
     }),
+    HealthModule,
   ],
 })
 export class AppModule {}
