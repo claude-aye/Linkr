@@ -6,6 +6,7 @@ import { validate } from './config/env.validation';
 import { getDatabaseConfig } from './config/database.config';
 import { getRedisConfig } from './config/redis.config';
 import { HealthModule } from './modules/health/health.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { HealthModule } from './modules/health/health.module';
       useFactory: getRedisConfig,
     }),
     HealthModule,
+    UsersModule,
   ],
 })
 export class AppModule {}
