@@ -2,7 +2,6 @@ import {
   ConflictException,
   Injectable,
   Logger,
-  NotImplementedException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -147,15 +146,55 @@ export class AuthService {
     return this.toPublicDto(user);
   }
 
-  // Implemented in subsequent commit — requires OAuth strategies.
-  handleOAuthCallback(
-    _providerType: AuthProviderType,
-    _providerUserId: string,
-    _email: string,
-    _firstName: string,
-    _lastName: string,
+  async handleOAuthCallback(
+    providerType: AuthProviderType,
+    providerUserId: string,
+    email: string,
+    firstName: string,
+    lastName: string,
   ): Promise<AuthResponseDto> {
-    throw new NotImplementedException();
+    // 1. Known OAuth identity → log in directly.
+    const existingProvider =
+      await this.usersRepository.findAuthProviderByProviderIdentity(
+        providerType,
+        providerUserId,
+      );
+    if (existingProvider) {
+      await this.usersRepository.updateLastUsedAt(existingProvider.id);
+      const tokens = this.signTokenPair(
+        existingProvider.user.id,
+        existingProvider.user.email,
+      );
+      return { ...tokens, user: this.toPublicDto(existingProvider.user) };
+    }
+
+    // 2. Email already registered (e.g. email/password) → link the new provider.
+    const existingUser = await this.usersRepository.findByEmail(email);
+    if (existingUser) {
+      await this.usersRepository.addAuthProvider(existingUser.id, providerType, providerUserId);
+      this.logger.log(`Linked ${providerType} to existing user: ${existingUser.id}`);
+      const tokens = this.signTokenPair(existingUser.id, existingUser.email);
+      return { ...tokens, user: this.toPublicDto(existingUser) };
+    }
+
+    // 3. Brand-new user — provision with Quebec defaults.
+    const user = await this.usersRepository.createWithOAuthProvider(
+      {
+        email,
+        firstName,
+        lastName,
+        countryCode: 'CA',
+        subdivisionCode: 'CA-QC',
+        preferredCurrency: 'CAD',
+        languagePreference: 'fr-CA',
+      },
+      providerType,
+      providerUserId,
+    );
+
+    this.logger.log(`New OAuth user registered via ${providerType}: ${user.id}`);
+    const tokens = this.signTokenPair(user.id, user.email);
+    return { ...tokens, user: this.toPublicDto(user) };
   }
 
   toPublicDto(user: User): UserPublicDto {
