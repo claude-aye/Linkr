@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   Logger,
   NotImplementedException,
@@ -6,12 +7,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { plainToInstance } from 'class-transformer';
 import * as argon2 from 'argon2';
+import { AuthProviderType } from '../users/enums/auth-provider-type.enum';
+import { User } from '../users/entities/user.entity';
+import { UsersRepository } from '../users/users.repository';
+import { AuthResponseDto } from './dtos/auth-response.dto';
+import { SignupDto } from './dtos/signup.dto';
+import { UserPublicDto } from './dtos/user-public.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { TokenType } from './enums/token-type.enum';
-import { AuthResponseDto } from './dtos/auth-response.dto';
-import { UserPublicDto } from './dtos/user-public.dto';
-import { SignupDto } from './dtos/signup.dto';
 
 // @nestjs/jwt v11 uses branded StringValue from ms@3 for expiresIn;
 // string values are valid at runtime — cast required to satisfy the compiler.
@@ -29,6 +34,7 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly usersRepository: UsersRepository,
   ) {}
 
   async hashPassword(password: string): Promise<string> {
@@ -81,24 +87,80 @@ export class AuthService {
     }
   }
 
-  // Implemented in subsequent commit — email/password + OAuth flows.
-  validateLocal(_email: string, _password: string): Promise<null> {
+  async validateLocal(email: string, password: string): Promise<User | null> {
+    const user = await this.usersRepository.findByEmailWithAuthProviders(email);
+    if (!user) return null;
+
+    const emailProvider = user.authProviders?.find(
+      (p) => p.providerType === AuthProviderType.EMAIL_PASSWORD,
+    );
+    if (!emailProvider?.passwordHash) return null;
+
+    const valid = await this.verifyPassword(emailProvider.passwordHash, password);
+    if (!valid) return null;
+
+    await this.usersRepository.updateLastUsedAt(emailProvider.id);
+    return user;
+  }
+
+  async signup(dto: SignupDto): Promise<AuthResponseDto> {
+    const existing = await this.usersRepository.findByEmail(dto.email);
+    if (existing) throw new ConflictException('Email already registered');
+
+    const passwordHash = await this.hashPassword(dto.password);
+    const user = await this.usersRepository.createWithEmailPassword(
+      {
+        email: dto.email,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        countryCode: dto.countryCode,
+        subdivisionCode: dto.subdivisionCode,
+        preferredCurrency: dto.preferredCurrency,
+        phone: dto.phone ?? null,
+        displayName: dto.displayName ?? null,
+        languagePreference: dto.languagePreference ?? 'fr-CA',
+      },
+      passwordHash,
+    );
+
+    this.logger.log(`New user registered: ${user.id}`);
+    const tokens = this.signTokenPair(user.id, user.email);
+    return { ...tokens, user: this.toPublicDto(user) };
+  }
+
+  login(user: User): AuthResponseDto {
+    const tokens = this.signTokenPair(user.id, user.email);
+    return { ...tokens, user: this.toPublicDto(user) };
+  }
+
+  async refresh(refreshToken: string): Promise<TokenPair> {
+    const payload = this.verifyRefreshToken(refreshToken);
+    const user = await this.usersRepository.findById(payload.sub);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    return this.signTokenPair(user.id, user.email);
+  }
+
+  async me(userId: string): Promise<UserPublicDto> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+    return this.toPublicDto(user);
+  }
+
+  // Implemented in subsequent commit — requires OAuth strategies.
+  handleOAuthCallback(
+    _providerType: AuthProviderType,
+    _providerUserId: string,
+    _email: string,
+    _firstName: string,
+    _lastName: string,
+  ): Promise<AuthResponseDto> {
     throw new NotImplementedException();
   }
 
-  signup(_dto: SignupDto): Promise<AuthResponseDto> {
-    throw new NotImplementedException();
-  }
-
-  login(_user: unknown): AuthResponseDto {
-    throw new NotImplementedException();
-  }
-
-  refresh(_refreshToken: string): Promise<TokenPair> {
-    throw new NotImplementedException();
-  }
-
-  me(_userId: string): Promise<UserPublicDto> {
-    throw new NotImplementedException();
+  toPublicDto(user: User): UserPublicDto {
+    return plainToInstance(UserPublicDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 }
