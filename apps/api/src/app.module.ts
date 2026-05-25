@@ -7,6 +7,7 @@ import { getDatabaseConfig } from './config/database.config';
 import { getRedisConfig } from './config/redis.config';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { UsersModule } from './modules/users/users.module';
     }),
     HealthModule,
     UsersModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

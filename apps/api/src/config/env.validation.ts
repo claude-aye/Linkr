@@ -14,6 +14,29 @@ const envSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid('log', 'error', 'warn', 'debug', 'verbose')
     .default('log'),
+
+  // JWT — access token
+  JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
+
+  // JWT — refresh token (must differ from access secret)
+  JWT_REFRESH_SECRET: Joi.string()
+    .min(32)
+    .invalid(Joi.ref('JWT_ACCESS_SECRET'))
+    .required(),
+  JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+
+  // Google OAuth (optional — 503 if absent at runtime)
+  GOOGLE_OAUTH_CLIENT_ID: Joi.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: Joi.string().optional(),
+  GOOGLE_OAUTH_CALLBACK_URL: Joi.string().uri().optional(),
+
+  // Apple Sign-In (optional — 503 if absent at runtime)
+  APPLE_OAUTH_CLIENT_ID: Joi.string().optional(),
+  APPLE_OAUTH_TEAM_ID: Joi.string().optional(),
+  APPLE_OAUTH_KEY_ID: Joi.string().optional(),
+  APPLE_OAUTH_PRIVATE_KEY: Joi.string().optional(),
+  APPLE_OAUTH_CALLBACK_URL: Joi.string().uri().optional(),
 });
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {
