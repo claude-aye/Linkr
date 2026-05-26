@@ -38,6 +38,7 @@ export class OrganizationMembershipsRepository {
       .where('m.organization_id = :organizationId', { organizationId })
       .andWhere('m.user_id = :userId', { userId })
       .andWhere('m.left_at_utc IS NULL')
+      .andWhere('m.is_active = true')
       .getOne();
   }
 
