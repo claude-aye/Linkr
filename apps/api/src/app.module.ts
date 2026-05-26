@@ -8,6 +8,8 @@ import { getRedisConfig } from './config/redis.config';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
+import { OrganizationMembershipsModule } from './modules/organization-memberships/organization-memberships.module';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { AuthModule } from './modules/auth/auth.module';
     HealthModule,
     UsersModule,
     AuthModule,
+    OrganizationsModule,
+    OrganizationMembershipsModule,
   ],
 })
 export class AppModule {}
