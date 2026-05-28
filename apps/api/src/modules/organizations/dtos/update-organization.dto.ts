@@ -5,7 +5,9 @@ import {
   IsString,
   IsUrl,
   Length,
+  Matches,
 } from 'class-validator';
+import { SLUG_MESSAGE, SLUG_REGEX } from './create-organization.dto';
 
 export class UpdateOrganizationDto {
   @IsOptional()
@@ -20,7 +22,8 @@ export class UpdateOrganizationDto {
 
   @IsOptional()
   @IsString()
-  @Length(2, 50)
+  @Length(3, 50)
+  @Matches(SLUG_REGEX, { message: SLUG_MESSAGE })
   slug?: string;
 
   @IsOptional()

@@ -4,7 +4,12 @@ import {
   IsString,
   IsUrl,
   Length,
+  Matches,
 } from 'class-validator';
+
+export const SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+export const SLUG_MESSAGE =
+  'slug must be lowercase alphanumeric segments separated by single hyphens';
 
 export class CreateOrganizationDto {
   @IsString()
@@ -16,7 +21,8 @@ export class CreateOrganizationDto {
   displayName!: string;
 
   @IsString()
-  @Length(2, 50)
+  @Length(3, 50)
+  @Matches(SLUG_REGEX, { message: SLUG_MESSAGE })
   slug!: string;
 
   @IsOptional()
