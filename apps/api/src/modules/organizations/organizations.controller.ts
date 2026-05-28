@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { RequireOrgRole } from '../organization-memberships/decorators/require-org-role.decorator';
 import { OrganizationRoleGuard } from '../organization-memberships/guards/organization-role.guard';
@@ -33,9 +34,9 @@ export class OrganizationsController {
     return this.organizationsService.create(dto, user.sub);
   }
 
+  // Public — powers SSR/SEO of org pages. Returns only non-sensitive fields.
+  @Public()
   @Get(':id')
-  @UseGuards(OrganizationRoleGuard)
-  @RequireOrgRole()
   getOne(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<OrganizationPublicDto> {
