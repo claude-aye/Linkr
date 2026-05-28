@@ -638,6 +638,11 @@ The following domains are **not yet modeled** but expected to be added before th
 - Google OAuth 2.0
 - Apple Sign-In (**mandatory on iOS** if any other OAuth is offered)
 
+**Token strategy — stateless access/refresh pair (Phase 3.4):**
+- **Access token**: short-lived (`JWT_ACCESS_EXPIRES_IN`, default `15m`), signed with `JWT_ACCESS_SECRET`, sent as `Authorization: Bearer`. This short TTL is intentional; a ~15 min expiry is expected, not a bug.
+- **Refresh token**: long-lived (`JWT_REFRESH_EXPIRES_IN`, default `7d`), signed with a **distinct** `JWT_REFRESH_SECRET`.
+- **Renewal**: `POST /auth/refresh` is `@Public()` and takes the refresh token in the body — it works with an **expired access token**, returning a fresh pair. Clients refresh transparently on a `401`.
+
 **Progressive Identity Verification State Machine:**
 ```
 NONE → EMAIL → PHONE → IDENTITY
@@ -743,8 +748,11 @@ PORT=3000
 DATABASE_URL=postgresql://user:password@host:5432/linkr
 REDIS_URL=redis://host:6379
 
-JWT_SECRET=...
-JWT_EXPIRES_IN=7d
+# JWT — stateless access/refresh token pair (distinct secrets, required)
+JWT_ACCESS_SECRET=...
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=...
+JWT_REFRESH_EXPIRES_IN=7d
 
 GOOGLE_OAUTH_CLIENT_ID=...
 GOOGLE_OAUTH_CLIENT_SECRET=...
