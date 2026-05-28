@@ -17,6 +17,18 @@ export interface CreateUserData {
   languagePreference?: string;
 }
 
+export interface UpdateUserProfileData {
+  firstName?: string;
+  lastName?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  languagePreference?: string;
+  countryCode?: string;
+  subdivisionCode?: string;
+  preferredCurrency?: string;
+  defaultLocation?: { latitude: number; longitude: number };
+}
+
 @Injectable()
 export class UsersRepository {
   constructor(
@@ -74,6 +86,88 @@ export class UsersRepository {
       passwordHash: null,
     });
     await this.authProviderRepo.save(provider);
+  }
+
+  // Whitelisted profile update (load-modify-save so the PostGIS point round-trips).
+  async updateProfile(
+    userId: string,
+    data: UpdateUserProfileData,
+  ): Promise<User | null> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) return null;
+
+    if (data.firstName !== undefined) user.firstName = data.firstName;
+    if (data.lastName !== undefined) user.lastName = data.lastName;
+    if (data.displayName !== undefined) user.displayName = data.displayName;
+    if (data.avatarUrl !== undefined) user.avatarUrl = data.avatarUrl;
+    if (data.languagePreference !== undefined)
+      user.languagePreference = data.languagePreference;
+    if (data.countryCode !== undefined) user.countryCode = data.countryCode;
+    if (data.subdivisionCode !== undefined)
+      user.subdivisionCode = data.subdivisionCode;
+    if (data.preferredCurrency !== undefined)
+      user.preferredCurrency = data.preferredCurrency;
+    if (data.defaultLocation !== undefined) {
+      user.defaultLocation = {
+        type: 'Point',
+        coordinates: [
+          data.defaultLocation.longitude,
+          data.defaultLocation.latitude,
+        ],
+      };
+    }
+
+    return this.userRepo.save(user);
+  }
+
+  // Org IDs where this user is the only active OWNER (blocks account deletion).
+  async findOrgIdsWhereUserIsLastActiveOwner(
+    userId: string,
+  ): Promise<string[]> {
+    const rows: Array<{ organization_id: string }> = await this.dataSource.query(
+      `
+      SELECT m.organization_id
+      FROM organization_memberships m
+      WHERE m.user_id = $1
+        AND m.role = 'OWNER'
+        AND m.is_active = true
+        AND m.left_at_utc IS NULL
+        AND (
+          SELECT COUNT(*)
+          FROM organization_memberships m2
+          WHERE m2.organization_id = m.organization_id
+            AND m2.role = 'OWNER'
+            AND m2.is_active = true
+            AND m2.left_at_utc IS NULL
+        ) = 1
+      `,
+      [userId],
+    );
+    return rows.map((r) => r.organization_id);
+  }
+
+  // Soft-delete the user and deactivate their active memberships, atomically.
+  async softDeleteUserWithMembershipCascade(userId: string): Promise<void> {
+    const qr: QueryRunner = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      await qr.query(`UPDATE users SET deleted_at_utc = NOW() WHERE id = $1`, [
+        userId,
+      ]);
+      await qr.query(
+        `UPDATE organization_memberships
+         SET left_at_utc = NOW(), is_active = false
+         WHERE user_id = $1 AND left_at_utc IS NULL`,
+        [userId],
+      );
+      await qr.commitTransaction();
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
   }
 
   async createWithEmailPassword(
