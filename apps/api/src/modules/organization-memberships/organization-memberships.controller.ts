@@ -45,6 +45,17 @@ export class OrganizationMembershipsController {
     return this.membershipsService.addMember(orgId, dto);
   }
 
+  // Declared before :membershipId so 'me' is not captured as a UUID param.
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireOrgRole()
+  leaveOrg(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.membershipsService.leaveOrganization(orgId, user.sub);
+  }
+
   @Put(':membershipId/role')
   @RequireOrgRole(OrganizationRole.OWNER)
   changeRole(
@@ -65,15 +76,5 @@ export class OrganizationMembershipsController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     return this.membershipsService.removeMember(orgId, membershipId, user.sub);
-  }
-
-  @Delete('me')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RequireOrgRole()
-  leaveOrg(
-    @Param('orgId', ParseUUIDPipe) orgId: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<void> {
-    return this.membershipsService.leaveOrganization(orgId, user.sub);
   }
 }
