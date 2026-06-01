@@ -10,6 +10,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { OrganizationMembershipsModule } from './modules/organization-memberships/organization-memberships.module';
+import { ServicesCatalogModule } from './modules/services-catalog/services-catalog.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { OrganizationMembershipsModule } from './modules/organization-membership
     AuthModule,
     OrganizationsModule,
     OrganizationMembershipsModule,
+    ServicesCatalogModule,
   ],
 })
 export class AppModule {}
