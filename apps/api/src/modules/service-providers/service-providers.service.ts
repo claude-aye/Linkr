@@ -12,11 +12,18 @@ import { VerificationLevel } from '../users/enums/verification-level.enum';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
+import { CreateServiceZoneDto } from './dto/create-service-zone.dto';
+import { UpdateServiceZoneDto } from './dto/update-service-zone.dto';
+import { ServiceZoneResponseDto } from './dto/service-zone-response.dto';
 import { ProviderType } from './enums/provider-type.enum';
 import {
   ServiceProviderRecord,
   ServiceProviderRepository,
 } from './repositories/service-provider.repository';
+import {
+  ServiceZoneRecord,
+  ProfessionalServiceZoneRepository,
+} from './repositories/professional-service-zone.repository';
 import {
   NotProviderOwnerException,
   PhoneVerificationRequiredException,
@@ -34,6 +41,7 @@ export class ServiceProvidersService {
 
   constructor(
     private readonly providerRepo: ServiceProviderRepository,
+    private readonly zoneRepo: ProfessionalServiceZoneRepository,
     private readonly usersRepository: UsersRepository,
     private readonly organizationsRepository: OrganizationsRepository,
     private readonly membershipsRepository: OrganizationMembershipsRepository,
@@ -146,6 +154,85 @@ export class ServiceProvidersService {
     if (!record) throw new NotFoundException('Service provider not found');
     await this.assertCanManageProvider(currentUserId, record);
     return record;
+  }
+
+  // ── Service zones (nested under a provider) ───────────────────────────────
+
+  async listZones(providerId: string): Promise<ServiceZoneResponseDto[]> {
+    const provider = await this.providerRepo.findById(providerId);
+    if (!provider) throw new NotFoundException('Service provider not found');
+    const zones = await this.zoneRepo.findByProviderId(providerId);
+    return zones.map((z) => ServiceZoneResponseDto.from(z));
+  }
+
+  async createZone(
+    currentUserId: string,
+    providerId: string,
+    dto: CreateServiceZoneDto,
+  ): Promise<ServiceZoneResponseDto> {
+    await this.loadOwnedProvider(currentUserId, providerId);
+    await this.assertValidPolygon(dto.zonePolygon);
+
+    const zone = await this.zoneRepo.create(
+      providerId,
+      dto.zonePolygon,
+      dto.zoneLabel,
+    );
+    this.logger.log(`Created zone ${zone.id} for provider ${providerId}`);
+    return ServiceZoneResponseDto.from(zone);
+  }
+
+  async updateZone(
+    currentUserId: string,
+    providerId: string,
+    zoneId: string,
+    dto: UpdateServiceZoneDto,
+  ): Promise<ServiceZoneResponseDto> {
+    await this.loadOwnedProvider(currentUserId, providerId);
+    await this.loadProviderZone(providerId, zoneId);
+
+    if (dto.zonePolygon !== undefined) {
+      await this.assertValidPolygon(dto.zonePolygon);
+    }
+
+    const updated = await this.zoneRepo.update(zoneId, {
+      zonePolygon: dto.zonePolygon,
+      zoneLabel: dto.zoneLabel,
+    });
+    if (!updated) throw new NotFoundException('Service zone not found');
+    return ServiceZoneResponseDto.from(updated);
+  }
+
+  async deleteZone(
+    currentUserId: string,
+    providerId: string,
+    zoneId: string,
+  ): Promise<void> {
+    await this.loadOwnedProvider(currentUserId, providerId);
+    await this.loadProviderZone(providerId, zoneId);
+    await this.zoneRepo.softDelete(zoneId);
+    this.logger.log(`Soft-deleted zone ${zoneId} of provider ${providerId}`);
+  }
+
+  // Ensures the zone exists and belongs to the given provider.
+  private async loadProviderZone(
+    providerId: string,
+    zoneId: string,
+  ): Promise<ServiceZoneRecord> {
+    const zone = await this.zoneRepo.findById(zoneId);
+    if (!zone || zone.serviceProviderId !== providerId) {
+      throw new NotFoundException('Service zone not found');
+    }
+    return zone;
+  }
+
+  private async assertValidPolygon(polygon: CreateServiceZoneDto['zonePolygon']): Promise<void> {
+    const valid = await this.zoneRepo.isPolygonValid(polygon);
+    if (!valid) {
+      throw new BadRequestException(
+        'zonePolygon is not a geometrically valid polygon (e.g. self-intersecting)',
+      );
+    }
   }
 
   private async assertCanManageProvider(
