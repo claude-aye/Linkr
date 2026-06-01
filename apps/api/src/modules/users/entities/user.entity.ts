@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { SystemRole } from '../enums/system-role.enum';
 import { VerificationLevel } from '../enums/verification-level.enum';
 import { UserAuthProvider } from './user-auth-provider.entity';
 
@@ -66,6 +67,14 @@ export class User {
     default: VerificationLevel.NONE,
   })
   verificationLevel!: VerificationLevel;
+
+  @Column({
+    type: 'enum',
+    enum: SystemRole,
+    enumName: 'users_system_role_enum',
+    default: SystemRole.USER,
+  })
+  systemRole!: SystemRole;
 
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAtUtc!: Date;

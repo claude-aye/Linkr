@@ -1,0 +1,5 @@
+export enum InputType {
+  TEXT_INPUT = 'TEXT_INPUT',
+  FILE_UPLOAD = 'FILE_UPLOAD',
+  TEXT_AND_FILE = 'TEXT_AND_FILE',
+}
