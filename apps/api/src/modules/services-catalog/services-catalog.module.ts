@@ -9,7 +9,7 @@ import { ServiceCategoryRepository } from './repositories/service-category.repos
 import { ServiceItemRepository } from './repositories/service-item.repository';
 import { RegulatoryRequirementRepository } from './repositories/regulatory-requirement.repository';
 import { ServicesCatalogService } from './services-catalog.service';
-import { ServicesCatalogController } from './services-catalog.controller';
+import { ServicesCatalogController, ServiceItemSuggestionController } from './services-catalog.controller';
 import { ServicesCatalogPublicController } from './services-catalog.public.controller';
 
 @Module({
@@ -17,7 +17,7 @@ import { ServicesCatalogPublicController } from './services-catalog.public.contr
     TypeOrmModule.forFeature([ServiceCategory, ServiceItem, RegulatoryRequirement]),
     UsersModule,
   ],
-  controllers: [ServicesCatalogController, ServicesCatalogPublicController],
+  controllers: [ServiceItemSuggestionController, ServicesCatalogController, ServicesCatalogPublicController],
   providers: [
     ServiceCategoryRepository,
     ServiceItemRepository,

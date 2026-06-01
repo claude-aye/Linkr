@@ -23,8 +23,28 @@ import { RejectServiceItemDto } from './dto/reject-service-item.dto';
 import { CreateRegulatoryRequirementDto } from './dto/create-regulatory-requirement.dto';
 import { UpdateRegulatoryRequirementDto } from './dto/update-regulatory-requirement.dto';
 import { ServicesCatalogService } from './services-catalog.service';
+import { SuggestServiceItemDto } from './dto/suggest-service-item.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+
+// ── Pro suggestion endpoint (any authenticated user) ──────────────────────────
+
+@ApiTags('services-catalog')
+@Controller('service-items')
+export class ServiceItemSuggestionController {
+  constructor(private readonly catalogService: ServicesCatalogService) {}
+
+  @Post('suggest')
+  @ApiOperation({ summary: 'Suggest a new service item (authenticated pro); always starts as PENDING' })
+  suggestItem(
+    @Body() dto: SuggestServiceItemDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<ServiceItem> {
+    return this.catalogService.suggestItem(dto, user.sub);
+  }
+}
+
+// ── Admin CRUD ────────────────────────────────────────────────────────────────
 
 @ApiTags('admin — services-catalog')
 @Controller('admin')

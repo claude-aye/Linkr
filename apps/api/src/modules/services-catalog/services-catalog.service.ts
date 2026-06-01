@@ -11,6 +11,7 @@ import { ServiceCategory } from './entities/service-category.entity';
 import { ServiceItem } from './entities/service-item.entity';
 import { RegulatoryRequirement } from './entities/regulatory-requirement.entity';
 import { CreateServiceCategoryDto } from './dto/create-service-category.dto';
+import { SuggestServiceItemDto } from './dto/suggest-service-item.dto';
 import { UpdateServiceCategoryDto } from './dto/update-service-category.dto';
 import { CreateServiceItemDto } from './dto/create-service-item.dto';
 import { UpdateServiceItemDto } from './dto/update-service-item.dto';
@@ -101,6 +102,35 @@ export class ServicesCatalogService {
       approvalStatus: dto.approvalStatus ?? ApprovalStatus.APPROVED,
     });
     this.logger.log(`Admin created service item: ${item.id} (${item.slug})`);
+    return item;
+  }
+
+  // Pro suggestion — always PENDING, suggestedByUserId set to the caller.
+  async suggestItem(
+    dto: SuggestServiceItemDto,
+    suggestedByUserId: string,
+  ): Promise<ServiceItem> {
+    const cat = await this.categoryRepo.findById(dto.serviceCategoryId);
+    if (!cat) throw new NotFoundException('Service category not found');
+
+    const slugExists = await this.itemRepo.existsActiveSlugInCategory(
+      dto.serviceCategoryId,
+      dto.slug,
+    );
+    if (slugExists)
+      throw new ConflictException(`Slug '${dto.slug}' already exists in this category`);
+
+    const item = await this.itemRepo.create({
+      serviceCategoryId: dto.serviceCategoryId,
+      slug: dto.slug,
+      nameTranslations: dto.nameTranslations,
+      descriptionTranslations: dto.descriptionTranslations,
+      typicalDurationMinutes: dto.typicalDurationMinutes,
+      suggestedPriceRange: dto.suggestedPriceRange,
+      suggestedByUserId,
+      approvalStatus: ApprovalStatus.PENDING,
+    });
+    this.logger.log(`Pro ${suggestedByUserId} suggested item: ${item.id} (${item.slug})`);
     return item;
   }
 
