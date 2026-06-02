@@ -13,6 +13,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { OrganizationMembershipsModule } from './modules/organization-memberships/organization-memberships.module';
 import { ServicesCatalogModule } from './modules/services-catalog/services-catalog.module';
 import { ServiceProvidersModule } from './modules/service-providers/service-providers.module';
+import { VerificationsModule } from './modules/verifications/verifications.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ServiceProvidersModule } from './modules/service-providers/service-prov
     OrganizationMembershipsModule,
     ServicesCatalogModule,
     ServiceProvidersModule,
+    VerificationsModule,
   ],
 })
 export class AppModule {}

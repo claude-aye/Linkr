@@ -156,6 +156,40 @@ export class ServiceProvidersService {
     return record;
   }
 
+  /**
+   * Resolves the regulatory jurisdiction (country + subdivision) of a provider:
+   * from the owning user for INDIVIDUAL, from the organization for ORGANIZATION.
+   * Used by the verifications domain to scope required documents.
+   */
+  async getProviderJurisdiction(
+    providerId: string,
+  ): Promise<{ countryCode: string; subdivisionCode: string }> {
+    const provider = await this.providerRepo.findById(providerId);
+    if (!provider) throw new NotFoundException('Service provider not found');
+
+    if (provider.providerType === ProviderType.INDIVIDUAL && provider.userId) {
+      const user = await this.usersRepository.findById(provider.userId);
+      if (!user) throw new NotFoundException('Provider owner not found');
+      return {
+        countryCode: user.countryCode,
+        subdivisionCode: user.subdivisionCode,
+      };
+    }
+
+    if (provider.organizationId) {
+      const org = await this.organizationsRepository.findById(
+        provider.organizationId,
+      );
+      if (!org) throw new NotFoundException('Provider organization not found');
+      return {
+        countryCode: org.countryCode,
+        subdivisionCode: org.subdivisionCode,
+      };
+    }
+
+    throw new NotFoundException('Provider jurisdiction could not be resolved');
+  }
+
   // ── Service zones (nested under a provider) ───────────────────────────────
 
   async listZones(providerId: string): Promise<ServiceZoneResponseDto[]> {

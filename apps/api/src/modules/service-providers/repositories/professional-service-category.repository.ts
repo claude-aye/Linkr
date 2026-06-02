@@ -72,6 +72,30 @@ export class ProfessionalServiceCategoryRepository {
     return this.findById(id);
   }
 
+  /**
+   * Updates the verification state of a PSC. Used by the verifications domain
+   * for the auto VERIFIED cascade and the expiry downgrade. Accepts an optional
+   * QueryRunner manager so it can participate in a multi-table transaction.
+   */
+  async updateVerification(
+    id: string,
+    data: {
+      verificationStatus: PscVerificationStatus;
+      verifiedAtUtc?: Date | null;
+      rejectionReason?: string | null;
+    },
+    manager?: import('typeorm').EntityManager,
+  ): Promise<void> {
+    const repo = manager
+      ? manager.getRepository(ProfessionalServiceCategory)
+      : this.repo;
+    await repo.update(id, {
+      verificationStatus: data.verificationStatus,
+      verifiedAtUtc: data.verifiedAtUtc,
+      rejectionReason: data.rejectionReason,
+    });
+  }
+
   async softDelete(id: string): Promise<void> {
     await this.repo.softDelete(id);
   }

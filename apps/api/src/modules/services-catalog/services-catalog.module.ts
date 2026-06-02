@@ -25,6 +25,11 @@ import { ServicesCatalogPublicController } from './services-catalog.public.contr
     ServicesCatalogService,
     AdminGuard,
   ],
-  exports: [ServiceCategoryRepository, ServiceItemRepository, ServicesCatalogService],
+  exports: [
+    ServiceCategoryRepository,
+    ServiceItemRepository,
+    RegulatoryRequirementRepository,
+    ServicesCatalogService,
+  ],
 })
 export class ServicesCatalogModule {}

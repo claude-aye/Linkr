@@ -50,6 +50,10 @@ import {
     ServiceProvidersService,
     ProviderServicesService,
   ],
-  exports: [ServiceProviderRepository, ServiceProvidersService],
+  exports: [
+    ServiceProviderRepository,
+    ProfessionalServiceCategoryRepository,
+    ServiceProvidersService,
+  ],
 })
 export class ServiceProvidersModule {}
