@@ -10,6 +10,7 @@ import { RegulationLevel } from '../services-catalog/enums/regulation-level.enum
 import { ServiceCategoryRepository } from '../services-catalog/repositories/service-category.repository';
 import { RegulatoryRequirementRepository } from '../services-catalog/repositories/regulatory-requirement.repository';
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
+import { PscVerificationStatus } from '../service-providers/enums/psc-verification-status.enum';
 import { ServiceProvidersService } from '../service-providers/service-providers.service';
 import { UsersRepository } from '../users/users.repository';
 import { SystemRole } from '../users/enums/system-role.enum';
@@ -19,6 +20,7 @@ import {
   STORAGE_SERVICE,
 } from '../../common/storage/storage.interface';
 import { VerificationDocument } from './entities/verification-document.entity';
+import { VerificationDocumentReviewStatus } from './enums/verification-document-review-status.enum';
 import { VerificationDocumentRepository } from './repositories/verification-document.repository';
 import { UploadVerificationDocumentDto } from './dto/upload-verification-document.dto';
 import { VerificationDocumentResponseDto } from './dto/verification-document-response.dto';
@@ -142,6 +144,105 @@ export class VerificationsService {
 
     const { stream } = await this.storage.getStream(doc.fileUrl);
     return { stream, mimeType: doc.fileMimeType };
+  }
+
+  // ── Admin: review queue + approve / reject + cascade ─────────────────────
+
+  async listByStatus(
+    status: VerificationDocumentReviewStatus,
+  ): Promise<VerificationDocumentResponseDto[]> {
+    const docs = await this.documentRepo.findByStatus(status);
+    return docs.map((d) => VerificationDocumentResponseDto.from(d));
+  }
+
+  async approveDocument(
+    adminUserId: string,
+    documentId: string,
+  ): Promise<VerificationDocumentResponseDto> {
+    const doc = await this.documentRepo.findById(documentId);
+    if (!doc) throw new NotFoundException('Verification document not found');
+
+    const approved = await this.documentRepo.approve(documentId, adminUserId);
+    if (!approved) throw new NotFoundException('Verification document not found');
+
+    // Promotion cascade: may flip the PSC to VERIFIED.
+    await this.recomputePscVerification(doc.professionalServiceCategoryId);
+
+    this.logger.log(`Approved verification document ${documentId}`);
+    return VerificationDocumentResponseDto.from(approved);
+  }
+
+  async rejectDocument(
+    adminUserId: string,
+    documentId: string,
+    rejectionReason: string,
+  ): Promise<VerificationDocumentResponseDto> {
+    const doc = await this.documentRepo.findById(documentId);
+    if (!doc) throw new NotFoundException('Verification document not found');
+
+    const rejected = await this.documentRepo.reject(
+      documentId,
+      adminUserId,
+      rejectionReason,
+    );
+    if (!rejected) throw new NotFoundException('Verification document not found');
+
+    // A rejected document does NOT downgrade the PSC — the provider re-uploads.
+    this.logger.log(`Rejected verification document ${documentId}`);
+    return VerificationDocumentResponseDto.from(rejected);
+  }
+
+  /**
+   * Promotion-only recompute: flips a PENDING regulated PSC to VERIFIED once
+   * every required requirement in its jurisdiction is covered by an APPROVED,
+   * non-expired document. Never downgrades (that is the expiry handler's job).
+   */
+  async recomputePscVerification(pscId: string): Promise<void> {
+    const psc = await this.pscRepo.findById(pscId);
+    if (!psc) return;
+
+    const category = await this.categoryRepo.findById(psc.serviceCategoryId);
+    if (!category || category.regulationLevel !== RegulationLevel.REGULATED) {
+      return;
+    }
+
+    if (psc.verificationStatus !== PscVerificationStatus.PENDING) return;
+
+    const satisfied = await this.areAllRequiredSatisfied(psc.serviceProviderId, psc.serviceCategoryId, pscId);
+    if (!satisfied) return;
+
+    await this.pscRepo.updateVerification(pscId, {
+      verificationStatus: PscVerificationStatus.VERIFIED,
+      verifiedAtUtc: new Date(),
+      rejectionReason: null,
+    });
+    this.logger.log(`PSC ${pscId} promoted PENDING → VERIFIED`);
+  }
+
+  /**
+   * Whether every required requirement of the (provider, category) jurisdiction
+   * is currently covered by an APPROVED, non-expired document for this PSC.
+   */
+  private async areAllRequiredSatisfied(
+    serviceProviderId: string,
+    serviceCategoryId: string,
+    pscId: string,
+  ): Promise<boolean> {
+    const { countryCode, subdivisionCode } =
+      await this.providersService.getProviderJurisdiction(serviceProviderId);
+    const required = (
+      await this.requirementRepo.findByZone(
+        serviceCategoryId,
+        countryCode,
+        subdivisionCode,
+      )
+    ).filter((r) => r.isRequired);
+
+    for (const req of required) {
+      const ok = await this.documentRepo.isRequirementSatisfied(pscId, req.id);
+      if (!ok) return false;
+    }
+    return true;
   }
 
   // ── Internal helpers ─────────────────────────────────────────────────────
