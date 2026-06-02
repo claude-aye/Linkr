@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { validate } from './config/env.validation';
 import { getDatabaseConfig } from './config/database.config';
 import { getRedisConfig } from './config/redis.config';
+import { StorageModule } from './common/storage/storage.module';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -28,6 +29,7 @@ import { ServiceProvidersModule } from './modules/service-providers/service-prov
       inject: [ConfigService],
       useFactory: getRedisConfig,
     }),
+    StorageModule,
     HealthModule,
     UsersModule,
     AuthModule,

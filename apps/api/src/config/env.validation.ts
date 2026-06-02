@@ -37,6 +37,33 @@ const envSchema = Joi.object({
   APPLE_OAUTH_KEY_ID: Joi.string().optional(),
   APPLE_OAUTH_PRIVATE_KEY: Joi.string().optional(),
   APPLE_OAUTH_CALLBACK_URL: Joi.string().uri().optional(),
+
+  // Storage (port/adapter) — local disk in dev, S3-compatible in prod.
+  STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
+  STORAGE_LOCAL_DIR: Joi.string().default('./storage/uploads'),
+  // S3 vars become required when STORAGE_DRIVER=s3.
+  STORAGE_BUCKET: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_REGION: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_ACCESS_KEY_ID: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_SECRET_ACCESS_KEY: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  // Optional custom endpoint for S3-compatible providers (e.g. Cloudflare R2).
+  STORAGE_ENDPOINT: Joi.string().uri().optional(),
 });
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {

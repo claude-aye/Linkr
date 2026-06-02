@@ -44,3 +44,7 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Local file storage (LocalDiskStorageAdapter) — uploaded objects only
+/storage/
+/apps/api/storage/
