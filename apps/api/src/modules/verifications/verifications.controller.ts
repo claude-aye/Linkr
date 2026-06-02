@@ -10,7 +10,6 @@ import {
   Body,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import {
   ApiBody,
   ApiConsumes,
@@ -55,7 +54,7 @@ export class VerificationsController {
   })
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: memoryStorage(),
+      // No `storage` → multer keeps the file in memory (file.buffer).
       limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES },
       fileFilter: (_req, file, cb) => {
         if (

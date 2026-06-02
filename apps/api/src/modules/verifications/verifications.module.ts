@@ -9,6 +9,7 @@ import { VerificationDocumentRepository } from './repositories/verification-docu
 import { VerificationsService } from './verifications.service';
 import { VerificationsController } from './verifications.controller';
 import { AdminVerificationsController } from './admin-verifications.controller';
+import { VerificationsCron } from './verifications.cron';
 
 @Module({
   imports: [
@@ -18,7 +19,12 @@ import { AdminVerificationsController } from './admin-verifications.controller';
     ServiceProvidersModule,
   ],
   controllers: [VerificationsController, AdminVerificationsController],
-  providers: [VerificationDocumentRepository, VerificationsService, AdminGuard],
+  providers: [
+    VerificationDocumentRepository,
+    VerificationsService,
+    VerificationsCron,
+    AdminGuard,
+  ],
   exports: [VerificationsService],
 })
 export class VerificationsModule {}

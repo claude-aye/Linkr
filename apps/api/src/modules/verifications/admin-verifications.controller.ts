@@ -66,4 +66,17 @@ export class AdminVerificationsController {
       dto.rejectionReason,
     );
   }
+
+  @Post('verifications/run-expiry-check')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Manually trigger the license expiry check (same logic as the nightly cron).',
+  })
+  runExpiryCheck(): Promise<{
+    documentsExpired: number;
+    categoriesDowngraded: number;
+  }> {
+    return this.verificationsService.runLicenseExpiryCheck();
+  }
 }

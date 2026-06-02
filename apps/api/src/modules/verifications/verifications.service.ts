@@ -6,6 +6,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { RegulationLevel } from '../services-catalog/enums/regulation-level.enum';
 import { ServiceCategoryRepository } from '../services-catalog/repositories/service-category.repository';
 import { RegulatoryRequirementRepository } from '../services-catalog/repositories/regulatory-requirement.repository';
@@ -54,6 +56,7 @@ export class VerificationsService {
     private readonly providersService: ServiceProvidersService,
     private readonly usersRepository: UsersRepository,
     @Inject(STORAGE_SERVICE) private readonly storage: IStorageService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // ── Provider: upload / list / download ───────────────────────────────────
@@ -227,6 +230,7 @@ export class VerificationsService {
     serviceProviderId: string,
     serviceCategoryId: string,
     pscId: string,
+    manager?: EntityManager,
   ): Promise<boolean> {
     const { countryCode, subdivisionCode } =
       await this.providersService.getProviderJurisdiction(serviceProviderId);
@@ -239,10 +243,87 @@ export class VerificationsService {
     ).filter((r) => r.isRequired);
 
     for (const req of required) {
-      const ok = await this.documentRepo.isRequirementSatisfied(pscId, req.id);
+      const ok = await this.documentRepo.isRequirementSatisfied(
+        pscId,
+        req.id,
+        manager,
+      );
       if (!ok) return false;
     }
     return true;
+  }
+
+  // ── License expiry: marks EXPIRED docs + downgrades affected PSCs ─────────
+
+  /**
+   * Scans APPROVED documents past their expiry, marks them EXPIRED, and
+   * downgrades any VERIFIED PSC that no longer has all required requirements
+   * covered. Runs in a single transaction. Notifications are a Logger stub.
+   */
+  async runLicenseExpiryCheck(): Promise<{
+    documentsExpired: number;
+    categoriesDowngraded: number;
+  }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const manager = queryRunner.manager;
+      const expired = await this.documentRepo.findExpiredApproved(manager);
+
+      for (const doc of expired) {
+        await this.documentRepo.markExpired(doc.id, manager);
+      }
+
+      const affectedPscIds = [
+        ...new Set(expired.map((d) => d.professionalServiceCategoryId)),
+      ];
+
+      let categoriesDowngraded = 0;
+      for (const pscId of affectedPscIds) {
+        const psc = await this.pscRepo.findById(pscId);
+        if (!psc || psc.verificationStatus !== PscVerificationStatus.VERIFIED) {
+          continue;
+        }
+        const stillSatisfied = await this.areAllRequiredSatisfied(
+          psc.serviceProviderId,
+          psc.serviceCategoryId,
+          pscId,
+          manager,
+        );
+        if (!stillSatisfied) {
+          await this.pscRepo.updateVerification(
+            pscId,
+            {
+              verificationStatus: PscVerificationStatus.REJECTED,
+              verifiedAtUtc: null,
+              rejectionReason: 'Document(s) expiré(s) — renouvellement requis',
+            },
+            manager,
+          );
+          categoriesDowngraded += 1;
+          this.notifyProvider(psc.serviceProviderId, pscId);
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      this.logger.log(
+        `Expiry check: ${expired.length} document(s) expired, ${categoriesDowngraded} category(ies) downgraded`,
+      );
+      return { documentsExpired: expired.length, categoriesDowngraded };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // Stub — the notifications infrastructure is a later phase.
+  private notifyProvider(serviceProviderId: string, pscId: string): void {
+    this.logger.warn(
+      `Notify provider ${serviceProviderId}: category ${pscId} downgraded to REJECTED (expired documents)`,
+    );
   }
 
   // ── Internal helpers ─────────────────────────────────────────────────────
