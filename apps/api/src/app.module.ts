@@ -15,6 +15,7 @@ import { OrganizationMembershipsModule } from './modules/organization-membership
 import { ServicesCatalogModule } from './modules/services-catalog/services-catalog.module';
 import { ServiceProvidersModule } from './modules/service-providers/service-providers.module';
 import { VerificationsModule } from './modules/verifications/verifications.module';
+import { ServiceRequestsModule } from './modules/service-requests/service-requests.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { VerificationsModule } from './modules/verifications/verifications.modul
     ServicesCatalogModule,
     ServiceProvidersModule,
     VerificationsModule,
+    ServiceRequestsModule,
   ],
 })
 export class AppModule {}
