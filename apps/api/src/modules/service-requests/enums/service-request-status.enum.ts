@@ -1,0 +1,11 @@
+export enum ServiceRequestStatus {
+  DRAFT = 'DRAFT',
+  OPEN = 'OPEN',
+  ASSIGNED = 'ASSIGNED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  PAID = 'PAID',
+  EXPIRED = 'EXPIRED',
+  CANCELLED = 'CANCELLED',
+  REFUNDED = 'REFUNDED',
+}

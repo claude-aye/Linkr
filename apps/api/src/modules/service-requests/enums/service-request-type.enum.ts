@@ -1,0 +1,4 @@
+export enum ServiceRequestType {
+  DIRECT_BOOKING = 'DIRECT_BOOKING',
+  PROJECT_TENDER = 'PROJECT_TENDER',
+}
