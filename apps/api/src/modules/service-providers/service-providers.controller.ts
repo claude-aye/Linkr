@@ -9,14 +9,17 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
+import { DiscoverProvidersQueryDto } from './dto/discover-providers-query.dto';
+import { DiscoveredProviderDto } from './dto/discovered-provider.dto';
 import { ServiceProvidersService } from './service-providers.service';
 
 @ApiTags('service-providers')
@@ -34,6 +37,28 @@ export class ServiceProvidersController {
     @Body() dto: CreateServiceProviderDto,
   ): Promise<ServiceProviderResponseDto> {
     return this.providersService.createProvider(user.sub, dto);
+  }
+
+  // ⚠️ Must be declared BEFORE @Get(':id'), otherwise 'discover' is captured as an :id.
+  @Get('discover')
+  @ApiOperation({
+    summary:
+      'Discover providers covering a client location for a category (radius OR named zone), sorted by distance. Authenticated users only.',
+  })
+  @ApiQuery({ name: 'lat', type: Number, required: true })
+  @ApiQuery({ name: 'lng', type: Number, required: true })
+  @ApiQuery({ name: 'categoryId', type: String, required: true })
+  @ApiQuery({ name: 'page', type: Number, required: false })
+  @ApiQuery({ name: 'limit', type: Number, required: false })
+  @ApiResponse({ status: 200, type: DiscoveredProviderDto, isArray: true })
+  @ApiResponse({ status: 400, description: 'Missing or invalid lat/lng/categoryId.' })
+  discover(@Query() query: DiscoverProvidersQueryDto): Promise<{
+    items: DiscoveredProviderDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    return this.providersService.discover(query);
   }
 
   @Public()
