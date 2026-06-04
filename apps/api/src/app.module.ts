@@ -15,6 +15,7 @@ import { OrganizationMembershipsModule } from './modules/organization-membership
 import { ServicesCatalogModule } from './modules/services-catalog/services-catalog.module';
 import { ServiceProvidersModule } from './modules/service-providers/service-providers.module';
 import { VerificationsModule } from './modules/verifications/verifications.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ServiceRequestsModule } from './modules/service-requests/service-requests.module';
 
 @Module({
@@ -42,6 +43,7 @@ import { ServiceRequestsModule } from './modules/service-requests/service-reques
     ServicesCatalogModule,
     ServiceProvidersModule,
     VerificationsModule,
+    NotificationsModule,
     ServiceRequestsModule,
   ],
 })
