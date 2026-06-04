@@ -179,4 +179,45 @@ export class ServiceProviderRepository {
   async softDelete(id: string): Promise<void> {
     await this.repo.softDelete(id);
   }
+
+  /**
+   * Returns the IDs of all providers eligible for a given client point + category.
+   * Uses the same Hybrid Geo predicates as the discover endpoint (CLAUDE.md §5.3):
+   *   - provider active + non-deleted
+   *   - category VERIFIED | NOT_REQUIRED, active, non-deleted
+   *   - coverage: radius (ST_DWithin in metres) OR named zone (ST_Covers)
+   *
+   * No LIMIT/OFFSET — returns every eligible id for broadcast use.
+   * All spatial columns are geography(4326) → metres directly, ST_Covers for polygons.
+   */
+  async findEligibleProviderIds(
+    lng: number,
+    lat: number,
+    categoryId: string,
+  ): Promise<string[]> {
+    const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
+    const rows: Array<{ id: string }> = await this.repo.query(
+      `SELECT DISTINCT sp.id
+       FROM service_providers sp
+       INNER JOIN professional_service_categories psc
+         ON psc.service_provider_id = sp.id
+         AND psc.service_category_id = $3
+         AND psc.verification_status IN ('VERIFIED', 'NOT_REQUIRED')
+         AND psc.is_active = true
+         AND psc.deleted_at_utc IS NULL
+       WHERE sp.is_active = true
+         AND sp.deleted_at_utc IS NULL
+         AND (
+           ST_DWithin(sp.service_base_location, ${clientPoint}, sp.service_radius_km * 1000)
+           OR EXISTS (
+             SELECT 1 FROM professional_service_zones z
+             WHERE z.service_provider_id = sp.id
+               AND z.deleted_at_utc IS NULL
+               AND ST_Covers(z.zone_polygon, ${clientPoint})
+           )
+         )`,
+      [lng, lat, categoryId],
+    );
+    return rows.map((r) => r.id);
+  }
 }
