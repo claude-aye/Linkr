@@ -9,6 +9,7 @@ import { ServiceRequestRepository } from './repositories/service-request.reposit
 import { ServiceRequestRecord } from './repositories/service-request.repository';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { UsersRepository } from '../users/users.repository';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
 import { CancelServiceRequestDto } from './dto/cancel-service-request.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
@@ -31,6 +32,7 @@ export class ServiceRequestsService {
     private readonly requestRepo: ServiceRequestRepository,
     private readonly providerRepo: ServiceProviderRepository,
     private readonly usersRepo: UsersRepository,
+    private readonly notificationsService: NotificationsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -86,6 +88,17 @@ export class ServiceRequestsService {
       responseDeadlineUtc: dto.responseDeadlineUtc ? new Date(dto.responseDeadlineUtc) : null,
       quotesDeadlineUtc: dto.quotesDeadlineUtc ? new Date(dto.quotesDeadlineUtc) : null,
     });
+
+    // Best-effort broadcast: notify eligible providers when a PROJECT_TENDER
+    // is created. Failures are logged and swallowed — they must never rollback
+    // the request creation, which is already committed at this point.
+    if (record.requestType === ServiceRequestType.PROJECT_TENDER) {
+      this.notificationsService.broadcastTenderMatch(record).catch((err: unknown) => {
+        this.logger.error(
+          `broadcastTenderMatch failed for request ${record.id}: ${String(err)}`,
+        );
+      });
+    }
 
     return this.toResponseDto(record);
   }
