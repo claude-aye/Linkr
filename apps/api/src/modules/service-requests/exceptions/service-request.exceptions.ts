@@ -31,3 +31,13 @@ export class TenderValidationException extends HttpException {
     super(message, HttpStatus.BAD_REQUEST);
   }
 }
+
+/** 422 — ORGANIZATION dispatch is not supported in MVP (deferred to future phase). */
+export class OrganizationDispatchNotSupportedException extends HttpException {
+  constructor() {
+    super(
+      'Dispatch for ORGANIZATION providers is not supported in MVP',
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
