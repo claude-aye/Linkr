@@ -5,7 +5,9 @@ import { UsersModule } from '../users/users.module';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ServiceRequest } from './entities/service-request.entity';
+import { ServiceRequestAssignment } from './entities/service-request-assignment.entity';
 import { ServiceRequestRepository } from './repositories/service-request.repository';
+import { ServiceRequestAssignmentRepository } from './repositories/service-request-assignment.repository';
 import { ServiceRequestsService } from './service-requests.service';
 import { ServiceRequestsController } from './service-requests.controller';
 import { AdminServiceRequestsController } from './admin-service-requests.controller';
@@ -13,7 +15,7 @@ import { ServiceRequestsCron } from './service-requests.cron';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ServiceRequest]),
+    TypeOrmModule.forFeature([ServiceRequest, ServiceRequestAssignment]),
     UsersModule,
     ServiceProvidersModule,
     NotificationsModule,
@@ -21,6 +23,7 @@ import { ServiceRequestsCron } from './service-requests.cron';
   controllers: [ServiceRequestsController, AdminServiceRequestsController],
   providers: [
     ServiceRequestRepository,
+    ServiceRequestAssignmentRepository,
     ServiceRequestsService,
     ServiceRequestsCron,
     AdminGuard,

@@ -19,6 +19,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CancelServiceRequestDto } from './dto/cancel-service-request.dto';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
+import { DeclineServiceRequestDto } from './dto/decline-service-request.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
 import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { ServiceRequestsService } from './service-requests.service';
@@ -84,5 +85,78 @@ export class ServiceRequestsController {
     @Body() dto: CancelServiceRequestDto,
   ): Promise<ServiceRequestResponseDto> {
     return this.service.cancel(id, user.sub, dto);
+  }
+
+  @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Accept a DIRECT_BOOKING (INDIVIDUAL provider only). Transitions request OPEN→ASSIGNED and creates an assignment.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 400, description: 'Not a DIRECT_BOOKING or missing provider' })
+  @ApiResponse({ status: 403, description: 'Caller is not the targeted provider' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 409, description: 'Invalid state transition' })
+  @ApiResponse({ status: 422, description: 'ORGANIZATION dispatch not supported in MVP' })
+  accept(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ServiceRequestResponseDto> {
+    return this.service.acceptRequest(id, user.sub);
+  }
+
+  @Post(':id/decline')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Decline a DIRECT_BOOKING (INDIVIDUAL provider only). Transitions request OPEN→CANCELLED.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 400, description: 'Not a DIRECT_BOOKING or missing provider' })
+  @ApiResponse({ status: 403, description: 'Caller is not the targeted provider' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 409, description: 'Invalid state transition' })
+  @ApiResponse({ status: 422, description: 'ORGANIZATION dispatch not supported in MVP' })
+  decline(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeclineServiceRequestDto,
+  ): Promise<ServiceRequestResponseDto> {
+    return this.service.declineRequest(id, user.sub, dto);
+  }
+
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Start an ASSIGNED request (worker only). Transitions assignment ASSIGNED→ACCEPTED_BY_WORKER and request ASSIGNED→IN_PROGRESS.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the assigned worker' })
+  @ApiResponse({ status: 404, description: 'Not found or no active assignment' })
+  @ApiResponse({ status: 409, description: 'Invalid state transition' })
+  start(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ServiceRequestResponseDto> {
+    return this.service.startRequest(id, user.sub);
+  }
+
+  @Post(':id/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Complete an IN_PROGRESS request (worker only). Transitions assignment ACCEPTED_BY_WORKER→COMPLETED and request IN_PROGRESS→COMPLETED.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the assigned worker' })
+  @ApiResponse({ status: 404, description: 'Not found or no active assignment' })
+  @ApiResponse({ status: 409, description: 'Invalid state transition' })
+  complete(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ServiceRequestResponseDto> {
+    return this.service.completeRequest(id, user.sub);
   }
 }
