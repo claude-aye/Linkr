@@ -209,33 +209,49 @@ export class ServiceProviderRepository {
     await this.repo.softDelete(id);
   }
 
+  /**
+   * Shared hybrid-geo eligibility predicate (CLAUDE.md §5.3) — single source of
+   * truth for "which providers qualify for a given client point + category".
+   * Consumed by discovery (paginated) and tender broadcast (id-only).
+   *
+   * Placeholders: $1 = lng, $2 = lat, $3 = categoryId.
+   * Spatial columns are geography(4326): ST_DWithin / ST_Distance return metres,
+   * zone containment uses ST_Covers (ST_Contains is geometry-only).
+   * The LEFT JOIN organizations resolves the display_name fallback; it joins a
+   * single FK so it never multiplies rows — harmless in the id-only / count queries.
+   */
+  private eligibilityFromWhere(): string {
+    const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
+    return `
+      FROM service_providers sp
+      INNER JOIN professional_service_categories psc
+        ON psc.service_provider_id = sp.id
+        AND psc.service_category_id = $3
+        AND psc.verification_status IN ('VERIFIED', 'NOT_REQUIRED')
+        AND psc.is_active = true
+        AND psc.deleted_at_utc IS NULL
+      LEFT JOIN organizations o ON o.id = sp.organization_id
+      WHERE sp.is_active = true
+        AND sp.deleted_at_utc IS NULL
+        AND (
+          ST_DWithin(sp.service_base_location, ${clientPoint}, sp.service_radius_km * 1000)
+          OR EXISTS (
+            SELECT 1 FROM professional_service_zones z
+            WHERE z.service_provider_id = sp.id
+              AND z.deleted_at_utc IS NULL
+              AND ST_Covers(z.zone_polygon, ${clientPoint})
+          )
+        )
+    `;
+  }
 
   async findEligibleProviderIds(
     lng: number,
     lat: number,
     categoryId: string,
   ): Promise<string[]> {
-    const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
     const rows: Array<{ id: string }> = await this.repo.query(
-      `SELECT DISTINCT sp.id
-       FROM service_providers sp
-       INNER JOIN professional_service_categories psc
-         ON psc.service_provider_id = sp.id
-         AND psc.service_category_id = $3
-         AND psc.verification_status IN ('VERIFIED', 'NOT_REQUIRED')
-         AND psc.is_active = true
-         AND psc.deleted_at_utc IS NULL
-       WHERE sp.is_active = true
-         AND sp.deleted_at_utc IS NULL
-         AND (
-           ST_DWithin(sp.service_base_location, ${clientPoint}, sp.service_radius_km * 1000)
-           OR EXISTS (
-             SELECT 1 FROM professional_service_zones z
-             WHERE z.service_provider_id = sp.id
-               AND z.deleted_at_utc IS NULL
-               AND ST_Covers(z.zone_polygon, ${clientPoint})
-           )
-         )`,
+      `SELECT DISTINCT sp.id ${this.eligibilityFromWhere()}`,
       [lng, lat, categoryId],
     );
     return rows.map((r) => r.id);
@@ -257,30 +273,8 @@ export class ServiceProviderRepository {
     params: DiscoveryParams,
   ): Promise<{ items: DiscoveredProviderRecord[]; total: number }> {
     const offset = (params.page - 1) * params.limit;
-
     const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
-
-    const fromWhere = `
-      FROM service_providers sp
-      INNER JOIN professional_service_categories psc
-        ON psc.service_provider_id = sp.id
-        AND psc.service_category_id = $3
-        AND psc.verification_status IN ('VERIFIED', 'NOT_REQUIRED')
-        AND psc.is_active = true
-        AND psc.deleted_at_utc IS NULL
-      LEFT JOIN organizations o ON o.id = sp.organization_id
-      WHERE sp.is_active = true
-        AND sp.deleted_at_utc IS NULL
-        AND (
-          ST_DWithin(sp.service_base_location, ${clientPoint}, sp.service_radius_km * 1000)
-          OR EXISTS (
-            SELECT 1 FROM professional_service_zones z
-            WHERE z.service_provider_id = sp.id
-              AND z.deleted_at_utc IS NULL
-              AND ST_Covers(z.zone_polygon, ${clientPoint})
-          )
-        )
-    `;
+    const fromWhere = this.eligibilityFromWhere();
 
     const countRows: Array<{ count: string }> = await this.repo.query(
       `SELECT COUNT(DISTINCT sp.id) AS count ${fromWhere}`,
