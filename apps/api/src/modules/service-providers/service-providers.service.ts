@@ -15,6 +15,8 @@ import { ServiceProviderResponseDto } from './dto/service-provider-response.dto'
 import { CreateServiceZoneDto } from './dto/create-service-zone.dto';
 import { UpdateServiceZoneDto } from './dto/update-service-zone.dto';
 import { ServiceZoneResponseDto } from './dto/service-zone-response.dto';
+import { DiscoverProvidersQueryDto } from './dto/discover-providers-query.dto';
+import { DiscoveredProviderDto } from './dto/discovered-provider.dto';
 import { ProviderType } from './enums/provider-type.enum';
 import {
   ServiceProviderRecord,
@@ -112,6 +114,35 @@ export class ServiceProvidersService {
     const record = await this.providerRepo.findById(id);
     if (!record) throw new NotFoundException('Service provider not found');
     return this.toResponse(record);
+  }
+
+  /**
+   * Hybrid geo discovery: active providers covering the client point for a
+   * given category (radius OR named zone), sorted by distance. Same pagination
+   * envelope as GET /service-requests.
+   */
+  async discover(query: DiscoverProvidersQueryDto): Promise<{
+    items: DiscoveredProviderDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const { items, total } = await this.providerRepo.findEligibleForDiscovery({
+      lat: query.lat,
+      lng: query.lng,
+      categoryId: query.categoryId,
+      page,
+      limit,
+    });
+
+    this.logger.log(
+      `Discovery for category ${query.categoryId} at (${query.lat}, ${query.lng}): ${total} match(es)`,
+    );
+
+    return { items, total, page, limit };
   }
 
   async updateProvider(

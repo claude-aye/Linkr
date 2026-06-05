@@ -4,6 +4,35 @@ import { Repository } from 'typeorm';
 import { GeoJSONPoint } from '../../../common/geojson/geojson.types';
 import { ServiceProvider } from '../entities/service-provider.entity';
 import { ProviderType } from '../enums/provider-type.enum';
+import { PscVerificationStatus } from '../enums/psc-verification-status.enum';
+
+export interface DiscoveryParams {
+  lat: number;
+  lng: number;
+  categoryId: string;
+  page: number;
+  limit: number;
+}
+
+export interface DiscoveredProviderRecord {
+  id: string;
+  providerType: ProviderType;
+  displayName: string | null;
+  headline: string | null;
+  serviceRadiusKm: number;
+  distanceMeters: number;
+  categoryVerificationStatus: PscVerificationStatus;
+}
+
+interface RawDiscoveryRow {
+  id: string;
+  provider_type: ProviderType;
+  display_name: string | null;
+  headline: string | null;
+  service_radius_km: number;
+  distance_meters: string;
+  category_verification_status: PscVerificationStatus;
+}
 
 /** Domain record with geography read back as GeoJSON (never raw WKB/WKT). */
 export interface ServiceProviderRecord {
@@ -180,16 +209,7 @@ export class ServiceProviderRepository {
     await this.repo.softDelete(id);
   }
 
-  /**
-   * Returns the IDs of all providers eligible for a given client point + category.
-   * Uses the same Hybrid Geo predicates as the discover endpoint (CLAUDE.md §5.3):
-   *   - provider active + non-deleted
-   *   - category VERIFIED | NOT_REQUIRED, active, non-deleted
-   *   - coverage: radius (ST_DWithin in metres) OR named zone (ST_Covers)
-   *
-   * No LIMIT/OFFSET — returns every eligible id for broadcast use.
-   * All spatial columns are geography(4326) → metres directly, ST_Covers for polygons.
-   */
+
   async findEligibleProviderIds(
     lng: number,
     lat: number,
@@ -219,5 +239,80 @@ export class ServiceProviderRepository {
       [lng, lat, categoryId],
     );
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Hybrid geo discovery (CLAUDE.md §5.3). Returns active providers practising
+   * `categoryId` (VERIFIED | NOT_REQUIRED) whose coverage includes the client
+   * point — either within `service_radius_km` (in metres) OR inside one of their
+   * named zones. Sorted by base→client distance ASC.
+   *
+   * Spatial columns are geography(4326): ST_DWithin / ST_Distance return metres
+   * directly, and zone containment uses ST_Covers (ST_Contains is geometry-only).
+   *
+   * `service_radius_km = 0` ⇒ ST_DWithin(..., 0) is false, so the provider is
+   * retained only via a covering zone — the OR handles this naturally.
+   */
+  async findEligibleForDiscovery(
+    params: DiscoveryParams,
+  ): Promise<{ items: DiscoveredProviderRecord[]; total: number }> {
+    const offset = (params.page - 1) * params.limit;
+
+    const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
+
+    const fromWhere = `
+      FROM service_providers sp
+      INNER JOIN professional_service_categories psc
+        ON psc.service_provider_id = sp.id
+        AND psc.service_category_id = $3
+        AND psc.verification_status IN ('VERIFIED', 'NOT_REQUIRED')
+        AND psc.is_active = true
+        AND psc.deleted_at_utc IS NULL
+      LEFT JOIN organizations o ON o.id = sp.organization_id
+      WHERE sp.is_active = true
+        AND sp.deleted_at_utc IS NULL
+        AND (
+          ST_DWithin(sp.service_base_location, ${clientPoint}, sp.service_radius_km * 1000)
+          OR EXISTS (
+            SELECT 1 FROM professional_service_zones z
+            WHERE z.service_provider_id = sp.id
+              AND z.deleted_at_utc IS NULL
+              AND ST_Covers(z.zone_polygon, ${clientPoint})
+          )
+        )
+    `;
+
+    const countRows: Array<{ count: string }> = await this.repo.query(
+      `SELECT COUNT(DISTINCT sp.id) AS count ${fromWhere}`,
+      [params.lng, params.lat, params.categoryId],
+    );
+    const total = parseInt(countRows[0]?.count ?? '0', 10);
+
+    const rows: RawDiscoveryRow[] = await this.repo.query(
+      `SELECT
+         sp.id,
+         sp.provider_type,
+         COALESCE(sp.business_name, o.display_name) AS display_name,
+         sp.headline,
+         sp.service_radius_km,
+         ST_Distance(sp.service_base_location, ${clientPoint}) AS distance_meters,
+         psc.verification_status AS category_verification_status
+       ${fromWhere}
+       ORDER BY distance_meters ASC
+       LIMIT $4 OFFSET $5`,
+      [params.lng, params.lat, params.categoryId, params.limit, offset],
+    );
+
+    const items = rows.map((row) => ({
+      id: row.id,
+      providerType: row.provider_type,
+      displayName: row.display_name,
+      headline: row.headline,
+      serviceRadiusKm: row.service_radius_km,
+      distanceMeters: Math.round(parseFloat(row.distance_meters)),
+      categoryVerificationStatus: row.category_verification_status,
+    }));
+
+    return { items, total };
   }
 }
