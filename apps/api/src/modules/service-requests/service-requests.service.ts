@@ -331,6 +331,10 @@ export class ServiceRequestsService {
     const request = await this.requestRepo.findById(requestId);
     if (!request) throw new NotFoundException('Service request not found');
 
+    // Validate the request-level transition first → 409 if not ASSIGNED (e.g. still OPEN).
+    // This prevents a misleading 404 from the assignment lookup below.
+    const requestTransition = buildTransition(request.status, ServiceRequestStatus.IN_PROGRESS);
+
     const assignment = await this.assignmentRepo.findLiveByRequestId(requestId);
     if (!assignment) throw new NotFoundException('No active assignment found for this request');
 
@@ -342,7 +346,6 @@ export class ServiceRequestsService {
       assignment.status,
       ServiceRequestAssignmentStatus.ACCEPTED_BY_WORKER,
     );
-    const requestTransition = buildTransition(request.status, ServiceRequestStatus.IN_PROGRESS);
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -382,6 +385,9 @@ export class ServiceRequestsService {
     const request = await this.requestRepo.findById(requestId);
     if (!request) throw new NotFoundException('Service request not found');
 
+    // Validate the request-level transition first → 409 if not IN_PROGRESS (e.g. still ASSIGNED).
+    const requestTransition = buildTransition(request.status, ServiceRequestStatus.COMPLETED);
+
     const assignment = await this.assignmentRepo.findLiveByRequestId(requestId);
     if (!assignment) throw new NotFoundException('No active assignment found for this request');
 
@@ -394,7 +400,6 @@ export class ServiceRequestsService {
       ServiceRequestAssignmentStatus.COMPLETED,
     );
     const now = new Date();
-    const requestTransition = buildTransition(request.status, ServiceRequestStatus.COMPLETED);
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
