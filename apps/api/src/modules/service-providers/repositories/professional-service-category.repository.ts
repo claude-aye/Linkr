@@ -49,6 +49,27 @@ export class ProfessionalServiceCategoryRepository {
       .getExists();
   }
 
+  /**
+   * True when the provider may currently practice (and thus quote/serve) in a
+   * category: an active, non-deleted practice row whose verification is
+   * satisfied (VERIFIED for regulated, NOT_REQUIRED for informal).
+   */
+  async isEligibleForCategory(
+    serviceProviderId: string,
+    serviceCategoryId: string,
+  ): Promise<boolean> {
+    return this.repo
+      .createQueryBuilder('psc')
+      .where('psc.service_provider_id = :serviceProviderId', { serviceProviderId })
+      .andWhere('psc.service_category_id = :serviceCategoryId', { serviceCategoryId })
+      .andWhere('psc.is_active = true')
+      .andWhere('psc.deleted_at_utc IS NULL')
+      .andWhere('psc.verification_status IN (:...statuses)', {
+        statuses: [PscVerificationStatus.VERIFIED, PscVerificationStatus.NOT_REQUIRED],
+      })
+      .getExists();
+  }
+
   async create(data: {
     serviceProviderId: string;
     serviceCategoryId: string;

@@ -128,6 +128,22 @@ export class ServiceProviderRepository {
     return rows.length ? ServiceProviderRepository.map(rows[0]) : null;
   }
 
+  /**
+   * Resolve the (single) non-deleted INDIVIDUAL provider owned by a user.
+   * A user_id is only ever set on INDIVIDUAL providers (CHECK constraint), so
+   * this is the caller's "Pro identity". Returns null if the user has none.
+   */
+  async findByUserId(userId: string): Promise<ServiceProviderRecord | null> {
+    const rows: RawProviderRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM service_providers
+       WHERE user_id = $1 AND provider_type = '${ProviderType.INDIVIDUAL}'
+         AND deleted_at_utc IS NULL
+       LIMIT 1`,
+      [userId],
+    );
+    return rows.length ? ServiceProviderRepository.map(rows[0]) : null;
+  }
+
   async existsActiveByUserId(userId: string): Promise<boolean> {
     const rows: unknown[] = await this.repo.query(
       `SELECT 1 FROM service_providers

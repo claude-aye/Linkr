@@ -17,6 +17,7 @@ import { ServiceProvidersModule } from './modules/service-providers/service-prov
 import { VerificationsModule } from './modules/verifications/verifications.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ServiceRequestsModule } from './modules/service-requests/service-requests.module';
+import { QuotesModule } from './modules/quotes/quotes.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { ServiceRequestsModule } from './modules/service-requests/service-reques
     VerificationsModule,
     NotificationsModule,
     ServiceRequestsModule,
+    QuotesModule,
   ],
 })
 export class AppModule {}
