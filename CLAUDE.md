@@ -440,7 +440,7 @@ Pro responses to `PROJECT_TENDER` requests. Immutable once submitted (must `WITH
 | `estimated_duration_minutes` | int | |
 | `proposed_start_at_utc` | timestamp NULLABLE | |
 | `description` | text | Pro's pitch |
-| `status` | enum (`SUBMITTED`, `WITHDRAWN`, `ACCEPTED`, `REJECTED`) | |
+| `status` | enum (`SUBMITTED`, `WITHDRAWN`, `ACCEPTED`, `REJECTED`, `EXPIRED`) | `EXPIRED` ajouté en 3.9 — cron horaire sur `valid_until_utc` (déviation assumée vs spec d'origine) |
 | `valid_until_utc` | timestamp | Quote expiration |
 | `created_at_utc`, `updated_at_utc` | timestamps | |
 
