@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { ServiceRequestRepository } from './repositories/service-request.repository';
 import { ServiceRequestRecord } from './repositories/service-request.repository';
 import { ServiceRequestAssignmentRepository } from './repositories/service-request-assignment.repository';
@@ -116,6 +116,80 @@ export class ServiceRequestsService {
     return user?.systemRole === SystemRole.ADMIN;
   }
 
+  /**
+   * Raw request lookup with no ownership enforcement — for cross-domain callers
+   * (e.g. the Quotes module) that perform their own authorization. The
+   * endpoint-facing reader is {@link findById}, which gates by owner/admin.
+   */
+  async getRequestRecord(requestId: string): Promise<ServiceRequestRecord | null> {
+    return this.requestRepo.findById(requestId);
+  }
+
+  /**
+   * Locked request read (SELECT ... FOR UPDATE) inside a caller-provided
+   * transaction. Lets cross-domain transactions (e.g. quote acceptance)
+   * serialize on the request row before mutating it.
+   */
+  async lockRequestForUpdate(
+    requestId: string,
+    manager: EntityManager,
+  ): Promise<ServiceRequestRecord | null> {
+    return this.requestRepo.findByIdForUpdate(requestId, manager);
+  }
+
+  /**
+   * Shared INDIVIDUAL auto-self-assign path (3.8c-1), reused by DIRECT_BOOKING
+   * acceptance and by quote acceptance (3.9). Within the caller's transaction:
+   *   • transitions the request <current>→ASSIGNED (state-machine guarded),
+   *     stamping assigned_service_provider_id + accepted_at_utc;
+   *   • inserts a self-assignment (worker = assigned_by = the individual's user).
+   *
+   * The caller MUST ensure the provider is INDIVIDUAL with a non-null user id —
+   * ORGANIZATION dispatch is rejected upstream with endpoint-specific semantics
+   * (DIRECT_BOOKING → 422, quotes → 501).
+   */
+  async assignIndividualProvider(
+    manager: EntityManager,
+    params: {
+      requestId: string;
+      currentStatus: ServiceRequestStatus;
+      serviceProviderId: string;
+      workerUserId: string;
+      now?: Date;
+    },
+  ): Promise<void> {
+    const now = params.now ?? new Date();
+
+    const requestTransition = buildTransition(
+      params.currentStatus,
+      ServiceRequestStatus.ASSIGNED,
+    );
+    await this.requestRepo.update(
+      params.requestId,
+      {
+        status: requestTransition.status,
+        assignedServiceProviderId: params.serviceProviderId,
+        acceptedAtUtc: now,
+      },
+      manager,
+    );
+
+    const assignmentTransition = buildAssignmentTransition(
+      null,
+      ServiceRequestAssignmentStatus.ASSIGNED,
+    );
+    await this.assignmentRepo.create(
+      {
+        serviceRequestId: params.requestId,
+        workerUserId: params.workerUserId,
+        assignedByUserId: params.workerUserId,
+        status: assignmentTransition.status,
+        assignedAtUtc: now,
+      },
+      manager,
+    );
+  }
+
   async findById(
     requestId: string,
     actingUserId: string,
@@ -218,38 +292,17 @@ export class ServiceRequestsService {
       throw new ForbiddenException('You are not the targeted provider for this request');
     }
 
-    const requestTransition = buildTransition(request.status, ServiceRequestStatus.ASSIGNED);
-    const now = new Date();
-
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
     try {
-      await this.requestRepo.update(
+      await this.assignIndividualProvider(qr.manager, {
         requestId,
-        {
-          status: requestTransition.status,
-          assignedServiceProviderId: request.requestedServiceProviderId,
-          acceptedAtUtc: now,
-        },
-        qr.manager,
-      );
-
-      const assignmentTransition = buildAssignmentTransition(
-        null,
-        ServiceRequestAssignmentStatus.ASSIGNED,
-      );
-      await this.assignmentRepo.create(
-        {
-          serviceRequestId: requestId,
-          workerUserId: callerUserId,
-          assignedByUserId: callerUserId,
-          status: assignmentTransition.status,
-          assignedAtUtc: now,
-        },
-        qr.manager,
-      );
-
+        currentStatus: request.status,
+        serviceProviderId: request.requestedServiceProviderId,
+        // INDIVIDUAL provider self-assigns: caller === provider.user_id (asserted above).
+        workerUserId: callerUserId,
+      });
       await qr.commitTransaction();
     } catch (err) {
       await qr.rollbackTransaction();

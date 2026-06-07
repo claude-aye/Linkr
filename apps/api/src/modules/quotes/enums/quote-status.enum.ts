@@ -1,0 +1,7 @@
+export enum QuoteStatus {
+  SUBMITTED = 'SUBMITTED',
+  WITHDRAWN = 'WITHDRAWN',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}

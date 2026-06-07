@@ -167,6 +167,25 @@ export class ServiceRequestRepository {
     return rows.length ? mapRow(rows[0]) : null;
   }
 
+  /**
+   * Locked read (SELECT ... FOR UPDATE) within a transaction. Used by
+   * cross-domain flows (e.g. quote acceptance) that must serialize against
+   * concurrent state changes on the same request. FOR UPDATE is valid here —
+   * the only computed column is a scalar ST_AsGeoJSON over service_location.
+   */
+  async findByIdForUpdate(
+    id: string,
+    manager: EntityManager,
+  ): Promise<ServiceRequestRecord | null> {
+    const rows: RawRow[] = await manager.query(
+      `SELECT ${SELECT_COLUMNS} FROM service_requests
+       WHERE id = $1 AND deleted_at_utc IS NULL
+       FOR UPDATE`,
+      [id],
+    );
+    return rows.length ? mapRow(rows[0]) : null;
+  }
+
   async findAll(opts: {
     clientUserId?: string;
     status?: ServiceRequestStatus;

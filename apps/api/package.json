@@ -6,6 +6,7 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main",
+    "openapi:generate": "ts-node -r dotenv/config src/openapi.ts",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
     "typeorm": "typeorm-ts-node-commonjs",
