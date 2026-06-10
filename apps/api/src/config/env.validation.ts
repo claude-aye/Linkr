@@ -64,6 +64,35 @@ const envSchema = Joi.object({
   }),
   // Optional custom endpoint for S3-compatible providers (e.g. Cloudflare R2).
   STORAGE_ENDPOINT: Joi.string().uri().optional(),
+
+  // Stripe — required at boot (3.10a). Prefix checks catch swapped keys early.
+  STRIPE_SECRET_KEY: Joi.string()
+    .pattern(/^sk_/)
+    .required()
+    .messages({ 'string.pattern.base': 'STRIPE_SECRET_KEY must start with "sk_"' }),
+  STRIPE_WEBHOOK_SECRET: Joi.string()
+    .pattern(/^whsec_/)
+    .required()
+    .messages({
+      'string.pattern.base': 'STRIPE_WEBHOOK_SECRET must start with "whsec_"',
+    }),
+  // Not used in 3.10a but validated so the env contract is complete.
+  STRIPE_PUBLISHABLE_KEY: Joi.string()
+    .pattern(/^pk_/)
+    .required()
+    .messages({
+      'string.pattern.base': 'STRIPE_PUBLISHABLE_KEY must start with "pk_"',
+    }),
+  // DORMANT — the Account Links onboarding flow does not use Connect OAuth.
+  STRIPE_CONNECT_CLIENT_ID: Joi.string().optional(),
+
+  // Stripe Connect Express onboarding redirect targets (Account Links).
+  CONNECT_ONBOARDING_RETURN_URL: Joi.string()
+    .uri()
+    .default('http://localhost:3000/connect/return'),
+  CONNECT_ONBOARDING_REFRESH_URL: Joi.string()
+    .uri()
+    .default('http://localhost:3000/connect/refresh'),
 });
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {

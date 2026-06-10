@@ -5,7 +5,13 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody: true preserves the unparsed request body on `req.rawBody` (used by
+  // the Stripe webhook for signature verification) while leaving normal JSON
+  // body parsing intact for every other route.
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
