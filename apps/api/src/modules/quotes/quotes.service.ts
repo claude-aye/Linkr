@@ -23,6 +23,7 @@ import { NotRequestOwnerException } from '../service-requests/exceptions/service
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
+import { PaymentsService } from '../payments/payments.service';
 
 /** Postgres unique-violation SQLSTATE — raised by the live-quote partial unique index. */
 function isUniqueViolation(err: unknown): boolean {
@@ -40,6 +41,7 @@ export class QuotesService {
     private readonly serviceRequestsService: ServiceRequestsService,
     private readonly providerRepo: ServiceProviderRepository,
     private readonly pscRepo: ProfessionalServiceCategoryRepository,
+    private readonly paymentsService: PaymentsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -162,6 +164,16 @@ export class QuotesService {
    * rejected (501) pending the worker-dispatch feature; the tx rolls back.
    */
   async accept(quoteId: string, callerUserId: string): Promise<QuoteResponseDto> {
+    // Populated on the happy path (just before commit); consumed AFTER the tx
+    // releases to capture the deposit outside the transaction.
+    let depositParams: {
+      serviceRequestId: string;
+      clientUserId: string;
+      serviceProviderId: string;
+      agreedAmount: string | null;
+      agreedCurrency: string | null;
+    } | null = null;
+
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
@@ -218,7 +230,17 @@ export class QuotesService {
         currentStatus: request.status,
         serviceProviderId: provider.id,
         workerUserId: provider.userId,
+        clientUserId: request.clientUserId,
       });
+
+      // Agreed amount for a PROJECT_TENDER is the accepted quote's amount.
+      depositParams = {
+        serviceRequestId: request.id,
+        clientUserId: request.clientUserId,
+        serviceProviderId: provider.id,
+        agreedAmount: quote.amount,
+        agreedCurrency: quote.currency,
+      };
 
       await qr.commitTransaction();
       this.logger.log(
@@ -229,6 +251,11 @@ export class QuotesService {
       throw err;
     } finally {
       await qr.release();
+    }
+
+    // Deposit capture (Part 5) runs AFTER the assignment commits (outside the tx).
+    if (depositParams) {
+      await this.paymentsService.captureDeposit(depositParams);
     }
 
     const updated = await this.quotesRepo.findById(quoteId);
