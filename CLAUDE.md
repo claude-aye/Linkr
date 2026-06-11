@@ -163,6 +163,7 @@ The human individual. Always a customer by default; can activate Pro mode (which
 | `preferred_currency` | ISO 4217 | e.g., `CAD` (display only; transactions store their own) |
 | `default_location` | PostGIS Point NULLABLE | Optional home address; mobile primarily uses live GPS |
 | `verification_level` | enum (`NONE`, `EMAIL`, `PHONE`, `IDENTITY`) | State machine for progressive KYC |
+| `stripe_customer_id` | string NULLABLE UNIQUE (partial) | `cus_xxx` — created lazily at first saved payment method (3.10b) |
 | `created_at_utc`, `updated_at_utc`, `deleted_at_utc` | timestamps | |
 
 #### `user_auth_providers`
@@ -545,6 +546,14 @@ Service payment transactions. **2 rows per `service_request` typically: one `DEP
 | `failure_reason` | text NULLABLE | |
 | `created_at_utc`, `updated_at_utc` | timestamps | |
 
+> **Implementation note (Phase 3.10b — `payments` module):**
+> - `payment_methods` and `payments` are **modeled and live** (migration `CreatePaymentsDomain`). 3.10b scope is **user-owned** payment methods + the **DEPOSIT (20%)** capture only; org-owned methods, BALANCE capture, and refunds are deferred.
+> - `users.stripe_customer_id` (varchar NULLABLE, partial-UNIQUE) was added: the Stripe Customer is created lazily on the user's first `POST payment-methods` and reused thereafter. Routes: `POST/GET payment-methods`, `POST payment-methods/:id/default`, `DELETE payment-methods/:id` (soft-delete + best-effort Stripe detach). First saved method auto-becomes the default; one default per owner is enforced by partial unique indexes.
+> - **Assignment guards (payability):** inside the shared `assignIndividualProvider()` transaction, the OPEN→ASSIGNED transition is **blocked with 409** unless (a) the recipient provider's `stripe_connect_accounts.charges_enabled = true` AND (b) the client has a default, non-deleted payment method. A throw rolls the whole assignment back.
+> - **Deposit basis rule:** quote-accept path → the **accepted `quote.amount/currency`**; direct-booking path → the **request's `estimated_amount/currency`** (422 if NULL). `deposit_gross = 20%` of the agreed amount, `platform_fee = 10%` of the deposit (commission snapshot), **`tax_amount = 0` for the MVP** (TPS/TVQ engine deferred), `provider_net = gross − fee − tax` (DB CHECK enforces the invariant). All money math goes through `src/common/money/` (integer minor units, HALF-UP) — inline `*100`/`/100` is forbidden.
+> - **Capture:** runs **after** the assignment transaction commits — a Stripe destination charge (`transfer_data.destination` = provider's `acct_`, `application_fee_amount` = platform fee) confirmed **off-session** against the client's default `pm_`, with Stripe idempotency key `dep_<service_request_id>`. The local row is `UNIQUE(service_request_id, payment_type)`-guarded (one DEPOSIT per request; a second capture call short-circuits). Final status is synced by the `payment_intent.*` webhook worker (§9); a Stripe failure marks the row `FAILED` (+ reason) and surfaces a 502.
+> - `payments` rows are **immutable history**: no `deleted_at_utc` (accepted, documented deviation from the soft-delete-everywhere rule).
+
 #### `refunds`
 Admin-initiated refunds only (no client self-service in MVP).
 
@@ -682,7 +691,7 @@ The following operations MUST be queued via **BullMQ** (never executed synchrono
 6. **Direct booking response deadline (Cron job, every 5 min)** — Scans `service_requests.response_deadline_utc < NOW()` with status `OPEN` and `request_type = DIRECT_BOOKING`, transitions to `EXPIRED`.
 7. **Stripe Connect onboarding reminders** — For providers in `INFO_NEEDED` status > 48 hours.
 
-> **Deviation (Phase 3.10a):** the `POST webhooks/stripe` handler (`account.updated`) is processed **INLINE** in the request handler — signature verified, the local mirror overwritten, then `200` returned — instead of enqueuing to BullMQ per rule 1. This is an accepted, documented shortcut for 3.10a: the work is a cheap idempotent snapshot-overwrite. Moving webhook processing onto a BullMQ worker (and re-retrieving the account from Stripe for robustness) is **deferred to 3.10b**. The webhook still reads the **raw** request body (`rawBody: true` in `main.ts`) for signature verification.
+> **Implementation note (Phase 3.10b — async webhook pipeline; 3.10a debt paid):** `POST webhooks/stripe` now complies with rule 1. The controller (1) verifies the signature against the **raw** body (`rawBody: true` in `main.ts`), (2) enqueues `{ eventId, type, data }` to the BullMQ queue **`stripe-webhooks`**, (3) returns `200 { received: true }` immediately — no business processing in the handler. The worker (`StripeWebhookProcessor`, attempts: 5, exponential backoff) dispatches: `account.updated` → Connect mirror snapshot-overwrite; `payment_intent.succeeded` / `payment_intent.payment_failed` / `payment_intent.processing` → **forward-only** payment status updates (a terminal status — `SUCCEEDED`, `REFUNDED`, `CANCELLED`, `PARTIALLY_REFUNDED` — is never regressed by a late or replayed event). Unknown event types are logged and acked (no-op). A persistent event-id dedupe store is **deferred** — idempotency is structural for the handled events (snapshot overwrite + conditional UPDATEs).
 
 ---
 
