@@ -496,6 +496,12 @@ Photos/videos uploaded by client (and "Avant/Après" by Pro).
 | `onboarded_at_utc` | timestamp NULLABLE | |
 | `created_at_utc`, `updated_at_utc` | timestamps | |
 
+> **Implementation note (Phase 3.10a — `stripe-connect` module):**
+> - Onboarding uses **Stripe Account Links** (`type: 'account_onboarding'`), **not** Connect OAuth. `STRIPE_CONNECT_CLIENT_ID` is therefore **DORMANT** — kept in the env contract but unused by this flow.
+> - Routes: `POST/GET service-providers/:id/connect/{onboard,status,refresh-link}` (JWT-guarded, INDIVIDUAL providers only — ORGANIZATION onboarding returns **501**, deferred).
+> - `default_currency` is stored **UPPERCASE** (Stripe returns it lowercase; normalized on write). `onboarded_at_utc` is stamped **once**, on the first transition to `VERIFIED`, and never cleared.
+> - The local row is kept in sync by the `account.updated` webhook (see §9). Two CHECK constraints enforce coherence: `VERIFIED ⇒ charges & payouts enabled`, and `NOT_STARTED ⇒ neither enabled`.
+
 #### `payment_methods`
 **Polymorphic ownership**: belongs to either a user (B2C client) or organization (B2B client paying for subscription).
 
@@ -675,6 +681,8 @@ The following operations MUST be queued via **BullMQ** (never executed synchrono
 5. **Quote deadline expiration (Cron job, hourly)** — Scans `service_requests.quotes_deadline_utc < NOW()` with status `OPEN` and transitions them to `EXPIRED` if no quote was accepted.
 6. **Direct booking response deadline (Cron job, every 5 min)** — Scans `service_requests.response_deadline_utc < NOW()` with status `OPEN` and `request_type = DIRECT_BOOKING`, transitions to `EXPIRED`.
 7. **Stripe Connect onboarding reminders** — For providers in `INFO_NEEDED` status > 48 hours.
+
+> **Deviation (Phase 3.10a):** the `POST webhooks/stripe` handler (`account.updated`) is processed **INLINE** in the request handler — signature verified, the local mirror overwritten, then `200` returned — instead of enqueuing to BullMQ per rule 1. This is an accepted, documented shortcut for 3.10a: the work is a cheap idempotent snapshot-overwrite. Moving webhook processing onto a BullMQ worker (and re-retrieving the account from Stripe for robustness) is **deferred to 3.10b**. The webhook still reads the **raw** request body (`rawBody: true` in `main.ts`) for signature verification.
 
 ---
 

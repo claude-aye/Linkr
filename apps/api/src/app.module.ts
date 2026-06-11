@@ -18,6 +18,7 @@ import { VerificationsModule } from './modules/verifications/verifications.modul
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ServiceRequestsModule } from './modules/service-requests/service-requests.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
+import { StripeConnectModule } from './modules/stripe-connect/stripe-connect.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { QuotesModule } from './modules/quotes/quotes.module';
     NotificationsModule,
     ServiceRequestsModule,
     QuotesModule,
+    StripeConnectModule,
   ],
 })
 export class AppModule {}
