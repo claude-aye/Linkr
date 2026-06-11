@@ -19,6 +19,11 @@ export type StripeAccount = Extract<
   StripeEvent,
   { type: 'account.updated' }
 >['data']['object'];
+/** The bare PaymentIntent resource (extracted from a `payment_intent.*` event). */
+export type StripePaymentIntent = Extract<
+  StripeEvent,
+  { type: 'payment_intent.succeeded' }
+>['data']['object'];
 
 /**
  * Single owner of the Stripe SDK client. Instantiated with the secret key from
