@@ -4,6 +4,7 @@ import { AdminGuard } from '../../common/guards/admin.guard';
 import { UsersModule } from '../users/users.module';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { ServiceRequest } from './entities/service-request.entity';
 import { ServiceRequestAssignment } from './entities/service-request-assignment.entity';
 import { ServiceRequestAttachment } from './entities/service-request-attachment.entity';
@@ -27,6 +28,8 @@ import { ServiceRequestsCron } from './service-requests.cron';
     UsersModule,
     ServiceProvidersModule,
     NotificationsModule,
+    // PaymentsService → payability guard (assertPayable) + deposit capture.
+    PaymentsModule,
   ],
   controllers: [
     ServiceRequestsController,

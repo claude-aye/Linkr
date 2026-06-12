@@ -76,6 +76,10 @@ export class User {
   })
   systemRole!: SystemRole;
 
+  /** Stripe Customer id (cus_...), created lazily when the user saves a card. */
+  @Column({ type: 'varchar', nullable: true })
+  stripeCustomerId!: string | null;
+
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAtUtc!: Date;
 

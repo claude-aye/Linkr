@@ -2381,6 +2381,270 @@
         ]
       }
     },
+    "/payment-methods": {
+      "post": {
+        "operationId": "PaymentMethodsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentMethodDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This payment method is already saved"
+          },
+          "422": {
+            "description": "Unsupported payment method type"
+          },
+          "502": {
+            "description": "Stripe API call failed"
+          }
+        },
+        "summary": "Save a Stripe payment method for the current user. Creates the Stripe Customer on first use; the first method saved becomes the default.",
+        "tags": [
+          "payment-methods"
+        ]
+      },
+      "get": {
+        "operationId": "PaymentMethodsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentMethodResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List the current user's saved payment methods.",
+        "tags": [
+          "payment-methods"
+        ]
+      }
+    },
+    "/payment-methods/{id}/default": {
+      "post": {
+        "operationId": "PaymentMethodsController_setDefault",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this payment method"
+          },
+          "404": {
+            "description": "Payment method not found"
+          }
+        },
+        "summary": "Make a saved method the default (unsets the previous default).",
+        "tags": [
+          "payment-methods"
+        ]
+      }
+    },
+    "/payment-methods/{id}": {
+      "delete": {
+        "operationId": "PaymentMethodsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this payment method"
+          },
+          "404": {
+            "description": "Payment method not found"
+          }
+        },
+        "summary": "Remove a saved method (soft-delete + best-effort Stripe detach).",
+        "tags": [
+          "payment-methods"
+        ]
+      }
+    },
+    "/service-providers/{id}/connect/onboard": {
+      "post": {
+        "operationId": "StripeConnectController_onboard",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectOnboardingResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this provider"
+          },
+          "404": {
+            "description": "Service provider not found"
+          },
+          "501": {
+            "description": "ORGANIZATION provider onboarding is not implemented"
+          },
+          "502": {
+            "description": "Stripe API call failed (e.g. platform profile incomplete)"
+          }
+        },
+        "summary": "Start/resume Stripe Connect (Express) onboarding for an INDIVIDUAL provider you own. Creates the account on first call and returns a single-use Account Link.",
+        "tags": [
+          "stripe-connect"
+        ]
+      }
+    },
+    "/service-providers/{id}/connect/status": {
+      "get": {
+        "operationId": "StripeConnectController_getStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectAccountResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this provider"
+          },
+          "404": {
+            "description": "Provider not found, or no Connect account yet"
+          },
+          "501": {
+            "description": "ORGANIZATION provider onboarding is not implemented"
+          }
+        },
+        "summary": "Get the local Stripe Connect mirror (onboarding status, capabilities, outstanding requirements) for an owned provider.",
+        "tags": [
+          "stripe-connect"
+        ]
+      }
+    },
+    "/service-providers/{id}/connect/refresh-link": {
+      "post": {
+        "operationId": "StripeConnectController_refreshLink",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectOnboardingResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this provider"
+          },
+          "404": {
+            "description": "Provider not found, or no Connect account yet"
+          },
+          "501": {
+            "description": "ORGANIZATION provider onboarding is not implemented"
+          },
+          "502": {
+            "description": "Stripe API call failed"
+          }
+        },
+        "summary": "Regenerate an Account Link for an owned provider whose Connect account already exists (e.g. after the previous link expired).",
+        "tags": [
+          "stripe-connect"
+        ]
+      }
+    },
     "/service-requests/{id}/quotes": {
       "post": {
         "operationId": "QuotesController_submit",
@@ -2592,132 +2856,6 @@
         "summary": "Manually trigger the SUBMITTED→EXPIRED quote sweep (same logic as the hourly cron). ADMIN only.",
         "tags": [
           "quotes"
-        ]
-      }
-    },
-    "/service-providers/{id}/connect/onboard": {
-      "post": {
-        "operationId": "StripeConnectController_onboard",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectOnboardingResponseDto"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not own this provider"
-          },
-          "404": {
-            "description": "Service provider not found"
-          },
-          "501": {
-            "description": "ORGANIZATION provider onboarding is not implemented"
-          },
-          "502": {
-            "description": "Stripe API call failed (e.g. platform profile incomplete)"
-          }
-        },
-        "summary": "Start/resume Stripe Connect (Express) onboarding for an INDIVIDUAL provider you own. Creates the account on first call and returns a single-use Account Link.",
-        "tags": [
-          "stripe-connect"
-        ]
-      }
-    },
-    "/service-providers/{id}/connect/status": {
-      "get": {
-        "operationId": "StripeConnectController_getStatus",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectAccountResponseDto"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not own this provider"
-          },
-          "404": {
-            "description": "Provider not found, or no Connect account yet"
-          },
-          "501": {
-            "description": "ORGANIZATION provider onboarding is not implemented"
-          }
-        },
-        "summary": "Get the local Stripe Connect mirror (onboarding status, capabilities, outstanding requirements) for an owned provider.",
-        "tags": [
-          "stripe-connect"
-        ]
-      }
-    },
-    "/service-providers/{id}/connect/refresh-link": {
-      "post": {
-        "operationId": "StripeConnectController_refreshLink",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectOnboardingResponseDto"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not own this provider"
-          },
-          "404": {
-            "description": "Provider not found, or no Connect account yet"
-          },
-          "501": {
-            "description": "ORGANIZATION provider onboarding is not implemented"
-          },
-          "502": {
-            "description": "Stripe API call failed"
-          }
-        },
-        "summary": "Regenerate an Account Link for an owned provider whose Connect account already exists (e.g. after the previous link expired).",
-        "tags": [
-          "stripe-connect"
         ]
       }
     }
@@ -3642,6 +3780,178 @@
           "createdAtUtc"
         ]
       },
+      "CreatePaymentMethodDto": {
+        "type": "object",
+        "properties": {
+          "stripePaymentMethodId": {
+            "type": "string",
+            "description": "Stripe PaymentMethod id (pm_...) created client-side (e.g. via Stripe Elements, or a test token like pm_card_visa).",
+            "example": "pm_card_visa"
+          },
+          "setDefault": {
+            "type": "boolean",
+            "description": "Make this the default method. The first method saved is always default regardless.",
+            "default": false
+          }
+        },
+        "required": [
+          "stripePaymentMethodId"
+        ]
+      },
+      "PaymentMethodResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "stripePaymentMethodId": {
+            "type": "string",
+            "description": "Stripe PaymentMethod id (pm_...)."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "CARD",
+              "BANK_ACCOUNT",
+              "INTERAC_DEBIT"
+            ]
+          },
+          "brand": {
+            "type": "object",
+            "description": "Card brand, e.g. visa / mastercard."
+          },
+          "last4": {
+            "type": "string",
+            "description": "Last 4 digits for display."
+          },
+          "expMonth": {
+            "type": "object",
+            "description": "Card expiry month (1-12)."
+          },
+          "expYear": {
+            "type": "object",
+            "description": "Card expiry year (4-digit)."
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deletedAtUtc": {
+            "type": "object",
+            "description": "Set when the method has been removed."
+          }
+        },
+        "required": [
+          "id",
+          "stripePaymentMethodId",
+          "type",
+          "last4",
+          "isDefault",
+          "createdAtUtc"
+        ]
+      },
+      "ConnectOnboardingResponseDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Stripe-hosted onboarding URL (single-use, expires quickly).",
+            "example": "https://connect.stripe.com/setup/e/acct_123/abc"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Expiry of the onboarding link (Account Links are short-lived)."
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt"
+        ]
+      },
+      "ConnectAccountResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "serviceProviderId": {
+            "type": "string"
+          },
+          "stripeAccountId": {
+            "type": "string",
+            "description": "Stripe account id (acct_...)."
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "EXPRESS",
+              "CUSTOM"
+            ]
+          },
+          "onboardingStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "INFO_NEEDED",
+              "PENDING_VERIFICATION",
+              "VERIFIED",
+              "RESTRICTED",
+              "DISABLED"
+            ]
+          },
+          "chargesEnabled": {
+            "type": "boolean"
+          },
+          "payoutsEnabled": {
+            "type": "boolean"
+          },
+          "requirementsCurrentlyDue": {
+            "description": "Snapshot of Stripe's requirements.currently_due field keys.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "countryCode": {
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2."
+          },
+          "defaultCurrency": {
+            "type": "string",
+            "description": "ISO 4217, stored UPPERCASE."
+          },
+          "onboardedAtUtc": {
+            "type": "object",
+            "description": "First time the account became VERIFIED."
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "serviceProviderId",
+          "stripeAccountId",
+          "accountType",
+          "onboardingStatus",
+          "chargesEnabled",
+          "payoutsEnabled",
+          "requirementsCurrentlyDue",
+          "countryCode",
+          "defaultCurrency",
+          "createdAtUtc",
+          "updatedAtUtc"
+        ]
+      },
       "SubmitQuoteDto": {
         "type": "object",
         "properties": {
@@ -3746,105 +4056,6 @@
           "description",
           "status",
           "validUntilUtc",
-          "createdAtUtc",
-          "updatedAtUtc"
-        ]
-      },
-      "ConnectOnboardingResponseDto": {
-        "type": "object",
-        "properties": {
-          "url": {
-            "type": "string",
-            "description": "Stripe-hosted onboarding URL (single-use, expires quickly).",
-            "example": "https://connect.stripe.com/setup/e/acct_123/abc"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string",
-            "description": "Expiry of the onboarding link (Account Links are short-lived)."
-          }
-        },
-        "required": [
-          "url",
-          "expiresAt"
-        ]
-      },
-      "ConnectAccountResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "serviceProviderId": {
-            "type": "string"
-          },
-          "stripeAccountId": {
-            "type": "string",
-            "description": "Stripe account id (acct_...)."
-          },
-          "accountType": {
-            "type": "string",
-            "enum": [
-              "EXPRESS",
-              "CUSTOM"
-            ]
-          },
-          "onboardingStatus": {
-            "type": "string",
-            "enum": [
-              "NOT_STARTED",
-              "INFO_NEEDED",
-              "PENDING_VERIFICATION",
-              "VERIFIED",
-              "RESTRICTED",
-              "DISABLED"
-            ]
-          },
-          "chargesEnabled": {
-            "type": "boolean"
-          },
-          "payoutsEnabled": {
-            "type": "boolean"
-          },
-          "requirementsCurrentlyDue": {
-            "description": "Snapshot of Stripe's requirements.currently_due field keys.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "countryCode": {
-            "type": "string",
-            "description": "ISO 3166-1 alpha-2."
-          },
-          "defaultCurrency": {
-            "type": "string",
-            "description": "ISO 4217, stored UPPERCASE."
-          },
-          "onboardedAtUtc": {
-            "type": "object",
-            "description": "First time the account became VERIFIED."
-          },
-          "createdAtUtc": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAtUtc": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "serviceProviderId",
-          "stripeAccountId",
-          "accountType",
-          "onboardingStatus",
-          "chargesEnabled",
-          "payoutsEnabled",
-          "requirementsCurrentlyDue",
-          "countryCode",
-          "defaultCurrency",
           "createdAtUtc",
           "updatedAtUtc"
         ]

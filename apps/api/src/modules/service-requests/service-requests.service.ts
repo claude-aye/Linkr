@@ -30,6 +30,7 @@ import {
 } from './exceptions/service-request.exceptions';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { SystemRole } from '../users/enums/system-role.enum';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class ServiceRequestsService {
@@ -41,6 +42,7 @@ export class ServiceRequestsService {
     private readonly providerRepo: ServiceProviderRepository,
     private readonly usersRepo: UsersRepository,
     private readonly notificationsService: NotificationsService,
+    private readonly paymentsService: PaymentsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -147,6 +149,11 @@ export class ServiceRequestsService {
    * The caller MUST ensure the provider is INDIVIDUAL with a non-null user id —
    * ORGANIZATION dispatch is rejected upstream with endpoint-specific semantics
    * (DIRECT_BOOKING → 422, quotes → 501).
+   *
+   * Before transitioning, a payability guard (Part 4) is enforced INSIDE the
+   * caller's transaction: a 409 here rolls the whole assignment back. The
+   * subsequent deposit capture (Part 5) is the caller's responsibility, AFTER
+   * the transaction commits.
    */
   async assignIndividualProvider(
     manager: EntityManager,
@@ -155,10 +162,18 @@ export class ServiceRequestsService {
       currentStatus: ServiceRequestStatus;
       serviceProviderId: string;
       workerUserId: string;
+      clientUserId: string;
       now?: Date;
     },
   ): Promise<void> {
     const now = params.now ?? new Date();
+
+    // Payability guard: recipient can take charges + client has a default PM.
+    // Throws 409 (rolls back the caller's tx) if the request is not payable.
+    await this.paymentsService.assertPayable(
+      params.clientUserId,
+      params.serviceProviderId,
+    );
 
     const requestTransition = buildTransition(
       params.currentStatus,
@@ -302,6 +317,7 @@ export class ServiceRequestsService {
         serviceProviderId: request.requestedServiceProviderId,
         // INDIVIDUAL provider self-assigns: caller === provider.user_id (asserted above).
         workerUserId: callerUserId,
+        clientUserId: request.clientUserId,
       });
       await qr.commitTransaction();
     } catch (err) {
@@ -310,6 +326,16 @@ export class ServiceRequestsService {
     } finally {
       await qr.release();
     }
+
+    // Deposit capture (Part 5) runs AFTER the assignment commits. Agreed amount
+    // for a DIRECT_BOOKING lives on the request (estimated_amount/currency).
+    await this.paymentsService.captureDeposit({
+      serviceRequestId: requestId,
+      clientUserId: request.clientUserId,
+      serviceProviderId: request.requestedServiceProviderId,
+      agreedAmount: request.estimatedAmount,
+      agreedCurrency: request.estimatedCurrency,
+    });
 
     this.logger.log(`Provider ${request.requestedServiceProviderId} accepted request ${requestId}`);
     const updated = await this.requestRepo.findById(requestId);

@@ -74,6 +74,14 @@ export class UsersRepository {
     });
   }
 
+  /** Persist the lazily-created Stripe Customer id (cus_...) for a user. */
+  async setStripeCustomerId(
+    userId: string,
+    stripeCustomerId: string,
+  ): Promise<void> {
+    await this.userRepo.update(userId, { stripeCustomerId });
+  }
+
   async addAuthProvider(
     userId: string,
     providerType: AuthProviderType,

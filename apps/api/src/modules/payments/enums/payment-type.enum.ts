@@ -1,0 +1,5 @@
+export enum PaymentType {
+  DEPOSIT = 'DEPOSIT',
+  BALANCE = 'BALANCE',
+  SINGLE_PAYMENT = 'SINGLE_PAYMENT',
+}

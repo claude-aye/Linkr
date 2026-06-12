@@ -1,11 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
-import {
-  StripeAccount,
-  StripeEvent,
-  StripeService,
-} from './stripe.service';
+import { StripeAccount, StripeService } from './stripe.service';
 import {
   StripeConnectAccountRecord,
   StripeConnectAccountRepository,
@@ -186,35 +182,6 @@ export class StripeConnectService {
       onboardingStatus: status,
       onboardedAtUtcIfVerified: onboardedStamp,
     });
-  }
-
-  /**
-   * Inline webhook dispatch (3.10a — option B). Only `account.updated` is acted
-   * on; everything else is logged and ignored. Snapshot-overwrite makes this
-   * idempotent under at-least-once delivery.
-   */
-  async handleWebhookEvent(event: StripeEvent): Promise<void> {
-    if (event.type === 'account.updated') {
-      // Narrowed by the discriminant — `data.object` is a Stripe Account here.
-      const account = event.data.object;
-      const existing = await this.repo.findByStripeAccountId(account.id);
-      if (!existing) {
-        this.logger.log(
-          `account.updated for ${account.id} ignored — not a Linkr-managed account`,
-        );
-        return;
-      }
-      // TODO (3.10b): re-retrieve the account from Stripe before syncing for
-      // robustness against replayed/out-of-order events, and offload to a
-      // BullMQ worker per CLAUDE.md §9 rule 7 (deferred from 3.10a).
-      const updated = await this.syncFromAccount(account);
-      this.logger.log(
-        `Synced Connect account ${account.id} → ${updated?.onboardingStatus} ` +
-          `(charges=${updated?.chargesEnabled}, payouts=${updated?.payoutsEnabled})`,
-      );
-      return;
-    }
-    this.logger.log(`Ignoring unhandled Stripe event type '${event.type}'`);
   }
 
   // --- internals -----------------------------------------------------------

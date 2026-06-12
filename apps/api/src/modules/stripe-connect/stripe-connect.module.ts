@@ -7,7 +7,6 @@ import { StripeConnectAccountRepository } from './repositories/stripe-connect-ac
 import { StripeService } from './stripe.service';
 import { StripeConnectService } from './stripe-connect.service';
 import { StripeConnectController } from './stripe-connect.controller';
-import { StripeWebhooksController } from './stripe-webhooks.controller';
 
 @Module({
   imports: [
@@ -17,12 +16,14 @@ import { StripeWebhooksController } from './stripe-webhooks.controller';
     ServiceProvidersModule,
     UsersModule,
   ],
-  controllers: [StripeConnectController, StripeWebhooksController],
+  controllers: [StripeConnectController],
   providers: [
     StripeService,
     StripeConnectAccountRepository,
     StripeConnectService,
   ],
-  exports: [StripeService, StripeConnectService],
+  // StripeConnectAccountRepository is exported for PaymentsModule (charges_enabled
+  // / stripe_account_id reads). The webhook ingress moved to StripeWebhooksModule.
+  exports: [StripeService, StripeConnectService, StripeConnectAccountRepository],
 })
 export class StripeConnectModule {}

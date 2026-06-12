@@ -64,6 +64,18 @@ const SELECT_COLUMNS = `
   default_currency, onboarded_at_utc, created_at_utc, updated_at_utc
 `;
 
+/**
+ * TypeORM's raw `.query()` on the postgres driver returns `[rows, affected]`
+ * for UPDATE statements (RETURNING populates `rows`) — unlike INSERT/SELECT,
+ * which return the rows array directly. Normalize back to plain rows.
+ */
+function updateReturningRows(result: unknown): RawRow[] {
+  if (Array.isArray(result) && Array.isArray(result[0])) {
+    return result[0] as RawRow[];
+  }
+  return (result as RawRow[]) ?? [];
+}
+
 function mapRow(row: RawRow): StripeConnectAccountRecord {
   return {
     id: row.id,
@@ -147,24 +159,26 @@ export class StripeConnectAccountRepository {
     stripeAccountId: string,
     data: SyncStripeConnectAccountData,
   ): Promise<StripeConnectAccountRecord | null> {
-    const rows: RawRow[] = await this.repo.query(
-      `UPDATE stripe_connect_accounts
-         SET charges_enabled = $2,
-             payouts_enabled = $3,
-             requirements_currently_due = $4::jsonb,
-             onboarding_status = $5,
-             onboarded_at_utc = COALESCE(onboarded_at_utc, $6),
-             updated_at_utc = now()
-       WHERE stripe_account_id = $1
-       RETURNING ${SELECT_COLUMNS}`,
-      [
-        stripeAccountId,
-        data.chargesEnabled,
-        data.payoutsEnabled,
-        JSON.stringify(data.requirementsCurrentlyDue),
-        data.onboardingStatus,
-        data.onboardedAtUtcIfVerified,
-      ],
+    const rows = updateReturningRows(
+      await this.repo.query(
+        `UPDATE stripe_connect_accounts
+           SET charges_enabled = $2,
+               payouts_enabled = $3,
+               requirements_currently_due = $4::jsonb,
+               onboarding_status = $5,
+               onboarded_at_utc = COALESCE(onboarded_at_utc, $6),
+               updated_at_utc = now()
+         WHERE stripe_account_id = $1
+         RETURNING ${SELECT_COLUMNS}`,
+        [
+          stripeAccountId,
+          data.chargesEnabled,
+          data.payoutsEnabled,
+          JSON.stringify(data.requirementsCurrentlyDue),
+          data.onboardingStatus,
+          data.onboardedAtUtcIfVerified,
+        ],
+      ),
     );
     return rows.length ? mapRow(rows[0]) : null;
   }

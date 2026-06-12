@@ -4,6 +4,7 @@ import { AdminGuard } from '../../common/guards/admin.guard';
 import { UsersModule } from '../users/users.module';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { ServiceRequestsModule } from '../service-requests/service-requests.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { Quote } from './entities/quote.entity';
 import { QuoteRepository } from './repositories/quote.repository';
 import { QuotesService } from './quotes.service';
@@ -19,6 +20,8 @@ import { QuotesCron } from './quotes.cron';
     UsersModule,
     ServiceProvidersModule,
     ServiceRequestsModule,
+    // PaymentsService → deposit capture after a quote is accepted.
+    PaymentsModule,
   ],
   controllers: [QuotesController],
   providers: [QuoteRepository, QuotesService, QuotesCron, AdminGuard],

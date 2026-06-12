@@ -93,6 +93,14 @@ const envSchema = Joi.object({
   CONNECT_ONBOARDING_REFRESH_URL: Joi.string()
     .uri()
     .default('http://localhost:3000/connect/refresh'),
+
+  // Platform economics (3.10b) — required at boot, snapshotted on each payment.
+  PLATFORM_COMMISSION_RATE_PERCENT: Joi.number().min(0).max(100).required(),
+  PLATFORM_DEPOSIT_RATE_PERCENT: Joi.number().min(0).max(100).required(),
+  PLATFORM_DEFAULT_CURRENCY: Joi.string()
+    .length(3)
+    .uppercase()
+    .default('CAD'),
 });
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {
