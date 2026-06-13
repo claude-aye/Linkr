@@ -83,3 +83,87 @@ export class StripePaymentMethodOperationFailedException extends HttpException {
     super(`Stripe payment method operation failed: ${detail}`, HttpStatus.BAD_GATEWAY);
   }
 }
+
+// --- balance capture (3.10c) -------------------------------------------------
+
+/**
+ * 409 — the balance cannot be captured in the request's current state (it is
+ * not COMPLETED, or it has been contested). Caller-facing endpoints validate
+ * this first; the shared `captureBalance` re-checks it as a safety net.
+ */
+export class BalanceNotCapturableException extends HttpException {
+  constructor(message = 'The balance cannot be captured in the current state') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 409 — the DEPOSIT for this request is missing or has not SUCCEEDED, so the
+ * balance (= agreed − deposit) cannot yet be captured.
+ */
+export class DepositNotSettledException extends HttpException {
+  constructor(
+    message = 'The deposit for this request has not settled; the balance cannot be captured yet',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 422 — no agreed amount is available to base the balance on (a missing
+ * estimate / accepted quote). Should not happen once a deposit exists.
+ */
+export class BalanceAmountUnavailableException extends HttpException {
+  constructor(message = 'No agreed amount is available to compute the balance') {
+    super(message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
+/**
+ * 502 — Stripe rejected the balance PaymentIntent (e.g. card declined
+ * off-session). The balance payment row is marked FAILED with the Stripe message.
+ */
+export class BalanceChargeFailedException extends HttpException {
+  constructor(detail: string) {
+    super(`Balance charge failed: ${detail}`, HttpStatus.BAD_GATEWAY);
+  }
+}
+
+// --- refunds (3.10c) ---------------------------------------------------------
+
+/** 404 — the payment to refund does not exist. */
+export class PaymentNotFoundException extends HttpException {
+  constructor(message = 'Payment not found') {
+    super(message, HttpStatus.NOT_FOUND);
+  }
+}
+
+/**
+ * 422 — the payment is not in a refundable state (never captured, or already
+ * fully refunded / failed / cancelled).
+ */
+export class RefundNotAllowedException extends HttpException {
+  constructor(detail: string) {
+    super(`Refund not allowed: ${detail}`, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
+/**
+ * 422 — the requested refund amount exceeds the payment's still-refundable
+ * balance (`gross − Σ refunds in PENDING/SUCCEEDED`).
+ */
+export class RefundExceedsRefundableException extends HttpException {
+  constructor(refundable: string, currency: string) {
+    super(
+      `Refund amount exceeds the refundable balance (${refundable} ${currency} remaining)`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
+/** 502 — Stripe rejected the refund create call. The refund row is marked FAILED. */
+export class RefundChargeFailedException extends HttpException {
+  constructor(detail: string) {
+    super(`Refund failed: ${detail}`, HttpStatus.BAD_GATEWAY);
+  }
+}

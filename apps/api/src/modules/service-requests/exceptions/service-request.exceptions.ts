@@ -41,3 +41,31 @@ export class OrganizationDispatchNotSupportedException extends HttpException {
     );
   }
 }
+
+/**
+ * 409 — the request is not COMPLETED (awaiting release), so it cannot be
+ * confirmed or contested by the client.
+ */
+export class RequestNotCompletedException extends HttpException {
+  constructor(
+    message = 'The request is not awaiting release (must be COMPLETED)',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/** 409 — the request is contested; confirm-completion is frozen pending admin. */
+export class RequestContestedException extends HttpException {
+  constructor(
+    message = 'The request is contested; release is frozen pending admin review',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/** 409 — the request has already been contested. */
+export class RequestAlreadyContestedException extends HttpException {
+  constructor(message = 'The request has already been contested') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}

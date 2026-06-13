@@ -28,6 +28,7 @@ export class ServiceRequestResponseDto {
   @ApiPropertyOptional() acceptedAtUtc!: Date | null;
   @ApiPropertyOptional() completedAtUtc!: Date | null;
   @ApiPropertyOptional() paidAtUtc!: Date | null;
+  @ApiPropertyOptional() contestedAtUtc!: Date | null;
   @ApiPropertyOptional() cancelledAtUtc!: Date | null;
   @ApiPropertyOptional() cancellationReason!: string | null;
   @ApiPropertyOptional() cancelledByUserId!: string | null;

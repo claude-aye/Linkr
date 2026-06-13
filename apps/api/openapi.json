@@ -2215,6 +2215,89 @@
         ]
       }
     },
+    "/service-requests/{id}/confirm-completion": {
+      "post": {
+        "operationId": "ServiceRequestsController_confirmCompletion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceRequestResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not the request owner"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Request not COMPLETED, contested, or deposit not settled"
+          },
+          "502": {
+            "description": "Stripe rejected the balance charge"
+          }
+        },
+        "summary": "Client confirms a COMPLETED job, triggering the 80% balance capture. The request flips to PAID asynchronously once the balance settles (webhook). Client (request owner) only.",
+        "tags": [
+          "service-requests"
+        ]
+      }
+    },
+    "/service-requests/{id}/contest": {
+      "post": {
+        "operationId": "ServiceRequestsController_contest",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceRequestResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not the request owner"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Request not COMPLETED or already contested"
+          }
+        },
+        "summary": "Client contests a COMPLETED job, freezing the balance auto-release timer and routing to admin. Client (request owner) only.",
+        "tags": [
+          "service-requests"
+        ]
+      }
+    },
     "/service-requests/{id}/attachments": {
       "post": {
         "operationId": "ServiceRequestAttachmentsController_uploadAttachment",
@@ -2516,6 +2599,59 @@
         "summary": "Remove a saved method (soft-delete + best-effort Stripe detach).",
         "tags": [
           "payment-methods"
+        ]
+      }
+    },
+    "/admin/payments/{id}/refund": {
+      "post": {
+        "operationId": "AdminPaymentsController_refund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRefundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "Payment not found"
+          },
+          "422": {
+            "description": "Payment not refundable or amount exceeds the refundable balance"
+          },
+          "502": {
+            "description": "Stripe rejected the refund"
+          }
+        },
+        "summary": "Refund a payment (ADMIN only). Supports partial refunds; pro-rata fee reversal applied automatically. Final settlement via the Stripe webhook.",
+        "tags": [
+          "payments"
         ]
       }
     },
@@ -3676,6 +3812,9 @@
           "paidAtUtc": {
             "type": "object"
           },
+          "contestedAtUtc": {
+            "type": "object"
+          },
           "cancelledAtUtc": {
             "type": "object"
           },
@@ -3851,6 +3990,84 @@
           "last4",
           "isDefault",
           "createdAtUtc"
+        ]
+      },
+      "CreateRefundDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Refund amount in the payment currency (major units, e.g. 25.00). Must not exceed the still-refundable balance of the payment.",
+            "example": 25
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for the refund (admin audit trail).",
+            "example": "Service not delivered as agreed"
+          }
+        },
+        "required": [
+          "amount",
+          "reason"
+        ]
+      },
+      "RefundResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "paymentId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Refund amount (major units)."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217, UPPERCASE."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "initiatedByUserId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "stripeRefundId": {
+            "type": "object"
+          },
+          "failureReason": {
+            "type": "object"
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "paymentId",
+          "amount",
+          "currency",
+          "reason",
+          "initiatedByUserId",
+          "status",
+          "createdAtUtc",
+          "updatedAtUtc"
         ]
       },
       "ConnectOnboardingResponseDto": {

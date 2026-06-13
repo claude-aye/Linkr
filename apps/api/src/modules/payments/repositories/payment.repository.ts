@@ -134,6 +134,14 @@ export class PaymentRepository {
     private readonly repo: Repository<Payment>,
   ) {}
 
+  async findById(id: string): Promise<PaymentRecord | null> {
+    const rows: RawRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM payments WHERE id = $1`,
+      [id],
+    );
+    return rows.length ? mapRow(rows[0]) : null;
+  }
+
   async findByServiceRequestAndType(
     serviceRequestId: string,
     paymentType: PaymentType,
@@ -144,6 +152,28 @@ export class PaymentRepository {
       [serviceRequestId, paymentType],
     );
     return rows.length ? mapRow(rows[0]) : null;
+  }
+
+  async findByStripeIntentId(
+    stripePaymentIntentId: string,
+  ): Promise<PaymentRecord | null> {
+    const rows: RawRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM payments
+       WHERE stripe_payment_intent_id = $1`,
+      [stripePaymentIntentId],
+    );
+    return rows.length ? mapRow(rows[0]) : null;
+  }
+
+  /** All payment rows for a request (used by the refund/request derivations). */
+  async findByServiceRequestId(
+    serviceRequestId: string,
+  ): Promise<PaymentRecord[]> {
+    const rows: RawRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM payments WHERE service_request_id = $1`,
+      [serviceRequestId],
+    );
+    return rows.map(mapRow);
   }
 
   async create(
@@ -276,6 +306,29 @@ export class PaymentRepository {
            AND status IN ('${PaymentStatus.PENDING}', '${PaymentStatus.REQUIRES_ACTION}')
          RETURNING ${SELECT_COLUMNS}`,
         [stripePaymentIntentId],
+      ),
+    );
+    return rows.length ? mapRow(rows[0]) : null;
+  }
+
+  /**
+   * Apply a refund-derived status (PARTIALLY_REFUNDED or REFUNDED) to a captured
+   * payment. Monotonic: only a SUCCEEDED or PARTIALLY_REFUNDED payment is
+   * touched, and a fully-REFUNDED row is never downgraded — so repeated refund
+   * webhooks are idempotent. Returns the updated row, or null if nothing matched.
+   */
+  async applyRefundDerivedStatus(
+    paymentId: string,
+    status: PaymentStatus.PARTIALLY_REFUNDED | PaymentStatus.REFUNDED,
+  ): Promise<PaymentRecord | null> {
+    const rows = updateReturningRows(
+      await this.repo.query(
+        `UPDATE payments
+           SET status = $2, updated_at_utc = now()
+         WHERE id = $1
+           AND status IN ('${PaymentStatus.SUCCEEDED}', '${PaymentStatus.PARTIALLY_REFUNDED}')
+         RETURNING ${SELECT_COLUMNS}`,
+        [paymentId, status],
       ),
     );
     return rows.length ? mapRow(rows[0]) : null;
