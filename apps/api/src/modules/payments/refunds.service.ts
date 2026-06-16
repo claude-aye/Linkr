@@ -37,6 +37,29 @@ function mapRefundStatus(stripeStatus: string | null): RefundStatus {
 }
 
 /**
+ * The charge backing the PaymentIntent is already (fully) refunded — Stripe
+ * rejects the duplicate create. Surfaces as a `StripeInvalidRequestError` with
+ * code `charge_already_refunded`; we also match the message defensively.
+ */
+function isAlreadyRefundedError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  if (e?.code === 'charge_already_refunded') return true;
+  const msg = (e?.message ?? '').toLowerCase();
+  return msg.includes('already been refunded') || msg.includes('already refunded');
+}
+
+/**
+ * A DEFINITIVE Stripe error — the refund was rejected and certainly did NOT
+ * process (bad params / card error), so the row may safely be marked FAILED.
+ * Everything else (connection, timeout, API 5xx, rate-limit, unknown) is treated
+ * as IN-DOUBT: the refund may have gone through, so the row is left PENDING.
+ */
+function isDefinitiveRefundError(err: unknown): boolean {
+  const type = (err as { type?: string })?.type;
+  return type === 'StripeInvalidRequestError' || type === 'StripeCardError';
+}
+
+/**
  * Admin-initiated refunds (3.10c). Owns the over-refund guard, the Stripe
  * refund (pro-rata `reverse_transfer` + `refund_application_fee`), and the
  * forward-only payment-status derivation. The request → REFUNDED transition is
@@ -97,8 +120,10 @@ export class RefundsService {
     });
 
     // 2) Stripe refund — pro-rata fee reversal applied automatically on partials.
-    // Type derived from the client value (the SDK's `Stripe.*` namespace is not
-    // resolution-stable — see stripe.service.ts).
+    // `idempotencyKey = ref_<refund.id>` makes a retry that reuses this row safe
+    // (Stripe replays the same refund instead of erroring). Type derived from the
+    // client value (the SDK's `Stripe.*` namespace is not resolution-stable —
+    // see stripe.service.ts).
     let stripeRefund: Awaited<ReturnType<StripeClient['refunds']['create']>>;
     try {
       stripeRefund = await this.stripe.client.refunds.create(
@@ -111,26 +136,109 @@ export class RefundsService {
         },
         { idempotencyKey: `ref_${refund.id}` },
       );
+      // 4) Persist the Stripe refund id IMMEDIATELY (before any further work) so a
+      // later failure can never leave a processed refund with a null id in the DB.
+      await this.refundRepo.attachStripe(
+        refund.id,
+        stripeRefund.id,
+        mapRefundStatus(stripeRefund.status),
+      );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      await this.refundRepo.markFailed(refund.id, detail);
-      this.logger.error(`Refund ${refund.id} failed at Stripe: ${detail}`);
+
+      // 3) Already-refunded recovery: the charge was refunded — often by a prior
+      // attempt whose ack we lost. Reconcile our PENDING row to the real Stripe
+      // refund instead of marking it FAILED (which would hide the real refund).
+      if (isAlreadyRefundedError(err)) {
+        const reconciled = await this.reconcileAlreadyRefunded(
+          refund.id,
+          payment.stripePaymentIntentId,
+          paymentId,
+          requestedMinor,
+        );
+        if (reconciled) return reconciled;
+      }
+
+      // Definitive card/request error → the refund certainly did not process.
+      if (isDefinitiveRefundError(err)) {
+        await this.refundRepo.markFailed(refund.id, detail);
+        this.logger.error(`Refund ${refund.id} rejected by Stripe: ${detail}`);
+        throw new RefundChargeFailedException(detail);
+      }
+
+      // Connection/timeout/in-doubt → the refund MAY have gone through. Leave the
+      // row PENDING (a retry or the webhook reconciles it) and surface 502.
+      this.logger.warn(
+        `Refund ${refund.id} in-doubt after a transient Stripe error; left PENDING: ${detail}`,
+      );
       throw new RefundChargeFailedException(detail);
     }
 
-    // 3) Persist the Stripe id + returned status.
     const status = mapRefundStatus(stripeRefund.status);
-    await this.refundRepo.attachStripe(refund.id, stripeRefund.id, status);
     this.logger.log(
       `Refund ${refund.id} (${amount} ${currency}) on payment ${paymentId}: ` +
         `${stripeRefund.id} → ${status}`,
     );
 
-    // 4) Recompute the payment status (final settlement via webhook).
+    // Recompute the payment status (final settlement via webhook).
     await this.recomputePaymentRefundStatus(paymentId);
 
     const updated = await this.refundRepo.findById(refund.id);
     return this.toResponseDto(updated ?? refund);
+  }
+
+  /**
+   * Recover from a `charge_already_refunded` rejection: list the PaymentIntent's
+   * refunds at Stripe and link the matching one (prefer the exact amount; skip
+   * any already mapped to a different local row) to our PENDING row — instead of
+   * losing the real refund behind a FAILED row. Idempotent. Returns the
+   * reconciled response, or null if no unlinked Stripe refund was found.
+   */
+  private async reconcileAlreadyRefunded(
+    refundId: string,
+    paymentIntentId: string,
+    paymentId: string,
+    expectedAmountMinor: number,
+  ): Promise<RefundResponseDto | null> {
+    let list: Awaited<ReturnType<StripeClient['refunds']['list']>>;
+    try {
+      list = await this.stripe.client.refunds.list({
+        payment_intent: paymentIntentId,
+        limit: 100,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Refund ${refundId} reconcile: failed to list Stripe refunds: ${detail}`,
+      );
+      return null;
+    }
+
+    // Candidates: Stripe refunds not already mapped to a DIFFERENT local row.
+    const candidates: Array<{ id: string; status: string | null; amount: number }> = [];
+    for (const sr of list.data) {
+      const existing = await this.refundRepo.findByStripeRefundId(sr.id);
+      if (existing && existing.id !== refundId) continue;
+      candidates.push({ id: sr.id, status: sr.status, amount: sr.amount });
+    }
+    // Prefer the exact amount; else the most recent (Stripe lists newest-first).
+    const match =
+      candidates.find((c) => c.amount === expectedAmountMinor) ?? candidates[0];
+    if (!match) {
+      this.logger.error(
+        `Refund ${refundId}: charge already refunded but no unlinked Stripe refund found for ${paymentIntentId}`,
+      );
+      return null;
+    }
+
+    const status = mapRefundStatus(match.status);
+    await this.refundRepo.attachStripe(refundId, match.id, status);
+    await this.recomputePaymentRefundStatus(paymentId);
+    this.logger.log(
+      `Refund ${refundId} reconciled to existing Stripe refund ${match.id} → ${status}`,
+    );
+    const updated = await this.refundRepo.findById(refundId);
+    return updated ? this.toResponseDto(updated) : null;
   }
 
   /**
