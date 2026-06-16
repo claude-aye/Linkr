@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { ServiceRequestRepository } from './repositories/service-request.repository';
@@ -26,6 +27,9 @@ import {
   DirectBookingValidationException,
   NotRequestOwnerException,
   OrganizationDispatchNotSupportedException,
+  RequestAlreadyContestedException,
+  RequestContestedException,
+  RequestNotCompletedException,
   TenderValidationException,
 } from './exceptions/service-request.exceptions';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
@@ -36,6 +40,8 @@ import { PaymentsService } from '../payments/payments.service';
 export class ServiceRequestsService {
   private readonly logger = new Logger(ServiceRequestsService.name);
 
+  private readonly autoReleaseHours: number;
+
   constructor(
     private readonly requestRepo: ServiceRequestRepository,
     private readonly assignmentRepo: ServiceRequestAssignmentRepository,
@@ -43,8 +49,11 @@ export class ServiceRequestsService {
     private readonly usersRepo: UsersRepository,
     private readonly notificationsService: NotificationsService,
     private readonly paymentsService: PaymentsService,
+    config: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  ) {
+    this.autoReleaseHours = config.getOrThrow<number>('PLATFORM_AUTO_RELEASE_HOURS');
+  }
 
   async create(
     clientUserId: string,
@@ -511,6 +520,180 @@ export class ServiceRequestsService {
     return this.toResponseDto(updated);
   }
 
+  /**
+   * Client confirms a COMPLETED job → triggers the 80% balance capture. Only
+   * the request owner (client_user_id) may confirm. The COMPLETED→PAID
+   * transition is NOT done here — the webhook worker drives it once the BALANCE
+   * PaymentIntent succeeds. Idempotent: a re-confirm short-circuits in
+   * captureBalance (BALANCE unique guard); an already-PAID request is a no-op.
+   */
+  async confirmCompletion(
+    requestId: string,
+    callerUserId: string,
+  ): Promise<ServiceRequestResponseDto> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) throw new NotFoundException('Service request not found');
+    if (request.clientUserId !== callerUserId) {
+      throw new ForbiddenException('Only the client can confirm completion');
+    }
+
+    // Already settled (e.g. the auto-release cron won the race) → idempotent OK.
+    if (request.status === ServiceRequestStatus.PAID) {
+      return this.toResponseDto(request);
+    }
+    if (request.status !== ServiceRequestStatus.COMPLETED) {
+      throw new RequestNotCompletedException();
+    }
+    if (request.contestedAtUtc !== null) {
+      throw new RequestContestedException();
+    }
+
+    await this.releaseBalance(request);
+
+    this.logger.log(`Client ${callerUserId} confirmed completion of request ${requestId}`);
+    const updated = await this.requestRepo.findById(requestId);
+    if (!updated) throw new NotFoundException('Service request not found after update');
+    return this.toResponseDto(updated);
+  }
+
+  /**
+   * Client contests a COMPLETED job → freezes the auto-release timer and routes
+   * to admin (no dispute state machine in MVP — this only sets the flag). Only
+   * the request owner may contest, and only once.
+   */
+  async contest(
+    requestId: string,
+    callerUserId: string,
+  ): Promise<ServiceRequestResponseDto> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) throw new NotFoundException('Service request not found');
+    if (request.clientUserId !== callerUserId) {
+      throw new ForbiddenException('Only the client can contest this request');
+    }
+    if (request.status !== ServiceRequestStatus.COMPLETED) {
+      throw new RequestNotCompletedException();
+    }
+    if (request.contestedAtUtc !== null) {
+      throw new RequestAlreadyContestedException();
+    }
+
+    await this.requestRepo.setContestedAt(requestId, new Date());
+
+    this.logger.log(`Client ${callerUserId} contested request ${requestId}`);
+    const updated = await this.requestRepo.findById(requestId);
+    if (!updated) throw new NotFoundException('Service request not found after update');
+    return this.toResponseDto(updated);
+  }
+
+  /**
+   * Resolve the agreed amount + currency (the balance basis), mirroring the
+   * deposit basis: a DIRECT_BOOKING uses the request's estimate; a
+   * PROJECT_TENDER uses the accepted quote.
+   */
+  private async resolveAgreedAmount(
+    request: ServiceRequestRecord,
+  ): Promise<{ amount: string | null; currency: string | null }> {
+    if (request.requestType === ServiceRequestType.DIRECT_BOOKING) {
+      return { amount: request.estimatedAmount, currency: request.estimatedCurrency };
+    }
+    const quote = await this.requestRepo.findAcceptedQuoteAmount(request.id);
+    return quote
+      ? { amount: quote.amount, currency: quote.currency }
+      : { amount: null, currency: null };
+  }
+
+  /** Resolve the balance basis and delegate to the shared capture (Part 2). */
+  private async releaseBalance(request: ServiceRequestRecord): Promise<void> {
+    const agreed = await this.resolveAgreedAmount(request);
+    await this.paymentsService.captureBalance({
+      serviceRequestId: request.id,
+      requestStatus: request.status,
+      contestedAtUtc: request.contestedAtUtc,
+      agreedAmount: agreed.amount,
+      agreedCurrency: agreed.currency,
+    });
+  }
+
+  /**
+   * Webhook-driven COMPLETED→PAID once the BALANCE PaymentIntent succeeds.
+   * Idempotent: an already-PAID request is a no-op, and a non-COMPLETED request
+   * (an unexpected race) is logged and skipped rather than crashing the worker.
+   */
+  async markRequestPaid(requestId: string): Promise<void> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) {
+      this.logger.warn(`markRequestPaid: request ${requestId} not found`);
+      return;
+    }
+    if (request.status === ServiceRequestStatus.PAID) return;
+    if (request.status !== ServiceRequestStatus.COMPLETED) {
+      this.logger.warn(
+        `markRequestPaid: request ${requestId} is ${request.status}, expected COMPLETED — skipping`,
+      );
+      return;
+    }
+    const transition = buildTransition(request.status, ServiceRequestStatus.PAID);
+    await this.requestRepo.update(requestId, {
+      status: transition.status,
+      paidAtUtc: transition.paidAtUtc,
+    });
+    this.logger.log(`Request ${requestId} → PAID (balance settled)`);
+  }
+
+  /**
+   * Webhook-driven → REFUNDED when every captured payment of the request is
+   * fully refunded (derived by the refunds service). Idempotent; skips (with a
+   * log) when the current state does not allow the transition.
+   */
+  async markRequestRefunded(requestId: string): Promise<void> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) {
+      this.logger.warn(`markRequestRefunded: request ${requestId} not found`);
+      return;
+    }
+    if (request.status === ServiceRequestStatus.REFUNDED) return;
+    try {
+      const transition = buildTransition(request.status, ServiceRequestStatus.REFUNDED);
+      await this.requestRepo.update(requestId, { status: transition.status });
+      this.logger.log(`Request ${requestId} → REFUNDED (all captured payments refunded)`);
+    } catch {
+      this.logger.warn(
+        `markRequestRefunded: cannot transition request ${requestId} from ${request.status} → REFUNDED — skipping`,
+      );
+    }
+  }
+
+  /**
+   * Auto-release sweep (Part 4): trigger the balance capture for COMPLETED,
+   * non-contested requests whose release window elapsed. Each capture is
+   * idempotent (BALANCE unique guard) so this never double-charges; per-request
+   * failures are logged and do not abort the batch.
+   */
+  async runAutoReleaseCheck(): Promise<{ released: number; failed: number }> {
+    const due = await this.requestRepo.findAwaitingRelease(this.autoReleaseHours);
+    let released = 0;
+    let failed = 0;
+
+    for (const request of due) {
+      try {
+        await this.releaseBalance(request);
+        released++;
+      } catch (err) {
+        failed++;
+        this.logger.error(
+          `Auto-release failed for request ${request.id}: ${String(err)}`,
+        );
+      }
+    }
+
+    if (released > 0 || failed > 0) {
+      this.logger.log(
+        `Auto-release: ${released} balance capture(s) triggered, ${failed} failed`,
+      );
+    }
+    return { released, failed };
+  }
+
   async runExpiryCheck(): Promise<{ expired: number }> {
     const expiredRecords = await this.requestRepo.findExpiredOpen();
     if (expiredRecords.length === 0) return { expired: 0 };
@@ -564,6 +747,7 @@ export class ServiceRequestsService {
     dto.acceptedAtUtc = record.acceptedAtUtc;
     dto.completedAtUtc = record.completedAtUtc;
     dto.paidAtUtc = record.paidAtUtc;
+    dto.contestedAtUtc = record.contestedAtUtc;
     dto.cancelledAtUtc = record.cancelledAtUtc;
     dto.cancellationReason = record.cancellationReason;
     dto.cancelledByUserId = record.cancelledByUserId;

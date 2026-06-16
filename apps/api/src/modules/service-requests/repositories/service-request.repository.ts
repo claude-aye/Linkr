@@ -31,6 +31,7 @@ export interface ServiceRequestRecord {
   acceptedAtUtc: Date | null;
   completedAtUtc: Date | null;
   paidAtUtc: Date | null;
+  contestedAtUtc: Date | null;
   cancelledAtUtc: Date | null;
   cancellationReason: string | null;
   cancelledByUserId: string | null;
@@ -96,6 +97,7 @@ interface RawRow {
   accepted_at_utc: Date | null;
   completed_at_utc: Date | null;
   paid_at_utc: Date | null;
+  contested_at_utc: Date | null;
   cancelled_at_utc: Date | null;
   cancellation_reason: string | null;
   cancelled_by_user_id: string | null;
@@ -112,7 +114,7 @@ const SELECT_COLUMNS = `
   desired_start_at_utc, desired_end_at_utc, scheduled_at_utc,
   estimated_amount, estimated_currency, final_amount, final_currency,
   response_deadline_utc, quotes_deadline_utc,
-  accepted_at_utc, completed_at_utc, paid_at_utc,
+  accepted_at_utc, completed_at_utc, paid_at_utc, contested_at_utc,
   cancelled_at_utc, cancellation_reason, cancelled_by_user_id,
   created_at_utc, updated_at_utc
 `;
@@ -143,6 +145,7 @@ function mapRow(row: RawRow): ServiceRequestRecord {
     acceptedAtUtc: row.accepted_at_utc,
     completedAtUtc: row.completed_at_utc,
     paidAtUtc: row.paid_at_utc,
+    contestedAtUtc: row.contested_at_utc,
     cancelledAtUtc: row.cancelled_at_utc,
     cancellationReason: row.cancellation_reason,
     cancelledByUserId: row.cancelled_by_user_id,
@@ -328,5 +331,50 @@ export class ServiceRequestRepository {
       ? await manager.query(sql)
       : await this.repo.query(sql);
     return rows.map(mapRow);
+  }
+
+  /** Stamp contested_at_utc (idempotent: only the first, non-contested write wins). */
+  async setContestedAt(id: string, when: Date): Promise<void> {
+    await this.repo.query(
+      `UPDATE service_requests
+         SET contested_at_utc = $2, updated_at_utc = now()
+       WHERE id = $1 AND deleted_at_utc IS NULL AND contested_at_utc IS NULL`,
+      [id, when],
+    );
+  }
+
+  /**
+   * COMPLETED, non-contested requests whose release window elapsed — the
+   * balance auto-release cron (Part 4) selects these. `make_interval` keeps the
+   * hours threshold a bound parameter.
+   */
+  async findAwaitingRelease(autoReleaseHours: number): Promise<ServiceRequestRecord[]> {
+    const rows: RawRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM service_requests
+       WHERE status = 'COMPLETED'
+         AND contested_at_utc IS NULL
+         AND deleted_at_utc IS NULL
+         AND completed_at_utc IS NOT NULL
+         AND completed_at_utc < now() - make_interval(hours => $1)`,
+      [autoReleaseHours],
+    );
+    return rows.map(mapRow);
+  }
+
+  /**
+   * The accepted quote's amount/currency for a PROJECT_TENDER — the balance
+   * basis for tenders (mirrors the deposit basis in 3.9). Exactly one quote is
+   * ACCEPTED per request (siblings are auto-rejected on acceptance).
+   */
+  async findAcceptedQuoteAmount(
+    serviceRequestId: string,
+  ): Promise<{ amount: string; currency: string } | null> {
+    const rows: Array<{ amount: string; currency: string }> = await this.repo.query(
+      `SELECT amount, currency FROM quotes
+       WHERE service_request_id = $1 AND status = 'ACCEPTED'
+       LIMIT 1`,
+      [serviceRequestId],
+    );
+    return rows.length ? { amount: rows[0].amount, currency: rows[0].currency } : null;
   }
 }

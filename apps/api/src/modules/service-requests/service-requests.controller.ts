@@ -159,4 +159,42 @@ export class ServiceRequestsController {
   ): Promise<ServiceRequestResponseDto> {
     return this.service.completeRequest(id, user.sub);
   }
+
+  @Post(':id/confirm-completion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Client confirms a COMPLETED job, triggering the 80% balance capture. The request flips to PAID asynchronously once the balance settles (webhook). Client (request owner) only.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the request owner' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Request not COMPLETED, contested, or deposit not settled',
+  })
+  @ApiResponse({ status: 502, description: 'Stripe rejected the balance charge' })
+  confirmCompletion(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ServiceRequestResponseDto> {
+    return this.service.confirmCompletion(id, user.sub);
+  }
+
+  @Post(':id/contest')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Client contests a COMPLETED job, freezing the balance auto-release timer and routing to admin. Client (request owner) only.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the request owner' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 409, description: 'Request not COMPLETED or already contested' })
+  contest(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ServiceRequestResponseDto> {
+    return this.service.contest(id, user.sub);
+  }
 }

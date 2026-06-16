@@ -101,6 +101,9 @@ const envSchema = Joi.object({
     .length(3)
     .uppercase()
     .default('CAD'),
+  // Hours a COMPLETED, non-contested request waits before the balance (80%)
+  // auto-releases (3.10c). Required at boot.
+  PLATFORM_AUTO_RELEASE_HOURS: Joi.number().integer().min(1).required(),
 });
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {

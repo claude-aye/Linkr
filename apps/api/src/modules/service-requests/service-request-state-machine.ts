@@ -47,6 +47,7 @@ export interface TransitionTarget {
   cancelledAtUtc?: Date;
   cancellationReason?: string | null;
   cancelledByUserId?: string | null;
+  paidAtUtc?: Date;
 }
 
 /**
@@ -73,6 +74,11 @@ export function buildTransition(
     payload.cancelledAtUtc = new Date();
     payload.cancellationReason = context.cancellationReason ?? null;
     payload.cancelledByUserId = context.cancelledByUserId ?? null;
+  }
+
+  // COMPLETED→PAID is driven by the BALANCE PaymentIntent succeeding (webhook).
+  if (newStatus === ServiceRequestStatus.PAID) {
+    payload.paidAtUtc = new Date();
   }
 
   return payload;

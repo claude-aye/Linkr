@@ -17,4 +17,20 @@ export class ServiceRequestsCron {
       this.logger.log(`Expiry check complete: ${result.expired} request(s) expired`);
     }
   }
+
+  /**
+   * Hourly — auto-release the 80% balance for COMPLETED, non-contested requests
+   * whose release window (PLATFORM_AUTO_RELEASE_HOURS) elapsed. This only
+   * TRIGGERS the capture (idempotent); the webhook finalizes status to PAID.
+   */
+  @Cron('0 * * * *')
+  async handleAutoRelease(): Promise<void> {
+    this.logger.log('Running balance auto-release check');
+    const result = await this.service.runAutoReleaseCheck();
+    if (result.released > 0 || result.failed > 0) {
+      this.logger.log(
+        `Auto-release check complete: ${result.released} triggered, ${result.failed} failed`,
+      );
+    }
+  }
 }
