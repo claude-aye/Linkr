@@ -1,3 +1,10 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Build scripts intentionally skipped for these deps (relocated from the
+# create-next-app-generated apps/web/pnpm-workspace.yaml, which was removed so the
+# monorepo has a single workspace root). Not required for dev/build here.
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
