@@ -55,7 +55,8 @@ It is built for **blue-collar professionals** (electricians, plumbers, carpenter
 | **Database** | PostgreSQL 16 + PostGIS 3.4 | Geo queries are core to the product (proximity-based discovery) |
 | **Cache / Queues** | Redis 7 + BullMQ | Async tasks: webhooks Stripe, cron jobs (expired licenses), notifications |
 | **Mobile** | React Native + Expo | Full TypeScript stack, OTA updates, EAS Build |
-| **Web Portal** | Next.js | SSR for SEO of public org pages, App Router |
+| **Web Portal** | Next.js 16 (App Router, Turbopack) | SSR pour SEO des pages org publiques ; dev sur port 3001 |
+| **API Client (front)** | openapi-typescript 7.x + openapi-fetch 0.17 | Types générés depuis `openapi.json` ; client typé. openapi-fetch en maintenance mode mais feature-complete |
 | **API Style** | REST + OpenAPI/Swagger | Universal, B2B-friendly, simple file uploads, NestJS-native via `@nestjs/swagger` |
 | **Auth** | PassportJS | Multi-modal: Email/Password + Google OAuth + Apple Sign-In |
 | **Payments** | Stripe Connect (Express type) | KYC included, lowest dev effort, upgradable to Custom later |
@@ -70,6 +71,14 @@ It is built for **blue-collar professionals** (electricians, plumbers, carpenter
 2. **Module-per-Domain** — Each NestJS module mirrors a database domain (UsersModule, ProvidersModule, RequestsModule, PaymentsModule, etc.).
 3. **DTO Validation** — All inputs validated via `class-validator` + `class-transformer`. No raw `any` types accepted.
 4. **Environment Validation** — All env vars validated at boot via `@nestjs/config` + Joi/Zod schemas. Missing var = crash on startup.
+
+### Frontend Conventions (Phase 3.11a)
+
+- **`apps/web`** : Next.js 16.2, App Router, `src-dir`, Tailwind, dev sur le port **3001**.
+- **`packages/api-client`** consommé via `transpilePackages: ['@linkr/api-client']` (TS brut, **pas d'étape de build** dédiée).
+- **Codegen** : `pnpm --filter @linkr/api-client codegen` lit `apps/api/openapi.json` → écrit `src/schema.d.ts` (**committé**).
+- **`getToken`** est présent dans `createApiClient` mais **non branché** jusqu'à 3.11b.
+- **`/health`** est documenté dans l'OpenAPI → page de connectivité entièrement typée.
 
 ---
 
@@ -115,6 +124,7 @@ linkr/
 │       └── package.json
 │
 ├── packages/
+│   ├── api-client/             # Client OpenAPI généré (openapi-typescript + openapi-fetch)
 │   ├── shared-types/           # TypeScript interfaces shared across apps
 │   ├── shared-utils/           # Validation, formatting, constants
 │   └── shared-config/          # ESLint, Prettier, tsconfig.base.json
@@ -605,6 +615,10 @@ The following domains are **not yet modeled** but expected to be added before th
 5. **User Certifications** (`user_certifications`) — Personal worker certifications (e.g., CCQ Compagnon card held by an individual within an organization)
 6. **Messaging** (`conversations`, `messages`) — Pro ↔ Client communication during a request
 
+### Technical Debt (tracked)
+
+- **Tracking de `docker/data/`** — ~2100 fichiers suivis par git (DB pgAdmin, sessions). Le `.gitignore` racine ignore `/data/` (ancré à la racine) mais **pas** `docker/data/`. Fix : ajouter `docker/data/` au `.gitignore` puis `git rm -r --cached docker/data`.
+
 ---
 
 ## 7. Quebec Compliance & Internationalization
@@ -747,6 +761,8 @@ docs(readme): document local setup steps
 
 Tasks should be executed sequentially. Each task must produce **something testable** before moving on.
 
+> **État réel (juin 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) mergés sur `main`. Numérotation exécutée : **3.11 = portail web** (en cours), **3.12 = mobile**. Prochaine étape : **3.11b** (auth browser).
+
 | Step | Task | Deliverable |
 |---|---|---|
 | 3.1 | Monorepo Foundation | `docker compose up` starts postgres+redis+pgadmin; `pnpm install` works at root |
@@ -772,7 +788,7 @@ Each app MUST validate these via Joi/Zod schema at startup. Missing or malformed
 
 ```
 NODE_ENV=development|production
-PORT=3000
+PORT=5000
 
 DATABASE_URL=postgresql://user:password@host:5432/linkr
 REDIS_URL=redis://host:6379
@@ -818,7 +834,7 @@ LOG_LEVEL=info|debug
 ### Web (`apps/web/.env.local`)
 
 ```
-NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:5000
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
 ```
 
