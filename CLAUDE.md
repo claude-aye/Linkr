@@ -618,6 +618,8 @@ The following domains are **not yet modeled** but expected to be added before th
 ### Technical Debt (tracked)
 
 - **Tracking de `docker/data/`** — ~2100 fichiers suivis par git (DB pgAdmin, sessions). Le `.gitignore` racine ignore `/data/` (ancré à la racine) mais **pas** `docker/data/`. Fix : ajouter `docker/data/` au `.gitignore` puis `git rm -r --cached docker/data`.
+- **Rotation refresh = usage unique** — l'API renouvelle le refresh à chaque appel. Risque de **course** (étroit) quand des `fetch` BFF parallèles authentifiés arriveront (la 2ᵉ requête expirée pourrait présenter un refresh **déjà consommé** → 401 → déconnexion parasite). À traiter (**verrou / dédup**) avant les proxies de données. **Contrepartie sécurité** : sans blacklist, un refresh compromis reste valide jusqu'à `exp` (7 j) et les anciens refresh ne sont **jamais** invalidés — à durcir (**révocation / blacklist**) lors d'une phase sécurité auth dédiée.
+- **Endpoints auth confirmés depuis le source** — `POST /auth/refresh`, body `{ refreshToken }`, réponse `TokenPair { accessToken, refreshToken }`, **401** sur échec.
 
 ---
 
@@ -761,7 +763,7 @@ docs(readme): document local setup steps
 
 Tasks should be executed sequentially. Each task must produce **something testable** before moving on.
 
-> **État réel (juin 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) mergés sur `main`. Numérotation exécutée : **3.11 = portail web** (en cours), **3.12 = mobile**. Prochaine étape : **3.11b** (auth browser).
+> **État réel (juin 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) + 3.11b-1/b-2 (BFF auth httpOnly cookies + proxy deny-by-default, PR #17/#18) mergés sur `main`. Numérotation exécutée : **3.11 = portail web** (en cours), **3.12 = mobile**. **3.11b-3** (refresh silencieux dans le proxy : R2 double-écriture + rotation du refresh token, fail-safe clear) mergé (PR #19). La 3.11b est complète. Prochaine : **3.11c** (pages métier).
 
 | Step | Task | Deliverable |
 |---|---|---|
