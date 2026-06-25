@@ -79,6 +79,7 @@ It is built for **blue-collar professionals** (electricians, plumbers, carpenter
 - **Codegen** : `pnpm --filter @linkr/api-client codegen` lit `apps/api/openapi.json` → écrit `src/schema.d.ts` (**committé**).
 - **`getToken`** est présent dans `createApiClient` mais **non branché** jusqu'à 3.11b.
 - **`/health`** est documenté dans l'OpenAPI → page de connectivité entièrement typée.
+- **Pattern page métier (depuis 3.11c-A)** : Server Component lit la donnée via `getServerApiClient()` (token cookie server-side) ; mutations via **Route Handlers BFF** sous `/api/...` (protégés par le proxy deny-by-default) ; rafraîchissement via `router.refresh()` (Server Component = source de vérité) ; **RBAC = l'API est seule juge**, la page gère le 403 en affichage.
 
 ---
 
@@ -763,7 +764,7 @@ docs(readme): document local setup steps
 
 Tasks should be executed sequentially. Each task must produce **something testable** before moving on.
 
-> **État réel (juin 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) + 3.11b-1/b-2 (BFF auth httpOnly cookies + proxy deny-by-default, PR #17/#18) mergés sur `main`. Numérotation exécutée : **3.11 = portail web** (en cours), **3.12 = mobile**. **3.11b-3** (refresh silencieux dans le proxy : R2 double-écriture + rotation du refresh token, fail-safe clear) mergé (PR #19). La 3.11b est complète. Prochaine : **3.11c** (pages métier).
+> **État réel (juin 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) + 3.11b-1/b-2 (BFF auth httpOnly cookies + proxy deny-by-default, PR #17/#18) mergés sur `main`. Numérotation exécutée : **3.11 = portail web** (en cours), **3.12 = mobile**. **3.11b-3** (refresh silencieux dans le proxy : R2 double-écriture + rotation du refresh token, fail-safe clear) mergé (PR #19). La 3.11b est complète. **3.11c-A** (console admin de revue des `verification_documents` : work queue PENDING + approve/reject via Route Handlers BFF, RBAC API-side, refresh via `router.refresh()`) livré sur la branche. Première page métier. Prochaine : 3.11c-B (à définir).
 
 | Step | Task | Deliverable |
 |---|---|---|
