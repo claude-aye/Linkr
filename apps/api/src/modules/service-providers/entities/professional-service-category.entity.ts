@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ServiceCategory } from '../../services-catalog/entities/service-category.entity';
 import { PscVerificationStatus } from '../enums/psc-verification-status.enum';
 import { ServiceProvider } from './service-provider.entity';
 
@@ -25,6 +26,14 @@ export class ProfessionalServiceCategory {
 
   @Column({ type: 'uuid' })
   serviceCategoryId!: string;
+
+  // Read-only association over the existing fk_psc_service_category FK
+  // (service_category_id → service_categories.id, ON DELETE RESTRICT). Not
+  // eager: loaded only when a query explicitly requests the relation (e.g. the
+  // admin verification queue joins it for the trade's i18n name).
+  @ManyToOne(() => ServiceCategory, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'service_category_id' })
+  serviceCategory!: ServiceCategory;
 
   @Column({
     type: 'enum',

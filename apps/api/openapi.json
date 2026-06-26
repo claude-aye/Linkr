@@ -1763,7 +1763,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminVerificationQueueItemDto"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "Admin review queue, filtered by review status (default PENDING).",
@@ -3634,6 +3644,113 @@
             "description": "Toggle this offering active/inactive"
           }
         }
+      },
+      "AdminVerificationQueueItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "professionalServiceCategoryId": {
+            "type": "string"
+          },
+          "regulatoryRequirementId": {
+            "type": "string"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "LICENSE_NUMBER",
+              "COMPETENCY_CARD",
+              "CERTIFICATION"
+            ]
+          },
+          "documentNumber": {
+            "type": "object",
+            "nullable": true
+          },
+          "downloadUrl": {
+            "type": "string",
+            "description": "Relative download endpoint for the stored file"
+          },
+          "fileMimeType": {
+            "type": "string"
+          },
+          "fileSizeBytes": {
+            "type": "number"
+          },
+          "issuedAtUtc": {
+            "type": "object",
+            "nullable": true
+          },
+          "expiresAtUtc": {
+            "type": "object",
+            "nullable": true
+          },
+          "reviewStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED"
+            ]
+          },
+          "reviewedAtUtc": {
+            "type": "object",
+            "nullable": true
+          },
+          "rejectionReason": {
+            "type": "object",
+            "nullable": true
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "description": "Libellés i18n du métier (service_categories.name_translations)",
+            "example": {
+              "fr-CA": "Plomberie",
+              "en-CA": "Plumbing"
+            }
+          },
+          "authorityCode": {
+            "type": "string",
+            "description": "Code de l'autorité réglementaire",
+            "example": "RBQ"
+          },
+          "providerDisplayName": {
+            "type": "string",
+            "description": "Nom affichable du prestataire (résolu polymorphe)",
+            "example": "Plomberie ABC Inc."
+          }
+        },
+        "required": [
+          "id",
+          "professionalServiceCategoryId",
+          "regulatoryRequirementId",
+          "documentType",
+          "documentNumber",
+          "downloadUrl",
+          "fileMimeType",
+          "fileSizeBytes",
+          "issuedAtUtc",
+          "expiresAtUtc",
+          "reviewStatus",
+          "reviewedAtUtc",
+          "rejectionReason",
+          "createdAtUtc",
+          "updatedAtUtc",
+          "serviceCategoryNameTranslations",
+          "authorityCode",
+          "providerDisplayName"
+        ]
       },
       "RejectVerificationDocumentDto": {
         "type": "object",

@@ -10,12 +10,18 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { RejectVerificationDocumentDto } from './dto/reject-verification-document.dto';
 import { VerificationDocumentResponseDto } from './dto/verification-document-response.dto';
+import { AdminVerificationQueueItemDto } from './dto/admin-verification-queue-item.dto';
 import { VerificationDocumentReviewStatus } from './enums/verification-document-review-status.enum';
 import { VerificationsService } from './verifications.service';
 
@@ -32,9 +38,10 @@ export class AdminVerificationsController {
     enum: VerificationDocumentReviewStatus,
     required: false,
   })
+  @ApiOkResponse({ type: AdminVerificationQueueItemDto, isArray: true })
   listQueue(
     @Query('status') status?: VerificationDocumentReviewStatus,
-  ): Promise<VerificationDocumentResponseDto[]> {
+  ): Promise<AdminVerificationQueueItemDto[]> {
     return this.verificationsService.listByStatus(
       status ?? VerificationDocumentReviewStatus.PENDING,
     );
