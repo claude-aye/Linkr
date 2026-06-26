@@ -26,6 +26,7 @@ import { VerificationDocumentReviewStatus } from './enums/verification-document-
 import { VerificationDocumentRepository } from './repositories/verification-document.repository';
 import { UploadVerificationDocumentDto } from './dto/upload-verification-document.dto';
 import { VerificationDocumentResponseDto } from './dto/verification-document-response.dto';
+import { AdminVerificationQueueItemDto } from './dto/admin-verification-queue-item.dto';
 import {
   ALLOWED_DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_SIZE_BYTES,
@@ -153,9 +154,9 @@ export class VerificationsService {
 
   async listByStatus(
     status: VerificationDocumentReviewStatus,
-  ): Promise<VerificationDocumentResponseDto[]> {
-    const docs = await this.documentRepo.findByStatus(status);
-    return docs.map((d) => VerificationDocumentResponseDto.from(d));
+  ): Promise<AdminVerificationQueueItemDto[]> {
+    const docs = await this.documentRepo.findByStatusWithRelations(status);
+    return docs.map((d) => AdminVerificationQueueItemDto.fromWithLabels(d));
   }
 
   async approveDocument(

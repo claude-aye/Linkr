@@ -1494,6 +1494,46 @@ export interface components {
             /** @description Toggle this offering active/inactive */
             isActive?: boolean;
         };
+        AdminVerificationQueueItemDto: {
+            id: string;
+            professionalServiceCategoryId: string;
+            regulatoryRequirementId: string;
+            /** @enum {string} */
+            documentType: "LICENSE_NUMBER" | "COMPETENCY_CARD" | "CERTIFICATION";
+            documentNumber: Record<string, never> | null;
+            /** @description Relative download endpoint for the stored file */
+            downloadUrl: string;
+            fileMimeType: string;
+            fileSizeBytes: number;
+            issuedAtUtc: Record<string, never> | null;
+            expiresAtUtc: Record<string, never> | null;
+            /** @enum {string} */
+            reviewStatus: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+            reviewedAtUtc: Record<string, never> | null;
+            rejectionReason: Record<string, never> | null;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            updatedAtUtc: string;
+            /**
+             * @description Libellés i18n du métier (service_categories.name_translations)
+             * @example {
+             *       "fr-CA": "Plomberie",
+             *       "en-CA": "Plumbing"
+             *     }
+             */
+            serviceCategoryNameTranslations: Record<string, never>;
+            /**
+             * @description Code de l'autorité réglementaire
+             * @example RBQ
+             */
+            authorityCode: string;
+            /**
+             * @description Nom affichable du prestataire (résolu polymorphe)
+             * @example Plomberie ABC Inc.
+             */
+            providerDisplayName: string;
+        };
         RejectVerificationDocumentDto: {
             /** @description Reason shown to the provider for the rejection */
             rejectionReason: string;
@@ -3050,7 +3090,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AdminVerificationQueueItemDto"][];
+                };
             };
         };
     };

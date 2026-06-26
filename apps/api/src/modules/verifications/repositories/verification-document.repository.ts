@@ -47,6 +47,34 @@ export class VerificationDocumentRepository {
   }
 
   /**
+   * Admin review-queue read enriched with the relations the labelled DTO needs:
+   * the practised category (for its i18n name), the satisfied regulatory
+   * requirement (for its authority code), and the polymorphic provider with its
+   * user / organization (for the display name). Same filter and ordering as
+   * `findByStatus` but kept as a SEPARATE method so the cascade-critical
+   * `findByStatus` (used by recompute / expiry) stays byte-for-byte untouched.
+   *
+   * Geo note: ServiceProvider.serviceBaseLocation is `select: false`, so TypeORM
+   * omits it from this load — no raw geography (WKB) is read and no ST_AsGeoJSON
+   * gymnastics are needed.
+   */
+  findByStatusWithRelations(
+    reviewStatus: VerificationDocumentReviewStatus,
+  ): Promise<VerificationDocument[]> {
+    return this.repo.find({
+      where: { reviewStatus, deletedAtUtc: IsNull() },
+      relations: {
+        professionalServiceCategory: {
+          serviceCategory: true,
+          serviceProvider: { organization: true, user: true },
+        },
+        regulatoryRequirement: true,
+      },
+      order: { createdAtUtc: 'ASC' },
+    });
+  }
+
+  /**
    * Whether the given requirement is currently satisfied for a PSC:
    * at least one APPROVED, non-expired, non-deleted document exists.
    * Accepts an optional manager to read within a transaction.
