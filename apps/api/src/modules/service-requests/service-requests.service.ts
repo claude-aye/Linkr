@@ -17,7 +17,9 @@ import { CreateServiceRequestDto } from './dto/create-service-request.dto';
 import { CancelServiceRequestDto } from './dto/cancel-service-request.dto';
 import { DeclineServiceRequestDto } from './dto/decline-service-request.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
+import { ListProviderServiceRequestsDto } from './dto/list-provider-service-requests.dto';
 import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
+import { ProviderServiceRequestItemDto } from './dto/provider-service-request-item.dto';
 import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestAssignmentStatus } from './enums/service-request-assignment-status.enum';
@@ -247,6 +249,40 @@ export class ServiceRequestsService {
 
     return {
       items: items.map((r) => this.toResponseDto(r)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  /**
+   * Provider-facing listing for the prestataire dashboard (Vision B: requests
+   * ASSIGNED to the provider + DIRECT_BOOKINGs still OPEN and targeted at it).
+   * Pure data read — the caller (ProviderServiceRequestsController) has already
+   * enforced ownership of `providerId` via `loadOwnedProvider`. Maps through the
+   * dedicated label-joined DTO; `toResponseDto`/`list` stay untouched.
+   */
+  async listForProvider(
+    providerId: string,
+    dto: ListProviderServiceRequestsDto,
+  ): Promise<{
+    items: ProviderServiceRequestItemDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+
+    const { items, total } =
+      await this.requestRepo.findAssignedOrTargetedToProvider(providerId, {
+        status: dto.status,
+        page,
+        limit,
+      });
+
+    return {
+      items: items.map((r) => ProviderServiceRequestItemDto.fromWithLabels(r)),
       total,
       page,
       limit,
