@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import { pickTranslation } from '@/lib/i18n/translations';
 import type {
   RequiredDocumentType,
   VerificationDocument,
@@ -52,17 +53,6 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
       </dt>
       <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">{children}</dd>
     </div>
-  );
-}
-
-function Mono({ value }: { value: string }) {
-  return (
-    <span
-      className="break-all font-mono text-xs text-zinc-600 dark:text-zinc-400"
-      title={value}
-    >
-      {value}
-    </span>
   );
 }
 
@@ -121,12 +111,15 @@ function DocumentCard({ doc }: { doc: VerificationDocument }) {
         </Detail>
         <Detail label="Émis le">{formatDate(doc.issuedAtUtc)}</Detail>
         <Detail label="Expire le">{formatDate(doc.expiresAtUtc)}</Detail>
-        <Detail label="Catégorie pro.">
-          <Mono value={doc.professionalServiceCategoryId} />
+        <Detail label="Métier">
+          <span title={doc.professionalServiceCategoryId}>
+            {pickTranslation(doc.serviceCategoryNameTranslations)}
+          </span>
         </Detail>
-        <Detail label="Exigence régl.">
-          <Mono value={doc.regulatoryRequirementId} />
+        <Detail label="Autorité">
+          <span title={doc.regulatoryRequirementId}>{doc.authorityCode}</span>
         </Detail>
+        <Detail label="Prestataire">{doc.providerDisplayName}</Detail>
       </dl>
 
       <ReviewActions documentId={doc.id} />
@@ -159,8 +152,10 @@ export default async function AdminVerificationsPage() {
     } else if (error || !response.ok) {
       failed = true;
     } else {
-      // No response schema in the OpenAPI (`content: never`) → `data` types to
-      // `never`; cast through the local mirror. openapi-fetch parses the JSON at runtime.
+      // The OpenAPI response now resolves to `AdminVerificationQueueItemDto[]`,
+      // but its nullable string fields degrade to `Record<string, never> | null`
+      // in the generated types — cast through the faithful local mirror (see
+      // lib/verifications/types.ts). openapi-fetch parses the JSON at runtime.
       docs = (data as unknown as VerificationDocument[] | undefined) ?? [];
     }
   } catch {
