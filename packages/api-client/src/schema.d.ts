@@ -987,6 +987,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-providers/{id}/service-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provider dashboard (owner only): list this provider's service requests — assigned jobs + DIRECT_BOOKINGs still OPEN and targeted at it (Vision B). Items carry joined i18n trade/service labels + client name; GPS excluded (Loi 25). */
+        get: operations["ProviderServiceRequestsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/payment-methods": {
         parameters: {
             query?: never;
@@ -1634,6 +1651,54 @@ export interface components {
             uploadedByUserId: string;
             /** Format: date-time */
             createdAtUtc: string;
+        };
+        ProviderServiceRequestItemDto: {
+            id: string;
+            /** @enum {string} */
+            status: "DRAFT" | "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "PAID" | "EXPIRED" | "CANCELLED" | "REFUNDED";
+            /** @enum {string} */
+            requestType: "DIRECT_BOOKING" | "PROJECT_TENDER";
+            title: string;
+            description: string;
+            serviceAddress: string;
+            estimatedAmount?: Record<string, never>;
+            estimatedCurrency?: Record<string, never>;
+            finalAmount?: Record<string, never>;
+            finalCurrency?: Record<string, never>;
+            scheduledAtUtc?: Record<string, never>;
+            desiredStartAtUtc?: Record<string, never>;
+            desiredEndAtUtc?: Record<string, never>;
+            acceptedAtUtc?: Record<string, never>;
+            completedAtUtc?: Record<string, never>;
+            paidAtUtc?: Record<string, never>;
+            responseDeadlineUtc?: Record<string, never>;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            updatedAtUtc: string;
+            assignedServiceProviderId?: Record<string, never>;
+            requestedServiceProviderId?: Record<string, never>;
+            serviceCategoryId: string;
+            serviceItemId?: Record<string, never>;
+            /**
+             * @description Libellés i18n du métier
+             * @example {
+             *       "fr-CA": "Plomberie",
+             *       "en-CA": "Plumbing"
+             *     }
+             */
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            };
+            /** @description Libellés i18n du service (nullable pour un tender ouvert) */
+            serviceItemNameTranslations?: {
+                [key: string]: string;
+            };
+            /**
+             * @description Nom affichable du client
+             * @example Marie Tremblay
+             */
+            clientDisplayName: string;
         };
         CreatePaymentMethodDto: {
             /**
@@ -3717,6 +3782,45 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProviderServiceRequestsController_list: {
+        parameters: {
+            query?: {
+                status?: "DRAFT" | "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "PAID" | "EXPIRED" | "CANCELLED" | "REFUNDED";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderServiceRequestItemDto"][];
+                };
+            };
+            /** @description You do not own this provider. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service provider not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

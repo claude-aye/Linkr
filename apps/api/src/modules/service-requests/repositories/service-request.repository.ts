@@ -39,6 +39,45 @@ export interface ServiceRequestRecord {
   updatedAtUtc: Date;
 }
 
+/**
+ * Label-joined projection for the provider dashboard listing
+ * ({@link ServiceRequestRepository.findAssignedOrTargetedToProvider}). Carries
+ * the subset of request columns the `ProviderServiceRequestItemDto` exposes —
+ * deliberately NO geo (`service_location` is never selected) — plus the joined
+ * i18n trade / service names and the client's name parts.
+ */
+export interface ProviderServiceRequestRecord {
+  id: string;
+  status: ServiceRequestStatus;
+  requestType: ServiceRequestType;
+  title: string;
+  description: string;
+  serviceAddress: string;
+  estimatedAmount: string | null;
+  estimatedCurrency: string | null;
+  finalAmount: string | null;
+  finalCurrency: string | null;
+  scheduledAtUtc: Date | null;
+  desiredStartAtUtc: Date | null;
+  desiredEndAtUtc: Date | null;
+  acceptedAtUtc: Date | null;
+  completedAtUtc: Date | null;
+  paidAtUtc: Date | null;
+  responseDeadlineUtc: Date | null;
+  createdAtUtc: Date;
+  updatedAtUtc: Date;
+  assignedServiceProviderId: string | null;
+  requestedServiceProviderId: string | null;
+  serviceCategoryId: string;
+  serviceItemId: string | null;
+  // Joined labels
+  serviceCategoryNameTranslations: Record<string, string>;
+  serviceItemNameTranslations: Record<string, string> | null;
+  clientDisplayName: string | null;
+  clientFirstName: string | null;
+  clientLastName: string | null;
+}
+
 export interface CreateServiceRequestData {
   clientUserId: string;
   requestType: ServiceRequestType;
@@ -154,6 +193,98 @@ function mapRow(row: RawRow): ServiceRequestRecord {
   };
 }
 
+/**
+ * Columns for the provider-dashboard read, aliased on `sr` and joined to the
+ * catalog + client for the labels.
+ *
+ * CRITICAL (geo-safe): no geometry column is selected — neither
+ * `sr.service_location` nor `users.default_location` (the latter is NOT
+ * `select:false` on the User entity, so a relations-load would have read raw
+ * WKB). The Loi-25-excluded GPS therefore never leaves the DB on this path.
+ */
+const PROVIDER_SELECT_COLUMNS = `
+  sr.id, sr.status, sr.request_type,
+  sr.title, sr.description, sr.service_address,
+  sr.estimated_amount, sr.estimated_currency, sr.final_amount, sr.final_currency,
+  sr.scheduled_at_utc, sr.desired_start_at_utc, sr.desired_end_at_utc,
+  sr.accepted_at_utc, sr.completed_at_utc, sr.paid_at_utc, sr.response_deadline_utc,
+  sr.created_at_utc, sr.updated_at_utc,
+  sr.assigned_service_provider_id, sr.requested_service_provider_id,
+  sr.service_category_id, sr.service_item_id,
+  sc.name_translations AS service_category_name_translations,
+  si.name_translations AS service_item_name_translations,
+  cu.display_name AS client_display_name,
+  cu.first_name  AS client_first_name,
+  cu.last_name   AS client_last_name,
+  cu.deleted_at_utc AS client_deleted_at_utc
+`;
+
+interface ProviderRawRow {
+  id: string;
+  status: ServiceRequestStatus;
+  request_type: ServiceRequestType;
+  title: string;
+  description: string;
+  service_address: string;
+  estimated_amount: string | null;
+  estimated_currency: string | null;
+  final_amount: string | null;
+  final_currency: string | null;
+  scheduled_at_utc: Date | null;
+  desired_start_at_utc: Date | null;
+  desired_end_at_utc: Date | null;
+  accepted_at_utc: Date | null;
+  completed_at_utc: Date | null;
+  paid_at_utc: Date | null;
+  response_deadline_utc: Date | null;
+  created_at_utc: Date;
+  updated_at_utc: Date;
+  assigned_service_provider_id: string | null;
+  requested_service_provider_id: string | null;
+  service_category_id: string;
+  service_item_id: string | null;
+  service_category_name_translations: Record<string, string>;
+  service_item_name_translations: Record<string, string> | null;
+  client_display_name: string | null;
+  client_first_name: string | null;
+  client_last_name: string | null;
+  client_deleted_at_utc: Date | null;
+}
+
+function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
+  const clientDeleted = row.client_deleted_at_utc !== null;		
+  return {
+    id: row.id,
+    status: row.status,
+    requestType: row.request_type,
+    title: row.title,
+    description: row.description,
+    serviceAddress: row.service_address,
+    estimatedAmount: row.estimated_amount,
+    estimatedCurrency: row.estimated_currency,
+    finalAmount: row.final_amount,
+    finalCurrency: row.final_currency,
+    scheduledAtUtc: row.scheduled_at_utc,
+    desiredStartAtUtc: row.desired_start_at_utc,
+    desiredEndAtUtc: row.desired_end_at_utc,
+    acceptedAtUtc: row.accepted_at_utc,
+    completedAtUtc: row.completed_at_utc,
+    paidAtUtc: row.paid_at_utc,
+    responseDeadlineUtc: row.response_deadline_utc,
+    createdAtUtc: row.created_at_utc,
+    updatedAtUtc: row.updated_at_utc,
+    assignedServiceProviderId: row.assigned_service_provider_id,
+    requestedServiceProviderId: row.requested_service_provider_id,
+    serviceCategoryId: row.service_category_id,
+    serviceItemId: row.service_item_id,
+    serviceCategoryNameTranslations: row.service_category_name_translations,
+    serviceItemNameTranslations: row.service_item_name_translations,
+	clientDisplayName: clientDeleted ? null : row.client_display_name,
+    clientFirstName: clientDeleted ? null : row.client_first_name,
+    clientLastName: clientDeleted ? null : row.client_last_name,
+  };
+}
+
 @Injectable()
 export class ServiceRequestRepository {
   constructor(
@@ -231,6 +362,63 @@ export class ServiceRequestRepository {
 
     return {
       items: rows.map(mapRow),
+      total: parseInt(countRows[0].count, 10),
+    };
+  }
+
+  /**
+   * Provider-dashboard listing (Vision B): requests either ASSIGNED to the
+   * provider, OR DIRECT_BOOKINGs still OPEN and targeted at it (awaiting the
+   * provider's accept/decline). Joined to the trade / service / client for the
+   * labelled DTO. Dedicated path — `findAll` stays untouched.
+   *
+   * `$1` (providerId) is referenced twice in the Vision B predicate; an optional
+   * `status` narrows BOTH branches (e.g. status=ASSIGNED naturally drops the
+   * targeted-OPEN branch). Geo-safe via PROVIDER_SELECT_COLUMNS (no geometry).
+   */
+  async findAssignedOrTargetedToProvider(
+    providerId: string,
+    opts: {
+      status?: ServiceRequestStatus;
+      page: number;
+      limit: number;
+    },
+  ): Promise<{ items: ProviderServiceRequestRecord[]; total: number }> {
+    const conditions: string[] = [
+      'sr.deleted_at_utc IS NULL',
+      `(sr.assigned_service_provider_id = $1
+         OR (sr.requested_service_provider_id = $1 AND sr.status = 'OPEN'))`,
+    ];
+    const params: unknown[] = [providerId];
+    let i = 2;
+
+    if (opts.status) {
+      conditions.push(`sr.status = $${i++}`);
+      params.push(opts.status);
+    }
+
+    const where = conditions.join(' AND ');
+    const offset = (opts.page - 1) * opts.limit;
+
+    const countRows: Array<{ count: string }> = await this.repo.query(
+      `SELECT COUNT(*) AS count FROM service_requests sr WHERE ${where}`,
+      params,
+    );
+
+    const rows: ProviderRawRow[] = await this.repo.query(
+      `SELECT ${PROVIDER_SELECT_COLUMNS}
+         FROM service_requests sr
+         JOIN service_categories sc ON sc.id = sr.service_category_id
+         LEFT JOIN service_items si ON si.id = sr.service_item_id
+         JOIN users cu ON cu.id = sr.client_user_id
+        WHERE ${where}
+        ORDER BY sr.created_at_utc DESC
+        LIMIT $${i++} OFFSET $${i++}`,
+      [...params, opts.limit, offset],
+    );
+
+    return {
+      items: rows.map(mapProviderRow),
       total: parseInt(countRows[0].count, 10),
     };
   }

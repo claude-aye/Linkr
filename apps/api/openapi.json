@@ -2474,6 +2474,86 @@
         ]
       }
     },
+    "/service-providers/{id}/service-requests": {
+      "get": {
+        "operationId": "ProviderServiceRequestsController_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "OPEN",
+                "ASSIGNED",
+                "IN_PROGRESS",
+                "COMPLETED",
+                "PAID",
+                "EXPIRED",
+                "CANCELLED",
+                "REFUNDED"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderServiceRequestItemDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this provider."
+          },
+          "404": {
+            "description": "Service provider not found."
+          }
+        },
+        "summary": "Provider dashboard (owner only): list this provider's service requests — assigned jobs + DIRECT_BOOKINGs still OPEN and targeted at it (Vision B). Items carry joined i18n trade/service labels + client name; GPS excluded (Loi 25).",
+        "tags": [
+          "service-providers"
+        ]
+      }
+    },
     "/payment-methods": {
       "post": {
         "operationId": "PaymentMethodsController_create",
@@ -4034,6 +4114,133 @@
           "caption",
           "uploadedByUserId",
           "createdAtUtc"
+        ]
+      },
+      "ProviderServiceRequestItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "COMPLETED",
+              "PAID",
+              "EXPIRED",
+              "CANCELLED",
+              "REFUNDED"
+            ]
+          },
+          "requestType": {
+            "type": "string",
+            "enum": [
+              "DIRECT_BOOKING",
+              "PROJECT_TENDER"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "serviceAddress": {
+            "type": "string"
+          },
+          "estimatedAmount": {
+            "type": "object"
+          },
+          "estimatedCurrency": {
+            "type": "object"
+          },
+          "finalAmount": {
+            "type": "object"
+          },
+          "finalCurrency": {
+            "type": "object"
+          },
+          "scheduledAtUtc": {
+            "type": "object"
+          },
+          "desiredStartAtUtc": {
+            "type": "object"
+          },
+          "desiredEndAtUtc": {
+            "type": "object"
+          },
+          "acceptedAtUtc": {
+            "type": "object"
+          },
+          "completedAtUtc": {
+            "type": "object"
+          },
+          "paidAtUtc": {
+            "type": "object"
+          },
+          "responseDeadlineUtc": {
+            "type": "object"
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "assignedServiceProviderId": {
+            "type": "object"
+          },
+          "requestedServiceProviderId": {
+            "type": "object"
+          },
+          "serviceCategoryId": {
+            "type": "string"
+          },
+          "serviceItemId": {
+            "type": "object"
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "description": "Libellés i18n du métier",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "fr-CA": "Plomberie",
+              "en-CA": "Plumbing"
+            }
+          },
+          "serviceItemNameTranslations": {
+            "type": "object",
+            "description": "Libellés i18n du service (nullable pour un tender ouvert)",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "clientDisplayName": {
+            "type": "string",
+            "description": "Nom affichable du client",
+            "example": "Marie Tremblay"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "requestType",
+          "title",
+          "description",
+          "serviceAddress",
+          "createdAtUtc",
+          "updatedAtUtc",
+          "serviceCategoryId",
+          "serviceCategoryNameTranslations",
+          "clientDisplayName"
         ]
       },
       "CreatePaymentMethodDto": {

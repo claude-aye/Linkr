@@ -16,6 +16,7 @@ import { ServiceRequestAttachmentsService } from './service-request-attachments.
 import { ServiceRequestsController } from './service-requests.controller';
 import { ServiceRequestAttachmentsController } from './service-request-attachments.controller';
 import { AdminServiceRequestsController } from './admin-service-requests.controller';
+import { ProviderServiceRequestsController } from './provider-service-requests.controller';
 import { ServiceRequestsCron } from './service-requests.cron';
 
 @Module({
@@ -35,6 +36,10 @@ import { ServiceRequestsCron } from './service-requests.cron';
     ServiceRequestsController,
     ServiceRequestAttachmentsController,
     AdminServiceRequestsController,
+    // GET /service-providers/:id/service-requests — lives here (not in the
+    // providers module) to keep the SP↔SR dependency one-way (see the
+    // controller's header note). Ownership via the imported ServiceProvidersService.
+    ProviderServiceRequestsController,
   ],
   providers: [
     ServiceRequestRepository,
