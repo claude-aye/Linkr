@@ -215,7 +215,8 @@ const PROVIDER_SELECT_COLUMNS = `
   si.name_translations AS service_item_name_translations,
   cu.display_name AS client_display_name,
   cu.first_name  AS client_first_name,
-  cu.last_name   AS client_last_name
+  cu.last_name   AS client_last_name,
+  cu.deleted_at_utc AS client_deleted_at_utc
 `;
 
 interface ProviderRawRow {
@@ -247,9 +248,11 @@ interface ProviderRawRow {
   client_display_name: string | null;
   client_first_name: string | null;
   client_last_name: string | null;
+  client_deleted_at_utc: Date | null;
 }
 
 function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
+  const clientDeleted = row.client_deleted_at_utc !== null;		
   return {
     id: row.id,
     status: row.status,
@@ -276,9 +279,9 @@ function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
     serviceItemId: row.service_item_id,
     serviceCategoryNameTranslations: row.service_category_name_translations,
     serviceItemNameTranslations: row.service_item_name_translations,
-    clientDisplayName: row.client_display_name,
-    clientFirstName: row.client_first_name,
-    clientLastName: row.client_last_name,
+	clientDisplayName: clientDeleted ? null : row.client_display_name,
+    clientFirstName: clientDeleted ? null : row.client_first_name,
+    clientLastName: clientDeleted ? null : row.client_last_name,
   };
 }
 
