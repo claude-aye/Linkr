@@ -117,6 +117,22 @@ export class ServiceProvidersService {
   }
 
   /**
+   * Resolve the caller's own provider identity from their JWT `sub` — the
+   * `GET /service-providers/me` backing. Same contract as getPublicById (same
+   * DTO/mapper, same 404 path), but keyed on user_id instead of an :id, so it
+   * is owner-safe by construction (no cross-user leak possible).
+   *
+   * Includes paused providers: findByUserId does NOT filter on is_active, so a
+   * Pro on vacation (is_active = false) still resolves — opposite semantics to
+   * discovery. 404 if the user never activated Pro mode.
+   */
+  async getMine(currentUserId: string): Promise<ServiceProviderResponseDto> {
+    const record = await this.providerRepo.findByUserId(currentUserId);
+    if (!record) throw new NotFoundException('Service provider not found');
+    return this.toResponse(record);
+  }
+
+  /**
    * Hybrid geo discovery: active providers covering the client point for a
    * given category (radius OR named zone), sorted by distance. Same pagination
    * envelope as GET /service-requests.

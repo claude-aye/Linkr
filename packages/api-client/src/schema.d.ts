@@ -518,6 +518,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-providers/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve the authenticated user's own provider (Pro dashboard identity). Same contract as GET :id; returns even when is_active = false (paused). 404 if the user never activated Pro mode. */
+        get: operations["ServiceProvidersController_getMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/service-providers/{id}": {
         parameters: {
             query?: never;
@@ -1411,6 +1428,35 @@ export interface components {
              * @enum {string}
              */
             categoryVerificationStatus: "PENDING" | "VERIFIED" | "REJECTED" | "NOT_REQUIRED";
+        };
+        ServiceProviderResponseDto: {
+            id: string;
+            /** @enum {string} */
+            providerType: "INDIVIDUAL" | "ORGANIZATION";
+            userId: Record<string, never> | null;
+            organizationId: Record<string, never> | null;
+            /** @description Resolved business name (falls back to organization.display_name for ORGANIZATION providers). */
+            businessName: Record<string, never> | null;
+            headline: Record<string, never> | null;
+            bio: Record<string, never> | null;
+            /**
+             * @description GeoJSON Point — coordinates are [longitude, latitude].
+             * @example {
+             *       "type": "Point",
+             *       "coordinates": [
+             *         -71.52,
+             *         46.85
+             *       ]
+             *     }
+             */
+            serviceBaseLocation: Record<string, never>;
+            serviceRadiusKm: number;
+            isActive: boolean;
+            activatedAtUtc: Record<string, never> | null;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            updatedAtUtc: string;
         };
         UpdateServiceProviderDto: {
             businessName?: string;
@@ -2720,6 +2766,32 @@ export interface operations {
             };
             /** @description Missing or invalid lat/lng/categoryId. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ServiceProvidersController_getMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceProviderResponseDto"];
+                };
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

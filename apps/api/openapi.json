@@ -1121,6 +1121,31 @@
         ]
       }
     },
+    "/service-providers/me": {
+      "get": {
+        "operationId": "ServiceProvidersController_getMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceProviderResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          }
+        },
+        "summary": "Resolve the authenticated user's own provider (Pro dashboard identity). Same contract as GET :id; returns even when is_active = false (paused). 404 if the user never activated Pro mode.",
+        "tags": [
+          "service-providers"
+        ]
+      }
+    },
     "/service-providers/{id}": {
       "get": {
         "operationId": "ServiceProvidersController_getOne",
@@ -3537,6 +3562,86 @@
           "serviceRadiusKm",
           "distanceMeters",
           "categoryVerificationStatus"
+        ]
+      },
+      "ServiceProviderResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "providerType": {
+            "type": "string",
+            "enum": [
+              "INDIVIDUAL",
+              "ORGANIZATION"
+            ]
+          },
+          "userId": {
+            "type": "object",
+            "nullable": true
+          },
+          "organizationId": {
+            "type": "object",
+            "nullable": true
+          },
+          "businessName": {
+            "type": "object",
+            "description": "Resolved business name (falls back to organization.display_name for ORGANIZATION providers).",
+            "nullable": true
+          },
+          "headline": {
+            "type": "object",
+            "nullable": true
+          },
+          "bio": {
+            "type": "object",
+            "nullable": true
+          },
+          "serviceBaseLocation": {
+            "type": "object",
+            "description": "GeoJSON Point — coordinates are [longitude, latitude].",
+            "example": {
+              "type": "Point",
+              "coordinates": [
+                -71.52,
+                46.85
+              ]
+            }
+          },
+          "serviceRadiusKm": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "activatedAtUtc": {
+            "type": "object",
+            "nullable": true
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "providerType",
+          "userId",
+          "organizationId",
+          "businessName",
+          "headline",
+          "bio",
+          "serviceBaseLocation",
+          "serviceRadiusKm",
+          "isActive",
+          "activatedAtUtc",
+          "createdAtUtc",
+          "updatedAtUtc"
         ]
       },
       "UpdateServiceProviderDto": {

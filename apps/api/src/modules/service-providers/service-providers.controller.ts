@@ -61,6 +61,21 @@ export class ServiceProvidersController {
     return this.providersService.discover(query);
   }
 
+  // ⚠️ Must be declared BEFORE @Get(':id'), otherwise 'me' is captured as an
+  // :id and ParseUUIDPipe rejects it (400). Authenticated (no @Public()) — same
+  // global JwtAuthGuard as the other owner routes; the provider is derived from
+  // the caller's own JWT sub, so it is owner-safe with no :id to check.
+  @Get('me')
+  @ApiOperation({
+    summary:
+      "Resolve the authenticated user's own provider (Pro dashboard identity). Same contract as GET :id; returns even when is_active = false (paused). 404 if the user never activated Pro mode.",
+  })
+  @ApiResponse({ status: 200, type: ServiceProviderResponseDto })
+  @ApiResponse({ status: 404, description: 'The authenticated user has no provider.' })
+  getMine(@CurrentUser() user: JwtPayload): Promise<ServiceProviderResponseDto> {
+    return this.providersService.getMine(user.sub);
+  }
+
   @Public()
   @Get(':id')
   @ApiOperation({
