@@ -3631,9 +3631,15 @@
         "required": [
           "id",
           "providerType",
+          "userId",
+          "organizationId",
+          "businessName",
+          "headline",
+          "bio",
           "serviceBaseLocation",
           "serviceRadiusKm",
           "isActive",
+          "activatedAtUtc",
           "createdAtUtc",
           "updatedAtUtc"
         ]

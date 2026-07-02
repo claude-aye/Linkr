@@ -1433,12 +1433,12 @@ export interface components {
             id: string;
             /** @enum {string} */
             providerType: "INDIVIDUAL" | "ORGANIZATION";
-            userId?: Record<string, never> | null;
-            organizationId?: Record<string, never> | null;
+            userId: Record<string, never> | null;
+            organizationId: Record<string, never> | null;
             /** @description Resolved business name (falls back to organization.display_name for ORGANIZATION providers). */
-            businessName?: Record<string, never> | null;
-            headline?: Record<string, never> | null;
-            bio?: Record<string, never> | null;
+            businessName: Record<string, never> | null;
+            headline: Record<string, never> | null;
+            bio: Record<string, never> | null;
             /**
              * @description GeoJSON Point — coordinates are [longitude, latitude].
              * @example {
@@ -1452,7 +1452,7 @@ export interface components {
             serviceBaseLocation: Record<string, never>;
             serviceRadiusKm: number;
             isActive: boolean;
-            activatedAtUtc?: Record<string, never> | null;
+            activatedAtUtc: Record<string, never> | null;
             /** Format: date-time */
             createdAtUtc: string;
             /** Format: date-time */
