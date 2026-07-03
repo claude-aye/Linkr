@@ -2558,10 +2558,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProviderServiceRequestItemDto"
-                  }
+                  "$ref": "#/components/schemas/ProviderServiceRequestListDto"
                 }
               }
             }
@@ -4346,6 +4343,35 @@
           "serviceCategoryId",
           "serviceCategoryNameTranslations",
           "clientDisplayName"
+        ]
+      },
+      "ProviderServiceRequestListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderServiceRequestItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Total matching rows (before pagination)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Current page (1-based)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Page size"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
         ]
       },
       "CreatePaymentMethodDto": {

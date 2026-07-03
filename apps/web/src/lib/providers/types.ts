@@ -3,25 +3,24 @@ import type { components } from '@linkr/api-client';
 /**
  * Provider-dashboard types (Phase 3.12-front).
  *
- * Two generated-type gaps force local mirrors here (the same justified
+ * One generated-type gap forces local mirrors here (the same justified
  * exception as `lib/auth/types.ts` and `lib/verifications/types.ts`):
  *
- * 1. `ServiceProviderResponseDto` / `ProviderServiceRequestItemDto` degrade
- *    their nullable fields to `Record<string, never> | null` in `schema.d.ts`
- *    (backend `@ApiProperty({ nullable: true })` without a concrete type —
- *    known JSONB/nullable quirk, cf. CLAUDE.md §6 tech debt). The interfaces
- *    below mirror the real backend DTOs with faithful `string | null` types.
+ * `ServiceProviderResponseDto` / `ProviderServiceRequestItemDto` degrade
+ * their nullable fields to `Record<string, never> | null` in `schema.d.ts`
+ * (backend `@ApiProperty({ nullable: true })` without a concrete type —
+ * known JSONB/nullable quirk, cf. CLAUDE.md §6 tech debt). The interfaces
+ * below mirror the real backend DTOs with faithful `string | null` types.
  *
- * 2. `GET /service-providers/{id}/service-requests` is DECLARED as a bare
- *    `ProviderServiceRequestItemDto[]` in the OpenAPI (`isArray: true`
- *    annotation), but the controller actually returns the pagination envelope
- *    `{ items, total, page, limit }` at runtime. `ProviderServiceRequestList`
- *    types the real payload; the caller casts through it.
+ * NB: the pagination envelope of
+ * `GET /service-providers/{id}/service-requests` is now typed natively by the
+ * generated `ProviderServiceRequestListDto` (contract fixed — the endpoint no
+ * longer lies with `isArray`), so no local envelope mirror is needed; only the
+ * item shape is still mirrored for the nullable quirk above.
  *
  * Source of truth:
  * apps/api/src/modules/service-providers/dto/service-provider-response.dto.ts
  * apps/api/src/modules/service-requests/dto/provider-service-request-item.dto.ts
- * apps/api/src/modules/service-requests/provider-service-requests.controller.ts
  */
 
 /** Status/type unions — derived from the generated schema, NOT hand-mirrored. */
@@ -93,12 +92,4 @@ export interface ProviderServiceRequestItem {
   serviceItemNameTranslations: Record<string, string> | null;
   /** Backend already defaults to `—` when the client has no usable name. */
   clientDisplayName: string;
-}
-
-/** Real runtime payload of `GET /service-providers/{id}/service-requests`. */
-export interface ProviderServiceRequestList {
-  items: ProviderServiceRequestItem[];
-  total: number;
-  page: number;
-  limit: number;
 }

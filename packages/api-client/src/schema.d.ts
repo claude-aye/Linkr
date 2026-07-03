@@ -1746,6 +1746,15 @@ export interface components {
              */
             clientDisplayName: string;
         };
+        ProviderServiceRequestListDto: {
+            items: components["schemas"]["ProviderServiceRequestItemDto"][];
+            /** @description Total matching rows (before pagination) */
+            total: number;
+            /** @description Current page (1-based) */
+            page: number;
+            /** @description Page size */
+            limit: number;
+        };
         CreatePaymentMethodDto: {
             /**
              * @description Stripe PaymentMethod id (pm_...) created client-side (e.g. via Stripe Elements, or a test token like pm_card_visa).
@@ -3881,7 +3890,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProviderServiceRequestItemDto"][];
+                    "application/json": components["schemas"]["ProviderServiceRequestListDto"];
                 };
             };
             /** @description You do not own this provider. */

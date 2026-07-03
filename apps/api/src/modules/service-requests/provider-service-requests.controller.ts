@@ -4,7 +4,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ServiceProvidersService } from '../service-providers/service-providers.service';
 import { ListProviderServiceRequestsDto } from './dto/list-provider-service-requests.dto';
-import { ProviderServiceRequestItemDto } from './dto/provider-service-request-item.dto';
+import { ProviderServiceRequestListDto } from './dto/provider-service-request-list.dto';
 import { ServiceRequestsService } from './service-requests.service';
 
 /**
@@ -39,19 +39,14 @@ export class ProviderServiceRequestsController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'page', type: Number, required: false })
   @ApiQuery({ name: 'limit', type: Number, required: false })
-  @ApiResponse({ status: 200, type: ProviderServiceRequestItemDto, isArray: true })
+  @ApiResponse({ status: 200, type: ProviderServiceRequestListDto })
   @ApiResponse({ status: 403, description: 'You do not own this provider.' })
   @ApiResponse({ status: 404, description: 'Service provider not found.' })
   async list(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ListProviderServiceRequestsDto,
-  ): Promise<{
-    items: ProviderServiceRequestItemDto[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
+  ): Promise<ProviderServiceRequestListDto> {
     // Ownership stays on the providers side (404 if missing, 403 if not owned),
     // THEN delegate the listing to the service-requests domain (its data).
     await this.providersService.loadOwnedProvider(user.sub, id);

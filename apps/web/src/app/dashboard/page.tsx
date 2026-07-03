@@ -6,7 +6,6 @@ import { pickTranslation } from '@/lib/i18n/translations';
 import type {
   ProviderProfile,
   ProviderServiceRequestItem,
-  ProviderServiceRequestList,
   ServiceRequestStatus,
 } from '@/lib/providers/types';
 
@@ -302,15 +301,18 @@ export default async function DashboardPage() {
         '/service-providers/{id}/service-requests',
         { params: { path: { id: provider.id }, query: { limit: 100 } } },
       );
-      // The OpenAPI declares a bare array here, but the runtime response is
-      // the pagination envelope — cast through the local mirror.
-      const list = (data as unknown as ProviderServiceRequestList | undefined) ?? null;
-      if (error || !response.ok || !list || !Array.isArray(list.items)) {
+      // The pagination envelope (`items`/`total`/`page`/`limit`) is now typed
+      // natively by the generated schema — no envelope cast. Only the items'
+      // nullable fields still degrade to `Record<string, never>` upstream
+      // (separate JSONB/nullable debt, cf. lib/providers/types.ts), so cast the
+      // items array alone through the faithful item mirror.
+      if (error || !response.ok || !data || !Array.isArray(data.items)) {
         failed = true;
       } else {
+        const items = data.items as unknown as ProviderServiceRequestItem[];
         // Server-side split: OPEN = awaiting my answer (inbox), rest = my jobs.
-        pending = list.items.filter((item) => item.status === 'OPEN');
-        jobs = list.items.filter((item) => item.status !== 'OPEN');
+        pending = items.filter((item) => item.status === 'OPEN');
+        jobs = items.filter((item) => item.status !== 'OPEN');
       }
     } catch {
       failed = true;
