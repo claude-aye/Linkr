@@ -1248,8 +1248,12 @@ export interface components {
              *       "fr-CA": "Installation de thermostat"
              *     }
              */
-            nameTranslations: Record<string, never>;
-            descriptionTranslations?: Record<string, never>;
+            nameTranslations: {
+                [key: string]: string;
+            };
+            descriptionTranslations?: {
+                [key: string]: string;
+            };
             typicalDurationMinutes?: number;
             suggestedPriceRange?: components["schemas"]["PriceRangeDto"];
         };
@@ -1262,13 +1266,17 @@ export interface components {
              *       "en-CA": "Plumbing"
              *     }
              */
-            nameTranslations: Record<string, never>;
+            nameTranslations: {
+                [key: string]: string;
+            };
             /**
              * @example {
              *       "fr-CA": "Services de plomberie résidentielle"
              *     }
              */
-            descriptionTranslations?: Record<string, never>;
+            descriptionTranslations?: {
+                [key: string]: string;
+            };
             iconUrl?: string;
             /** @enum {string} */
             regulationLevel: "REGULATED" | "INFORMAL";
@@ -1286,13 +1294,17 @@ export interface components {
              *       "en-CA": "Plumbing"
              *     }
              */
-            nameTranslations?: Record<string, never>;
+            nameTranslations?: {
+                [key: string]: string;
+            };
             /**
              * @example {
              *       "fr-CA": "Services de plomberie résidentielle"
              *     }
              */
-            descriptionTranslations?: Record<string, never>;
+            descriptionTranslations?: {
+                [key: string]: string;
+            };
             iconUrl?: string;
             /** @enum {string} */
             regulationLevel?: "REGULATED" | "INFORMAL";
@@ -1311,8 +1323,12 @@ export interface components {
              *       "en-CA": "Unclog a sink"
              *     }
              */
-            nameTranslations: Record<string, never>;
-            descriptionTranslations?: Record<string, never>;
+            nameTranslations: {
+                [key: string]: string;
+            };
+            descriptionTranslations?: {
+                [key: string]: string;
+            };
             typicalDurationMinutes?: number;
             suggestedPriceRange?: components["schemas"]["PriceRangeDto"];
             /** @enum {string} */
@@ -1331,8 +1347,12 @@ export interface components {
              *       "en-CA": "Unclog a sink"
              *     }
              */
-            nameTranslations?: Record<string, never>;
-            descriptionTranslations?: Record<string, never>;
+            nameTranslations?: {
+                [key: string]: string;
+            };
+            descriptionTranslations?: {
+                [key: string]: string;
+            };
             typicalDurationMinutes?: number;
             suggestedPriceRange?: components["schemas"]["PriceRangeDto"];
             /** @default true */
@@ -1361,7 +1381,9 @@ export interface components {
              *       "en-CA": "Quebec Building Authority"
              *     }
              */
-            authorityFullNameTranslations: Record<string, never>;
+            authorityFullNameTranslations: {
+                [key: string]: string;
+            };
             validationEndpointUrl?: string;
             /** @enum {string} */
             requiredDocumentType: "LICENSE_NUMBER" | "COMPETENCY_CARD" | "CERTIFICATION";
@@ -1377,7 +1399,9 @@ export interface components {
              *       "en-CA": "Quebec Building Authority"
              *     }
              */
-            authorityFullNameTranslations?: Record<string, never>;
+            authorityFullNameTranslations?: {
+                [key: string]: string;
+            };
             validationEndpointUrl?: string;
             /** @enum {string} */
             requiredDocumentType?: "LICENSE_NUMBER" | "COMPETENCY_CARD" | "CERTIFICATION";
@@ -1585,7 +1609,9 @@ export interface components {
              *       "en-CA": "Plumbing"
              *     }
              */
-            serviceCategoryNameTranslations: Record<string, never>;
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            };
             /**
              * @description Code de l'autorité réglementaire
              * @example RBQ

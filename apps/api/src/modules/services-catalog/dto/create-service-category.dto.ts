@@ -22,11 +22,17 @@ export class CreateServiceCategoryDto {
   @Matches(SLUG_RE, { message: 'slug must be lowercase alphanumeric with hyphens' })
   slug!: string;
 
-  @ApiProperty({ example: { 'fr-CA': 'Plomberie', 'en-CA': 'Plumbing' } })
+  @ApiProperty({
+    example: { 'fr-CA': 'Plomberie', 'en-CA': 'Plumbing' },
+    additionalProperties: { type: 'string' }, // types the JSONB map (codegen → Record<string, string>)
+  })
   @IsTranslationMap()
   nameTranslations!: Record<string, string>;
 
-  @ApiPropertyOptional({ example: { 'fr-CA': 'Services de plomberie résidentielle' } })
+  @ApiPropertyOptional({
+    example: { 'fr-CA': 'Services de plomberie résidentielle' },
+    additionalProperties: { type: 'string' }, // idem
+  })
   @IsOptional()
   @IsTranslationMap()
   descriptionTranslations?: Record<string, string>;
