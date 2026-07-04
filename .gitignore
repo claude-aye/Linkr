@@ -48,3 +48,5 @@ Thumbs.db
 # Local file storage (LocalDiskStorageAdapter) — uploaded objects only
 /storage/
 /apps/api/storage/
+docker/data/
+body.json
