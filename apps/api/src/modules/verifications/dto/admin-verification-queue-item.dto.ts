@@ -36,6 +36,7 @@ export class AdminVerificationQueueItemDto extends VerificationDocumentResponseD
   @ApiProperty({
     description: 'Libellés i18n du métier (service_categories.name_translations)',
     example: { 'fr-CA': 'Plomberie', 'en-CA': 'Plumbing' },
+    additionalProperties: { type: 'string' }, // types the JSONB map (codegen → Record<string, string>)
   })
   serviceCategoryNameTranslations!: Record<string, string>;
 

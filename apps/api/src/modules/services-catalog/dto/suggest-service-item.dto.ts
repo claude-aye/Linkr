@@ -28,11 +28,14 @@ export class SuggestServiceItemDto {
   @Matches(SLUG_RE, { message: 'slug must be lowercase alphanumeric with hyphens' })
   slug!: string;
 
-  @ApiProperty({ example: { 'fr-CA': 'Installation de thermostat' } })
+  @ApiProperty({
+    example: { 'fr-CA': 'Installation de thermostat' },
+    additionalProperties: { type: 'string' }, // types the JSONB map (codegen → Record<string, string>)
+  })
   @IsTranslationMap()
   nameTranslations!: Record<string, string>;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ additionalProperties: { type: 'string' } })
   @IsOptional()
   @IsTranslationMap()
   descriptionTranslations?: Record<string, string>;

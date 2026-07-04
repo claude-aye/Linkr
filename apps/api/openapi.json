@@ -3171,10 +3171,16 @@
             "type": "object",
             "example": {
               "fr-CA": "Installation de thermostat"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "descriptionTranslations": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "typicalDurationMinutes": {
             "type": "number"
@@ -3201,12 +3207,18 @@
             "example": {
               "fr-CA": "Plomberie",
               "en-CA": "Plumbing"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "descriptionTranslations": {
             "type": "object",
             "example": {
               "fr-CA": "Services de plomberie résidentielle"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "iconUrl": {
@@ -3246,12 +3258,18 @@
             "example": {
               "fr-CA": "Plomberie",
               "en-CA": "Plumbing"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "descriptionTranslations": {
             "type": "object",
             "example": {
               "fr-CA": "Services de plomberie résidentielle"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "iconUrl": {
@@ -3289,10 +3307,16 @@
             "example": {
               "fr-CA": "Déboucher un évier",
               "en-CA": "Unclog a sink"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "descriptionTranslations": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "typicalDurationMinutes": {
             "type": "number"
@@ -3335,10 +3359,16 @@
             "example": {
               "fr-CA": "Déboucher un évier",
               "en-CA": "Unclog a sink"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "descriptionTranslations": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "typicalDurationMinutes": {
             "type": "number"
@@ -3392,6 +3422,9 @@
             "example": {
               "fr-CA": "Régie du bâtiment du Québec",
               "en-CA": "Quebec Building Authority"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "validationEndpointUrl": {
@@ -3435,6 +3468,9 @@
             "example": {
               "fr-CA": "Régie du bâtiment du Québec",
               "en-CA": "Quebec Building Authority"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "validationEndpointUrl": {
@@ -3900,6 +3936,9 @@
             "example": {
               "fr-CA": "Plomberie",
               "en-CA": "Plumbing"
+            },
+            "additionalProperties": {
+              "type": "string"
             }
           },
           "authorityCode": {

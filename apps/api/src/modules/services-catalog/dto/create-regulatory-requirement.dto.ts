@@ -33,7 +33,10 @@ export class CreateRegulatoryRequirementDto {
   @Length(1, 40)
   authorityCode!: string;
 
-  @ApiProperty({ example: { 'fr-CA': 'Régie du bâtiment du Québec', 'en-CA': 'Quebec Building Authority' } })
+  @ApiProperty({
+    example: { 'fr-CA': 'Régie du bâtiment du Québec', 'en-CA': 'Quebec Building Authority' },
+    additionalProperties: { type: 'string' }, // types the JSONB map (codegen → Record<string, string>)
+  })
   @IsTranslationMap()
   authorityFullNameTranslations!: Record<string, string>;
 
