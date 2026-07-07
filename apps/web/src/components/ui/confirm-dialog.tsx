@@ -12,6 +12,13 @@ export interface ConfirmDialogProps {
   /** Label of the confirmation button. */
   confirmLabel: string;
   /**
+   * When true, the confirm button is disabled (the action is impossible for the
+   * current input — e.g. a booking with no estimated amount). Cancel stays
+   * available. Defaults to `false`, i.e. the exact prior behavior — strictly
+   * backward-compatible for existing callers.
+   */
+  confirmDisabled?: boolean;
+  /**
    * Runs on confirm. RESOLVES on success (the dialog closes) or REJECTS with an
    * `Error` whose message is already in French — shown verbatim, never mapped.
    */
@@ -34,6 +41,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  confirmDisabled = false,
   onConfirm,
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -145,7 +153,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
             aria-busy={pending}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
