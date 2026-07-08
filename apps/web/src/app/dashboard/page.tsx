@@ -9,6 +9,9 @@ import type {
   ServiceRequestStatus,
 } from '@/lib/providers/types';
 
+import { AcceptRequestAction } from './_actions/accept-request-action';
+import { DeclineRequestAction } from './_actions/decline-request-action';
+import { JobPipelineAction } from './_actions/job-pipeline-action';
 import { LogoutButton } from './logout-button';
 
 // Reads the access cookie + live provider data — always rendered per request.
@@ -205,6 +208,20 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
         </Detail>
       </dl>
 
+      {/* Decide (accept/decline) — primary then secondary, grouped and kept
+          distinct from the tertiary « consult » link below. */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <AcceptRequestAction
+          requestId={item.id}
+          title={item.title}
+          clientDisplayName={item.clientDisplayName}
+          serviceAddress={item.serviceAddress}
+          estimatedAmount={item.estimatedAmount}
+          estimatedCurrency={item.estimatedCurrency}
+        />
+        <DeclineRequestAction requestId={item.id} />
+      </div>
+
       <DetailLink requestId={item.id} />
     </li>
   );
@@ -250,6 +267,12 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
           {item.serviceAddress}
         </Detail>
       </dl>
+
+      {/* Self-nulling: renders Démarrer (ASSIGNED) / Compléter (IN_PROGRESS) /
+          nothing otherwise — the card does no status branching itself. */}
+      <div className="mt-4">
+        <JobPipelineAction requestId={item.id} status={item.status} />
+      </div>
 
       <DetailLink requestId={item.id} />
     </li>
