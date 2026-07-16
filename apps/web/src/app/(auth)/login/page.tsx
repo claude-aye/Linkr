@@ -26,8 +26,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Cookies are now set (httpOnly); navigate to the protected dashboard.
-      router.push('/dashboard');
+      // Cookies are now set (httpOnly); land on the authenticated client hub.
+      router.push('/');
       router.refresh();
     } catch {
       setError('Connexion impossible. Réessaie plus tard.');
