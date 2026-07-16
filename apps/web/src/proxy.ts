@@ -33,7 +33,8 @@ import { refreshTokens } from '@/lib/auth/refresh';
  */
 
 // Deny-by-default: every route is protected EXCEPT the ones listed here.
-const PUBLIC_PAGES = ['/', '/login'];
+// `/` is now the authenticated client hub (3.13-PR2) — no longer public.
+const PUBLIC_PAGES = ['/login'];
 const PUBLIC_API_PREFIX = '/api/auth';
 
 export async function proxy(request: NextRequest) {

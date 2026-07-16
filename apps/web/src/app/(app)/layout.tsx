@@ -1,17 +1,35 @@
+import { getShellCapabilities } from '@/lib/nav/capabilities';
+
+import { Nav } from './nav';
+
 /**
- * `(app)` route-group layout — neutral pass-through (Phase 3.13-PR1).
+ * `(app)` route-group layout — the shared authenticated shell (Phase 3.13-PR2).
  *
- * A route group `(app)` adds NO URL segment and, here, NO markup. Only the root
- * layout (`app/layout.tsx`) owns `<html>`/`<body>` and the global stylesheet; a
- * nested layout that re-declared them would emit a second document. This group is
- * the shared authenticated shell (provider dashboard + admin today, the future
- * role-conditional nav). For this restructure it stays a strict pass-through —
- * the shared chrome is wired in a later 3.13 PR — so behaviour is unchanged.
+ * A route group `(app)` adds NO URL segment. The root layout (`app/layout.tsx`)
+ * still owns `<html>`/`<body>` + the global stylesheet; this nested layout adds
+ * ONLY the shared chrome, never a second document. It is an async Server
+ * Component (no `'use client'`) that resolves `getShellCapabilities()` ONCE per
+ * request and renders the role-conditional `<Nav>` above the page.
+ *
+ * If there is no user (theoretical — `proxy.ts` redirects unauthenticated
+ * requests before we get here), render `children` WITHOUT the nav rather than
+ * crash: the page's own session gate then handles the redirect.
  */
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return children;
+  const { user, isProvider } = await getShellCapabilities();
+
+  if (!user) {
+    return children;
+  }
+
+  return (
+    <>
+      <Nav isProvider={isProvider} />
+      {children}
+    </>
+  );
 }
