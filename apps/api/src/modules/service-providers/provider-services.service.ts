@@ -26,6 +26,7 @@ import { ProviderCategoryResponseDto } from './dto/provider-category-response.dt
 import { CreateProfessionalServiceDto } from './dto/create-professional-service.dto';
 import { UpdateProfessionalServiceDto } from './dto/update-professional-service.dto';
 import { ProfessionalServiceResponseDto } from './dto/professional-service-response.dto';
+import { ProviderServiceCatalogItemDto } from './dto/provider-service-catalog-item.dto';
 import {
   ProviderCategoryConflictException,
   ProviderServiceConflictException,
@@ -161,9 +162,11 @@ export class ProviderServicesService {
     return ProfessionalServiceResponseDto.from(ps);
   }
 
-  async listPublicServices(providerId: string): Promise<ProfessionalServiceResponseDto[]> {
-    const records = await this.psRepo.findPublicByProviderId(providerId);
-    return records.map((r) => ProfessionalServiceResponseDto.from(r));
+  async listPublicServices(
+    providerId: string,
+  ): Promise<ProviderServiceCatalogItemDto[]> {
+    const records = await this.psRepo.findPublicCatalogByProviderId(providerId);
+    return records.map((r) => ProviderServiceCatalogItemDto.fromWithLabels(r));
   }
 
   async listOwnerServices(

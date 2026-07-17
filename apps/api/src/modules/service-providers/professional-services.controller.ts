@@ -10,13 +10,14 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateProfessionalServiceDto } from './dto/create-professional-service.dto';
 import { UpdateProfessionalServiceDto } from './dto/update-professional-service.dto';
 import { ProfessionalServiceResponseDto } from './dto/professional-service-response.dto';
+import { ProviderServiceCatalogItemDto } from './dto/provider-service-catalog-item.dto';
 import { ProviderServicesService } from './provider-services.service';
 
 /**
@@ -61,9 +62,10 @@ export class ProviderServicesController {
       'List bookable services for a provider (public). ' +
       'Only returns services where category is VERIFIED/NOT_REQUIRED and everything is active.',
   })
+  @ApiOkResponse({ type: ProviderServiceCatalogItemDto, isArray: true })
   listPublicServices(
     @Param('providerId', ParseUUIDPipe) providerId: string,
-  ): Promise<ProfessionalServiceResponseDto[]> {
+  ): Promise<ProviderServiceCatalogItemDto[]> {
     return this.providerServicesService.listPublicServices(providerId);
   }
 

@@ -1537,7 +1537,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderServiceCatalogItemDto"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "List bookable services for a provider (public). Only returns services where category is VERIFIED/NOT_REQUIRED and everything is active.",
@@ -3827,6 +3837,74 @@
         "required": [
           "serviceItemId",
           "pricingModel"
+        ]
+      },
+      "ProviderServiceCatalogItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "serviceItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceCategoryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Catalog trade id (service_categories.id) — REQUIRED by POST /service-requests. NOT the professional_service_categories junction id."
+          },
+          "serviceItemNameTranslations": {
+            "type": "object",
+            "description": "Libellés i18n du service",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "fr-CA": "Déboucher un évier",
+              "en-CA": "Unclog a sink"
+            }
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "description": "Libellés i18n du métier",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "fr-CA": "Plomberie",
+              "en-CA": "Plumbing"
+            }
+          },
+          "pricingModel": {
+            "type": "string",
+            "enum": [
+              "FLAT",
+              "HOURLY",
+              "QUOTE_ONLY"
+            ]
+          },
+          "priceAmount": {
+            "type": "object"
+          },
+          "priceCurrency": {
+            "type": "string"
+          },
+          "estimatedDurationMinutes": {
+            "type": "object"
+          },
+          "descriptionOverride": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "serviceItemId",
+          "serviceCategoryId",
+          "serviceItemNameTranslations",
+          "serviceCategoryNameTranslations",
+          "pricingModel",
+          "priceCurrency"
         ]
       },
       "UpdateProfessionalServiceDto": {

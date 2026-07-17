@@ -1566,6 +1566,42 @@ export interface components {
             estimatedDurationMinutes?: number;
             descriptionOverride?: string;
         };
+        ProviderServiceCatalogItemDto: {
+            id: string;
+            /** Format: uuid */
+            serviceItemId: string;
+            /**
+             * Format: uuid
+             * @description Catalog trade id (service_categories.id) — REQUIRED by POST /service-requests. NOT the professional_service_categories junction id.
+             */
+            serviceCategoryId: string;
+            /**
+             * @description Libellés i18n du service
+             * @example {
+             *       "fr-CA": "Déboucher un évier",
+             *       "en-CA": "Unclog a sink"
+             *     }
+             */
+            serviceItemNameTranslations: {
+                [key: string]: string;
+            };
+            /**
+             * @description Libellés i18n du métier
+             * @example {
+             *       "fr-CA": "Plomberie",
+             *       "en-CA": "Plumbing"
+             *     }
+             */
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            pricingModel: "FLAT" | "HOURLY" | "QUOTE_ONLY";
+            priceAmount?: Record<string, never>;
+            priceCurrency: string;
+            estimatedDurationMinutes?: Record<string, never>;
+            descriptionOverride?: Record<string, never>;
+        };
         UpdateProfessionalServiceDto: {
             /** @enum {string} */
             pricingModel?: "FLAT" | "HOURLY" | "QUOTE_ONLY";
@@ -3106,7 +3142,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProviderServiceCatalogItemDto"][];
+                };
             };
         };
     };
