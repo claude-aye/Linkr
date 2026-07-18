@@ -58,6 +58,33 @@ export interface ProviderProfile {
 }
 
 /**
+ * Public bookable-service item — the response element of
+ * `GET /service-providers/{providerId}/services` (Phase 3.13-2-front).
+ *
+ * UNLIKE `ProviderProfile`, this is NOT a full hand-mirror: the generated
+ * `ProviderServiceCatalogItemDto` types its two i18n maps NATIVELY as
+ * `Record<string, string>` (the backend annotates them with
+ * `additionalProperties`), so we consume the generated type as-is. We only
+ * SURGICALLY override its three nullable SCALARS — `priceAmount`,
+ * `estimatedDurationMinutes`, `descriptionOverride` — which still degrade to
+ * `Record<string, never>` in `schema.d.ts` (backend `@ApiPropertyOptional()`
+ * without a concrete type — the JSONB/nullable quirk of CLAUDE.md §6, left
+ * explicitly OPEN by 3.13-2a-back). At runtime `priceAmount` /
+ * `estimatedDurationMinutes` are numbers and `descriptionOverride` a string.
+ *
+ * Source of truth:
+ * apps/api/src/modules/service-providers/dto/provider-service-catalog-item.dto.ts
+ */
+export type ProviderCatalogItem = Omit<
+  components['schemas']['ProviderServiceCatalogItemDto'],
+  'priceAmount' | 'estimatedDurationMinutes' | 'descriptionOverride'
+> & {
+  priceAmount: number | null;
+  estimatedDurationMinutes: number | null;
+  descriptionOverride: string | null;
+};
+
+/**
  * Mirror of `ProviderServiceRequestItemDto` (Vision B item: assigned job OR
  * OPEN direct booking targeted at the provider). Amounts are decimal strings
  * (e.g. `"150.00"`); GPS and `clientUserId` are excluded upstream (Loi 25).
