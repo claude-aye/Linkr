@@ -1,68 +1,117 @@
-import Link from 'next/link';
+import { notFound, redirect } from 'next/navigation';
+
+import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import { pickTranslation } from '@/lib/i18n/translations';
+import type { ProviderCatalogItem, ProviderProfile } from '@/lib/providers/types';
+
+import { CreateRequestForm } from './create-request-form';
+
+// Reads the access cookie + live provider data — always rendered per request.
+export const dynamic = 'force-dynamic';
+
+/** Loose UUID shape check — a malformed id can never resolve a bookable service. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * « Nouvelle demande » — stub (Phase 3.13-2-front).
+ * « Nouvelle demande » — the real client booking form (Phase 3.13-3-front),
+ * replacing the 3.13-2-front stub. It CLOSES the client transactional loop:
+ * provider profile → « Demander » CTA → this page → `POST /api/service-requests`
+ * → an OPEN request targeted at the provider → the provider's dashboard.
  *
- * Sole purpose: make the provider-profile « Demander » CTA testable end to end.
- * Echoing the two search params PROVES the link carries the right ids, and
- * gives task 3 a page to FILL rather than to create.
- *
- * STRICT bounds (do NOT extend here — that is task 3): no form, no field, no
- * fetch, no POST, no validation, no `'use client'`. The real booking form
- * re-reads the API from these ids to derive money (the price never travels
- * through the URL — `estimatedAmount` is unchecked on the backend).
+ * The price is NEVER entered nor passed through the URL: it is DERIVED from a
+ * SERVER re-read of the provider's catalogue (anti-tampering guard —
+ * `estimatedAmount` is free-form on the backend). Any failure to derive
+ * (unknown provider / unknown service id / QUOTE_ONLY / null price) → notFound().
  */
 export default async function NewRequestPage({
   searchParams,
 }: {
   searchParams: Promise<{ providerId?: string; serviceId?: string }>;
 }) {
+  // The page is PRIVATE (it lives under `(app)`) even though the underlying API
+  // endpoints are `@Public()` — without this gate an expired session could still
+  // render. `redirect` throws, so it stays outside any try/catch.
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect('/login');
+  }
+
   const { providerId, serviceId } = await searchParams;
+  // Missing or malformed ids can never resolve a bookable service → not-found.
+  if (!providerId || !serviceId || !UUID_RE.test(providerId) || !UUID_RE.test(serviceId)) {
+    notFound();
+  }
+
+  const client = await getServerApiClient();
+
+  // --- Derive money + ids from a SERVER re-read of the provider's catalogue ---
+  // Capture the result inside the try; do all control flow (notFound / JSX)
+  // AFTER — `notFound()` throws a signal a catch here would swallow, and the
+  // lint rule forbids constructing JSX inside try/catch.
+  let item: ProviderCatalogItem | null = null;
+  let catalogueFailed = false;
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-providers/{providerId}/services',
+      { params: { path: { providerId } } },
+    );
+    if (error || !response.ok || !Array.isArray(data)) {
+      // Unknown provider (404) / malformed (400) / transport error — all mean
+      // there is nothing bookable to render.
+      catalogueFailed = true;
+    } else {
+      // The two i18n maps are typed natively; only the three nullable scalars
+      // are surgically re-typed by the mirror (cf. lib/providers/types.ts).
+      const found = (data as unknown as ProviderCatalogItem[]).find(
+        (s) => s.id === serviceId,
+      );
+      item = found ?? null;
+    }
+  } catch {
+    catalogueFailed = true;
+  }
+
+  // Catalogue unreachable, or the service id is not in this provider's catalogue.
+  if (catalogueFailed || !item) {
+    notFound();
+  }
+
+  // Defence in depth: test the AMOUNT, not just the pricing model. A null price
+  // (or QUOTE_ONLY) has no derivable deposit basis → a DIRECT_BOOKING would be
+  // dead-on-arrival (3.12b guard: null amount = un-acceptable). Not bookable.
+  const priceAmount = item.priceAmount;
+  if (priceAmount == null || item.pricingModel === 'QUOTE_ONLY') {
+    notFound();
+  }
+
+  // --- Identity (best-effort — only to name the provider in the copy) --------
+  let businessName: string | null = null;
+  try {
+    const { data, error, response } = await client.GET('/service-providers/{id}', {
+      params: { path: { id: providerId } },
+    });
+    if (!error && response.ok && data) {
+      businessName = (data as unknown as ProviderProfile).businessName;
+    }
+  } catch {
+    // Leave null → sober fallback below (no invented field, no extra call).
+  }
+
+  // Fallback reads naturally inside « Demande à … » / « … envoyée à … ».
+  const providerName = businessName ?? 'ce prestataire';
 
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <section className="w-full max-w-xl">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Nouvelle demande
-          </h1>
-        </header>
-
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          <p className="font-medium text-zinc-700 dark:text-zinc-300">Bientôt disponible.</p>
-          <p className="mt-1">
-            Le formulaire arrive à la phase 3.13 (tâche&nbsp;3).
-          </p>
-
-          <dl className="mt-6 space-y-2 text-left">
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                providerId
-              </dt>
-              <dd className="mt-0.5 font-mono text-xs text-zinc-600 dark:text-zinc-300">
-                {providerId ?? '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                serviceId
-              </dt>
-              <dd className="mt-0.5 font-mono text-xs text-zinc-600 dark:text-zinc-300">
-                {serviceId ?? '—'}
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        <div className="mt-6 text-center">
-          <Link
-            href="/providers"
-            className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
-          >
-            ← Trouver un pro
-          </Link>
-        </div>
-      </section>
+      <CreateRequestForm
+        providerId={providerId}
+        businessName={providerName}
+        serviceItemId={item.serviceItemId}
+        serviceCategoryId={item.serviceCategoryId}
+        tradeLabel={pickTranslation(item.serviceCategoryNameTranslations)}
+        serviceLabel={pickTranslation(item.serviceItemNameTranslations)}
+        priceAmount={priceAmount}
+        priceCurrency={item.priceCurrency}
+      />
     </main>
   );
 }
