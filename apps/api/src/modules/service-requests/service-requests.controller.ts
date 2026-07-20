@@ -21,6 +21,7 @@ import { CancelServiceRequestDto } from './dto/cancel-service-request.dto';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
 import { DeclineServiceRequestDto } from './dto/decline-service-request.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
+import { ServiceRequestListDto } from './dto/service-request-list.dto';
 import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { ServiceRequestsService } from './service-requests.service';
 
@@ -60,15 +61,11 @@ export class ServiceRequestsController {
     summary:
       'List service requests. Clients see only their own; ADMIN sees all. Filterable by status/requestType.',
   })
+  @ApiResponse({ status: 200, type: ServiceRequestListDto })
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query() query: ListServiceRequestsDto,
-  ): Promise<{
-    items: ServiceRequestResponseDto[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
+  ): Promise<ServiceRequestListDto> {
     return this.service.list(user.sub, query);
   }
 

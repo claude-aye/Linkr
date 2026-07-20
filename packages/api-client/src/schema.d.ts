@@ -1738,6 +1738,15 @@ export interface components {
             /** Format: date-time */
             updatedAtUtc: string;
         };
+        ServiceRequestListDto: {
+            items: components["schemas"]["ServiceRequestResponseDto"][];
+            /** @description Total matching rows (before pagination) */
+            total: number;
+            /** @description Current page (1-based) */
+            page: number;
+            /** @description Page size */
+            limit: number;
+        };
         CancelServiceRequestDto: {
             /** @description Reason for cancellation. */
             cancellationReason: string;
@@ -3383,7 +3392,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ServiceRequestListDto"];
+                };
             };
         };
     };
