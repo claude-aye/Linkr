@@ -1982,7 +1982,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceRequestListDto"
+                }
+              }
+            }
           }
         },
         "summary": "List service requests. Clients see only their own; ADMIN sees all. Filterable by status/requestType.",
@@ -4261,6 +4268,35 @@
           "serviceLocation",
           "createdAtUtc",
           "updatedAtUtc"
+        ]
+      },
+      "ServiceRequestListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceRequestResponseDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Total matching rows (before pagination)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Current page (1-based)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Page size"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
         ]
       },
       "CancelServiceRequestDto": {
