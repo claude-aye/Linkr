@@ -65,6 +65,17 @@ const envSchema = Joi.object({
   // Optional custom endpoint for S3-compatible providers (e.g. Cloudflare R2).
   STORAGE_ENDPOINT: Joi.string().uri().optional(),
 
+  // Geocoding (port/adapter) — Nominatim (OpenStreetMap) proxy for GET /geocode.
+  // Provider + base URL mirror STORAGE_DRIVER's defaulted selection.
+  GEOCODING_PROVIDER: Joi.string().valid('nominatim').default('nominatim'),
+  NOMINATIM_BASE_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('https://nominatim.openstreetmap.org'),
+  // Required (no default): Nominatim's ToS mandates a descriptive User-Agent
+  // identifying THIS deployment + a real contact. A shipped default would make
+  // every install share one fake UA (→ blocked), so it must be set explicitly.
+  NOMINATIM_USER_AGENT: Joi.string().required(),
+
   // Stripe — required at boot (3.10a). Prefix checks catch swapped keys early.
   STRIPE_SECRET_KEY: Joi.string()
     .pattern(/^sk_/)

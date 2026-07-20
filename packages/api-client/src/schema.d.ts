@@ -1227,6 +1227,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Geocode a free-text address into a list of {label, lat, lng} candidates (Nominatim proxy). Authenticated users only. Zero matches → 200 with an empty list. */
+        get: operations["GeocodingController_geocode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1971,6 +1988,27 @@ export interface components {
             createdAtUtc: string;
             /** Format: date-time */
             updatedAtUtc: string;
+        };
+        GeocodeCandidateDto: {
+            /**
+             * @description Human-readable address label (fr-CA).
+             * @example Laval, Laval, Québec, Canada
+             */
+            label: string;
+            /**
+             * @description Latitude in WGS84 decimal degrees.
+             * @example 45.6066
+             */
+            lat: number;
+            /**
+             * @description Longitude in WGS84 decimal degrees.
+             * @example -73.7124
+             */
+            lng: number;
+        };
+        GeocodeResultDto: {
+            /** @description Candidates for the query, best match first. Empty when none. */
+            candidates: components["schemas"]["GeocodeCandidateDto"][];
         };
     };
     responses: never;
@@ -4519,6 +4557,44 @@ export interface operations {
             };
             /** @description Admin access required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    GeocodingController_geocode: {
+        parameters: {
+            query: {
+                /** @description Free-text address to geocode (required, non-empty). */
+                q: string;
+                /** @description Max candidates to return. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeResultDto"];
+                };
+            };
+            /** @description Missing or empty q. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Upstream geocoding provider unavailable. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
