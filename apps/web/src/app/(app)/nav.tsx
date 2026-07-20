@@ -35,6 +35,9 @@ export function Nav({ isProvider }: { isProvider: boolean }) {
           <Link href="/providers" className={linkClass}>
             Trouver un pro
           </Link>
+          <Link href="/recherche" className={linkClass}>
+            Rechercher
+          </Link>
           <Link href="/requests" className={linkClass}>
             Mes demandes
           </Link>
