@@ -200,7 +200,15 @@ export function CreateRequestForm({
             <Row label="Adresse">{serviceAddress.trim()}</Row>
           </dl>
 
-          <div className="mt-6">
+          {/* Primary → « Mes demandes » (the request now lives there); the
+              existing « Retour à l’accueil » is kept as a secondary link. */}
+          <div className="mt-6 flex flex-wrap items-center gap-4">
+            <Link
+              href="/requests"
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+            >
+              Voir mes demandes
+            </Link>
             <Link
               href="/"
               className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"

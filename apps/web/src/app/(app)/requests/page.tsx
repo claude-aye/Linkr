@@ -1,14 +1,69 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+
+import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+
+import { RequestCard, type ClientRequest } from './_components/request-card';
+
+// Reads the access cookie + the client's live requests — rendered per request.
+export const dynamic = 'force-dynamic';
+
 /**
- * « Mes demandes » — CLIENT-side stub (Phase 3.13-PR2).
- *
- * Placeholder so the shared nav is testable end-to-end. The real client request
- * list lands in phase 3.13 (tâche 4) — this file will be REPLACED there. No data
- * yet, no fake rows.
- *
- * NB: this is the CLIENT list at `/requests`. It is distinct from the PROVIDER
- * stub at `/dashboard/requests/[id]` — do not conflate the two.
+ * Server-side split (Option A, pagination deferred — same debt as the provider
+ * dashboard: a single `?limit=100` page carries both sections). « En cours »
+ * groups the live statuses; everything else falls into « Terminées ».
  */
-export default function RequestsPage() {
+const ACTIVE_STATUSES = new Set<ClientRequest['status']>([
+  'DRAFT',
+  'OPEN',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'COMPLETED',
+]);
+
+function Section({ title, requests }: { title: string; requests: ClientRequest[] }) {
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
+      <ul className="space-y-4">
+        {requests.map((request) => (
+          <RequestCard key={request.id} request={request} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export default async function RequestsPage() {
+  // Session gate — `redirect` throws, so it runs OUTSIDE any try/catch. The page
+  // is PRIVATE (under `(app)`): an expired session must not render.
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect('/login');
+  }
+
+  const client = await getServerApiClient();
+
+  // ONE call, no `status` filter — the server splits the single page in two.
+  // The pagination envelope is typed NATIVELY by `ServiceRequestListDto`
+  // (PR A / #42): `data.items` / `data.total` / … carry no local cast.
+  let requests: ClientRequest[] | null = null;
+  try {
+    const { data, error, response } = await client.GET('/service-requests', {
+      params: { query: { limit: 100 } },
+    });
+    if (!error && response.ok && data && Array.isArray(data.items)) {
+      requests = data.items;
+    }
+  } catch {
+    requests = null;
+  }
+
+  // API guarantees `created_at DESC` — `filter` preserves that order per section.
+  const active = requests?.filter((r) => ACTIVE_STATUSES.has(r.status)) ?? [];
+  const done = requests?.filter((r) => !ACTIVE_STATUSES.has(r.status)) ?? [];
+  const isEmpty = requests !== null && active.length === 0 && done.length === 0;
+
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
       <section className="w-full max-w-3xl">
@@ -17,14 +72,38 @@ export default function RequestsPage() {
             Mes demandes
           </h1>
         </header>
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          <p className="font-medium text-zinc-700 dark:text-zinc-300">
-            Bientôt disponible.
-          </p>
-          <p className="mt-1">
-            Le suivi de vos demandes arrive à la phase 3.13 (tâche&nbsp;4).
-          </p>
-        </div>
+
+        {requests === null ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              Chargement impossible
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+              Vos demandes n’ont pas pu être récupérées. Veuillez réessayer plus tard.
+            </p>
+          </div>
+        ) : isEmpty ? (
+          <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+            <p className="font-medium text-zinc-700 dark:text-zinc-300">
+              Vous n’avez pas encore de demande.
+            </p>
+            <p className="mt-1">
+              <Link
+                href="/"
+                className="font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+              >
+                Trouver un prestataire
+              </Link>
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {/* A section header renders only when its bucket has ≥1 item — no
+                orphan « Terminées » heading above an empty list. */}
+            {active.length > 0 && <Section title="En cours" requests={active} />}
+            {done.length > 0 && <Section title="Terminées" requests={done} />}
+          </div>
+        )}
       </section>
     </main>
   );
