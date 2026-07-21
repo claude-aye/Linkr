@@ -21,6 +21,7 @@ import { QuotesModule } from './modules/quotes/quotes.module';
 import { StripeConnectModule } from './modules/stripe-connect/stripe-connect.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { StripeWebhooksModule } from './modules/stripe-webhooks/stripe-webhooks.module';
+import { GeocodingModule } from './modules/geocoding/geocoding.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { StripeWebhooksModule } from './modules/stripe-webhooks/stripe-webhooks.
     StripeConnectModule,
     PaymentsModule,
     StripeWebhooksModule,
+    GeocodingModule,
   ],
 })
 export class AppModule {}

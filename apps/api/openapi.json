@@ -3123,6 +3123,57 @@
           "quotes"
         ]
       }
+    },
+    "/geocode": {
+      "get": {
+        "operationId": "GeocodingController_geocode",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "description": "Free-text address to geocode (required, non-empty).",
+            "schema": {
+              "example": "Laval, Québec",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Max candidates to return.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10,
+              "default": 5,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or empty q."
+          },
+          "502": {
+            "description": "Upstream geocoding provider unavailable."
+          }
+        },
+        "summary": "Geocode a free-text address into a list of {label, lat, lng} candidates (Nominatim proxy). Authenticated users only. Zero matches → 200 with an empty list.",
+        "tags": [
+          "geocoding"
+        ]
+      }
     }
   },
   "info": {
@@ -4883,6 +4934,46 @@
           "validUntilUtc",
           "createdAtUtc",
           "updatedAtUtc"
+        ]
+      },
+      "GeocodeCandidateDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Human-readable address label (fr-CA).",
+            "example": "Laval, Laval, Québec, Canada"
+          },
+          "lat": {
+            "type": "number",
+            "description": "Latitude in WGS84 decimal degrees.",
+            "example": 45.6066
+          },
+          "lng": {
+            "type": "number",
+            "description": "Longitude in WGS84 decimal degrees.",
+            "example": -73.7124
+          }
+        },
+        "required": [
+          "label",
+          "lat",
+          "lng"
+        ]
+      },
+      "GeocodeResultDto": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "description": "Candidates for the query, best match first. Empty when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GeocodeCandidateDto"
+            }
+          }
+        },
+        "required": [
+          "candidates"
         ]
       }
     }
