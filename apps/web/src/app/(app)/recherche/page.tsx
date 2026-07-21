@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 
+import type { components } from '@linkr/api-client';
+
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { pickTranslation } from '@/lib/i18n/translations';
 import type {
@@ -7,8 +9,13 @@ import type {
   DiscoveredProviderList,
 } from '@/lib/providers/discovery-types';
 
+import { CandidateList } from './_components/candidate-list';
 import { ProviderCard } from './_components/provider-card';
 import { SearchForm } from './_components/search-form';
+
+// `/geocode` ships a CLEAN generated envelope (`GeocodeResultDto`), so the
+// candidate type is read NATIVELY — no local mirror, unlike discover.
+type GeocodeCandidate = components['schemas']['GeocodeCandidateDto'];
 
 // Reads the access cookie + live discovery data — always rendered per request.
 export const dynamic = 'force-dynamic';
@@ -36,11 +43,17 @@ function StateCard({ title, children }: { title: string; children: React.ReactNo
 }
 
 /**
- * `/recherche` — client-side geo discovery (Phase 3.14a). Voie Ⓒ: the client
- * form writes coordinates into the URL, this Server Component reads
- * `searchParams` + the httpOnly cookie and calls `discover`. The URL is the
- * decoupling joint (3.14b grafts geocoding here). Strict boundary: the search
- * stops at the link to `/providers/{id}` — the 3.13 booking flow is untouched.
+ * `/recherche` — geo discovery (Phase 3.14a) + address geocoding (3.14b-front).
+ * Voie Ⓒ′: the client form writes onto the URL, this Server Component reads
+ * `searchParams` + the httpOnly cookie and calls the API. The URL is the
+ * decoupling joint. Server-side state machine, in priority order:
+ *
+ *   lat + lng + categoryId valid  → discover (provider cards)      [3.14a]
+ *   else q + categoryId valid     → geocode  (address candidates)  [3.14b]
+ *   else                          → form only (State 0)
+ *
+ * Strict boundary: the search stops at the link to `/providers/{id}` — the 3.13
+ * booking flow (and its fixed `serviceLocation` placeholder) is untouched (3.14c).
  */
 export default async function RecherchePage({
   searchParams,
@@ -75,23 +88,31 @@ export default async function RecherchePage({
   // --- Search params: the decoupling joint (the URL drives the search) --------
   const sp = await searchParams;
   const categoryId = firstParam(sp.categoryId);
+  const validCategoryId = categoryId && UUID_RE.test(categoryId) ? categoryId : null;
   const lat = parseCoord(firstParam(sp.lat));
   const lng = parseCoord(firstParam(sp.lng));
+  const q = firstParam(sp.q)?.trim();
 
-  // Build the typed query only when the three params are present AND valid; the
-  // ternary narrows lat/lng to `number` and categoryId to `string` for the call.
-  const query =
-    categoryId && UUID_RE.test(categoryId) && lat !== null && lng !== null
-      ? { lat, lng, categoryId, page: 1, limit: 50 }
+  // Discover wins when lat+lng+categoryId are present AND valid; the ternary
+  // narrows lat/lng to `number` and categoryId to `string` for the call.
+  const discoverQuery =
+    validCategoryId && lat !== null && lng !== null
+      ? { lat, lng, categoryId: validCategoryId, page: 1, limit: 50 }
       : null;
 
-  // --- Discovery (only on a valid search) ------------------------------------
+  // Geocode is the fallback: a non-empty address + a valid trade, and NO valid
+  // discover search taking precedence. Whitespace-only `q` degrades to State 0
+  // (never a pointless 400 — the backend rejects a blank `q`).
+  const geocodeQuery =
+    !discoverQuery && validCategoryId && q ? { q, limit: 5 } : null;
+
+  // --- Discovery (only on a valid coordinate search) -------------------------
   let result: DiscoveredProviderList | null = null;
   let searchFailed = false;
-  if (query) {
+  if (discoverQuery) {
     try {
       const { data, error, response } = await client.GET('/service-providers/discover', {
-        params: { query },
+        params: { query: discoverQuery },
       });
       if (!error && response.ok && data) {
         // The contract annotates this as a BARE array, but the runtime returns
@@ -108,6 +129,27 @@ export default async function RecherchePage({
 
   const providers = result?.items ?? [];
 
+  // --- Geocode (only when the address branch is active) ----------------------
+  // `GET /geocode` is CLEANLY typed (proper `GeocodeResultDto` envelope), so
+  // `data.candidates` is consumed natively — no cast, no mirror.
+  let candidates: GeocodeCandidate[] = [];
+  let geocodeFailed = false;
+  if (geocodeQuery) {
+    try {
+      const { data, error, response } = await client.GET('/geocode', {
+        params: { query: geocodeQuery },
+      });
+      if (!error && response.ok && data && Array.isArray(data.candidates)) {
+        candidates = data.candidates;
+      } else {
+        // 502 (Nominatim unreachable) and any other non-2xx land here.
+        geocodeFailed = true;
+      }
+    } catch {
+      geocodeFailed = true;
+    }
+  }
+
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
       <section className="w-full max-w-3xl">
@@ -120,10 +162,15 @@ export default async function RecherchePage({
           </p>
         </header>
 
-        <SearchForm categories={categoryOptions} selectedCategoryId={categoryId} />
+        <SearchForm
+          categories={categoryOptions}
+          selectedCategoryId={validCategoryId ?? undefined}
+          selectedAddress={q}
+        />
 
-        {/* State 0: no valid search yet → the form alone, no results section. */}
-        {query && (
+        {/* Discriminator: discover cards → geocode candidates → State 0 (form
+            alone, no results section). */}
+        {discoverQuery ? (
           <div className="mt-8">
             {searchFailed ? (
               <StateCard title="Recherche impossible">
@@ -141,7 +188,22 @@ export default async function RecherchePage({
               </ul>
             )}
           </div>
-        )}
+        ) : geocodeQuery && validCategoryId ? (
+          <div className="mt-8">
+            {geocodeFailed ? (
+              <StateCard title="Recherche d’adresse impossible">
+                La recherche d’adresse est impossible pour le moment. Veuillez réessayer plus
+                tard.
+              </StateCard>
+            ) : candidates.length === 0 ? (
+              <StateCard title="Aucune adresse trouvée">
+                Aucune adresse trouvée. Précisez votre recherche.
+              </StateCard>
+            ) : (
+              <CandidateList candidates={candidates} categoryId={validCategoryId} />
+            )}
+          </div>
+        ) : null}
       </section>
     </main>
   );
