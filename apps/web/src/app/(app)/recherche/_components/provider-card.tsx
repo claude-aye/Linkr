@@ -20,7 +20,21 @@ function formatDistance(meters: number): string {
   return `à ${kmFmt.format(meters / 1000)} km`;
 }
 
-export function ProviderCard({ provider }: { provider: DiscoveredProvider }) {
+export function ProviderCard({
+  provider,
+  lat,
+  lng,
+}: {
+  provider: DiscoveredProvider;
+  /**
+   * The current search coordinate. Threaded onto the profile link (voie Ⓐ,
+   * Phase 3.14c-1) so it can travel result-card → profile → booking form and
+   * reach `POST /service-requests` as the REAL `serviceLocation`. When absent
+   * (should not happen in the discover flow), the profile link stays bare.
+   */
+  lat?: number;
+  lng?: number;
+}) {
   // `displayName` is nullable at the contract level → sober fallback, no invented
   // field. `headline` is dropped entirely when null (never render « null »).
   const name = provider.displayName ?? 'Prestataire';
@@ -31,10 +45,15 @@ export function ProviderCard({ provider }: { provider: DiscoveredProvider }) {
   // everything but VERIFIED / NOT_REQUIRED, so no other state can appear here.
   const isVerified = provider.categoryVerificationStatus === 'VERIFIED';
 
+  const href =
+    lat != null && lng != null
+      ? `/providers/${provider.id}?lat=${lat}&lng=${lng}`
+      : `/providers/${provider.id}`;
+
   return (
     <li>
       <Link
-        href={`/providers/${provider.id}`}
+        href={href}
         className="block rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">

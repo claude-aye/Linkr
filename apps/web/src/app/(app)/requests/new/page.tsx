@@ -26,7 +26,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export default async function NewRequestPage({
   searchParams,
 }: {
-  searchParams: Promise<{ providerId?: string; serviceId?: string }>;
+  searchParams: Promise<{
+    providerId?: string;
+    serviceId?: string;
+    // Real searched coordinate, threaded via the URL (voie Ⓐ, Phase 3.14c-1).
+    lat?: string;
+    lng?: string;
+  }>;
 }) {
   // The page is PRIVATE (it lives under `(app)`) even though the underlying API
   // endpoints are `@Public()` — without this gate an expired session could still
@@ -36,7 +42,7 @@ export default async function NewRequestPage({
     redirect('/login');
   }
 
-  const { providerId, serviceId } = await searchParams;
+  const { providerId, serviceId, lat, lng } = await searchParams;
   // Missing or malformed ids can never resolve a bookable service → not-found.
   if (!providerId || !serviceId || !UUID_RE.test(providerId) || !UUID_RE.test(serviceId)) {
     notFound();
@@ -111,6 +117,8 @@ export default async function NewRequestPage({
         serviceLabel={pickTranslation(item.serviceItemNameTranslations)}
         priceAmount={priceAmount}
         priceCurrency={item.priceCurrency}
+        lat={lat}
+        lng={lng}
       />
     </main>
   );
