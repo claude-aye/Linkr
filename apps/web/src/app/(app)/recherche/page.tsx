@@ -183,7 +183,14 @@ export default async function RecherchePage({
             ) : (
               <ul className="space-y-4">
                 {providers.map((provider) => (
-                  <ProviderCard key={provider.id} provider={provider} />
+                  // `discoverQuery` is non-null here → its lat/lng are the finite
+                  // searched coords; thread them onward (voie Ⓐ, Phase 3.14c-1).
+                  <ProviderCard
+                    key={provider.id}
+                    provider={provider}
+                    lat={discoverQuery.lat}
+                    lng={discoverQuery.lng}
+                  />
                 ))}
               </ul>
             )}

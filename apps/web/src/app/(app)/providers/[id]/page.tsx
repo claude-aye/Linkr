@@ -8,6 +8,27 @@ import type { ProviderCatalogItem, ProviderProfile } from '@/lib/providers/types
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
 
+/** Parses a coord param; null when absent, empty, or non-finite. */
+function parseCoord(value: string | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * « &lat=…&lng=… » when BOTH coords are valid, else « » (a bare link). This is
+ * maillon 2 of the coord thread (Phase 3.14c-1): the searched coordinate rode
+ * the URL from the result card; re-emit it onto the « Demander » CTA so it
+ * reaches the booking form. A bare suffix lets the form fall back to the
+ * placeholder (direct-profile entry / shared link) without blocking the submit.
+ */
+function coordsSuffix(lat: string | undefined, lng: string | undefined): string {
+  const latN = parseCoord(lat);
+  const lngN = parseCoord(lng);
+  if (latN === null || lngN === null) return '';
+  return `&lat=${latN}&lng=${lngN}`;
+}
+
 /**
  * Formats a price to the fr-CA locale (e.g. « 85,00 $ »). `priceAmount` is a
  * runtime number here (the API returns it as a number, not a decimal string).
@@ -60,7 +81,16 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
  * amount = un-acceptable), i.e. a dead-on-arrival request. The real quote path
  * is the Quotes domain (3.9), out of scope here.
  */
-function ServiceRow({ providerId, item }: { providerId: string; item: ProviderCatalogItem }) {
+function ServiceRow({
+  providerId,
+  item,
+  coordsQuery,
+}: {
+  providerId: string;
+  item: ProviderCatalogItem;
+  /** « &lat=…&lng=… » or « » — appended to the « Demander » link (Phase 3.14c-1). */
+  coordsQuery: string;
+}) {
   const { trade, service } = serviceLabels(item);
   const bookable = item.pricingModel !== 'QUOTE_ONLY' && item.priceAmount != null;
 
@@ -105,7 +135,7 @@ function ServiceRow({ providerId, item }: { providerId: string; item: ProviderCa
       {bookable && (
         <div className="mt-4">
           <Link
-            href={`/requests/new?providerId=${providerId}&serviceId=${item.id}`}
+            href={`/requests/new?providerId=${providerId}&serviceId=${item.id}${coordsQuery}`}
             className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
           >
             Demander
@@ -118,8 +148,10 @@ function ServiceRow({ providerId, item }: { providerId: string; item: ProviderCa
 
 export default async function ProviderProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ lat?: string; lng?: string }>;
 }) {
   // The page is PRIVATE even though the API endpoints are `@Public()` — without
   // this gate an expired session could still render (a public endpoint returns
@@ -130,6 +162,12 @@ export default async function ProviderProfilePage({
   }
 
   const { id } = await params;
+  // The searched coordinate rides the URL from the result card (voie Ⓐ,
+  // Phase 3.14c-1); re-emit it onto each « Demander » CTA so it reaches the
+  // booking form. Empty suffix (no/invalid coords) → the CTA stays bare.
+  const { lat, lng } = await searchParams;
+  const coordsQuery = coordsSuffix(lat, lng);
+
   const client = await getServerApiClient();
 
   // --- Identity (required to render anything meaningful) ---------------------
@@ -226,7 +264,12 @@ export default async function ProviderProfilePage({
           ) : (
             <ul className="space-y-4">
               {services.map((item) => (
-                <ServiceRow key={item.id} providerId={id} item={item} />
+                <ServiceRow
+                  key={item.id}
+                  providerId={id}
+                  item={item}
+                  coordsQuery={coordsQuery}
+                />
               ))}
             </ul>
           )}

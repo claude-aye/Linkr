@@ -24,13 +24,23 @@ import type { components } from '@linkr/api-client';
 type CreateServiceRequestBody = components['schemas']['CreateServiceRequestDto'];
 
 /**
- * Fixed Québec City point, GeoJSON order [lng, lat] (lng negative). Assumed
- * placeholder — there is no geocoding yet (tracked debt, resolved in 3.14).
+ * Fixed Québec City point, GeoJSON order [lng, lat] (lng negative). Phase
+ * 3.14c-1 turned this into a FALLBACK ONLY: the happy path (search → booking)
+ * now threads the REAL searched coordinate through the URL. This placeholder
+ * survives on the direct-profile edge (a shared link carrying no coords) until
+ * 3.14c-2 adds in-form capture — and it NEVER blocks the submit.
  */
 const QUEBEC_SERVICE_LOCATION = { type: 'Point', coordinates: [-71.21, 46.81] };
 
 const TITLE_MAX = 200;
 const ADDRESS_MAX = 500;
+
+/** Parses a coord param; null when absent, empty, or non-finite. */
+function parseCoord(value: string | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 /** Frozen FR fallback for a BFF 502, a network failure, and any unmapped code. */
 const UNAVAILABLE_MESSAGE = 'Service momentanément indisponible. Veuillez réessayer.';
@@ -93,6 +103,14 @@ export interface CreateRequestFormProps {
   serviceLabel: string;
   priceAmount: number;
   priceCurrency: string;
+  /**
+   * Searched coordinate threaded through the URL (voie Ⓐ, Phase 3.14c-1);
+   * the GeoJSON Point is assembled as [lng, lat] at submit. Undefined on the
+   * direct-profile edge (no search) → the form falls back to the placeholder,
+   * never blocking the submit.
+   */
+  lat?: string;
+  lng?: string;
 }
 
 export function CreateRequestForm({
@@ -104,6 +122,8 @@ export function CreateRequestForm({
   serviceLabel,
   priceAmount,
   priceCurrency,
+  lat,
+  lng,
 }: CreateRequestFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -132,9 +152,23 @@ export function CreateRequestForm({
       return;
     }
 
+    // serviceLocation now carries the REAL searched coordinate, threaded
+    // result-card → profile → here via the URL (voie Ⓐ, Phase 3.14c-1). GeoJSON
+    // order is [lng, lat]: LONGITUDE FIRST — inverting would send the request to
+    // the wrong hemisphere. When coords are absent/invalid (direct-profile
+    // entry, a shared link), it falls back to the placeholder — the submit is
+    // NEVER blocked.
+    const latNum = parseCoord(lat);
+    const lngNum = parseCoord(lng);
+    const serviceLocation =
+      latNum !== null && lngNum !== null
+        ? { type: 'Point', coordinates: [lngNum, latNum] }
+        : // TODO 3.14c-2: capture in-form quand pas de coords (entrée profil-direct)
+          QUEBEC_SERVICE_LOCATION;
+
     // Derived/constant fields are assembled HERE, never entered nor URL-borne:
     // requestType, the targeted provider (URL), the service/category ids +
-    // amount/currency (server re-read), and the fixed Québec point.
+    // amount/currency (server re-read), and the service location above.
     const payload: CreateServiceRequestBody = {
       requestType: 'DIRECT_BOOKING',
       requestedServiceProviderId: providerId,
@@ -146,9 +180,10 @@ export function CreateRequestForm({
       estimatedAmount: priceAmount,
       estimatedCurrency: priceCurrency,
       // The generated type degrades GeoJSON to `Record<string, never>` (JSONB
-      // quirk, CLAUDE.md §6) — cast the real Point through `unknown`.
+      // quirk, CLAUDE.md §6) — cast the real Point through `unknown`. The cast
+      // stays for BOTH branches (real coords and the placeholder fallback).
       serviceLocation:
-        QUEBEC_SERVICE_LOCATION as unknown as CreateServiceRequestBody['serviceLocation'],
+        serviceLocation as unknown as CreateServiceRequestBody['serviceLocation'],
     };
 
     setPending(true);
