@@ -32,11 +32,8 @@ export function Nav({ isProvider }: { isProvider: boolean }) {
         </Link>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-          <Link href="/providers" className={linkClass}>
-            Trouver un pro
-          </Link>
           <Link href="/recherche" className={linkClass}>
-            Rechercher
+            Trouver un pro
           </Link>
           <Link href="/requests" className={linkClass}>
             Mes demandes
