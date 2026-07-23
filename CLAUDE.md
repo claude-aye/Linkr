@@ -80,6 +80,7 @@ It is built for **blue-collar professionals** (electricians, plumbers, carpenter
 - **`getToken`** est présent dans `createApiClient` mais **non branché** jusqu'à 3.11b.
 - **`/health`** est documenté dans l'OpenAPI → page de connectivité entièrement typée.
 - **Pattern page métier (depuis 3.11c-A)** : Server Component lit la donnée via `getServerApiClient()` (token cookie server-side) ; mutations via **Route Handlers BFF** sous `/api/...` (protégés par le proxy deny-by-default) ; rafraîchissement via `router.refresh()` (Server Component = source de vérité) ; **RBAC = l'API est seule juge**, la page gère le 403 en affichage.
+- **BFF = mutations, plus les lectures déclenchées en cours de saisie qu'aucune navigation ne peut porter** (affiné en 3.14c-2 — la règle « BFF = mutations seulement » n'est pas cassée, elle est précisée). *Test d'admissibilité d'un GET BFF :* un `router.push` peut-il porter cette lecture sans détruire d'état utilisateur ? **Oui** → joint URL + Server Component (voies Ⓒ / Ⓒ′). **Non** → route handler légitime. Premier et seul cas à ce jour : `GET /api/geocode` (3.14c-2 — le formulaire de demande géocode l'adresse saisie au submit ; un `router.push` détruirait le formulaire à moitié rempli).
 - **i18n JSONB (depuis 3.11c-A-ter)** : `lib/i18n/pickTranslation(map)` résout un JSONB de traductions (`fr-CA` → `en-CA` → 1ʳᵉ clé disponible → `—`, défensif sur map nulle/vide). À réutiliser pour tout affichage de `*_translations` (catégories, items, exigences réglementaires).
 
 ---

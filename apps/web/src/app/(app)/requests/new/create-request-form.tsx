@@ -11,24 +11,49 @@ import type { components } from '@linkr/api-client';
  *
  * MINIMAL client island: only the three entered fields (title / description /
  * serviceAddress) are interactive. Everything else — requestType, the targeted
- * provider, the service/category ids, the amount/currency and the fixed Québec
- * point — is DERIVED or CONSTANT (props from the Server Component's re-read),
+ * provider, the service/category ids, the amount/currency and the service
+ * location — is DERIVED or CONSTANT (props from the Server Component's re-read),
  * never entered nor URL-borne. The price NEVER travels through the URL because
  * `estimatedAmount` is free-form on the backend (a tampered URL could book at
  * $1); the parent page re-reads the API to derive it.
  *
  * Posts to the BFF `POST /api/service-requests` (transparent relay, 3.13-3a),
  * NOT a Server Action — consistent with every other mutation in the app.
+ *
+ * In-form geocoding (Phase 3.14c-2): on the direct-profile edge (no URL coords),
+ * the submit is INTERCEPTED once to geocode the entered `serviceAddress` via the
+ * BFF `GET /api/geocode` relay, disambiguate the candidates, and POST the chosen
+ * point. That GET is the one read the « BFF = mutations » rule now admits — a
+ * `router.push` cannot carry it without destroying the half-filled form (see the
+ * admissibility test in CLAUDE.md §Frontend). The POST is still NOT a Server
+ * Action; the geocoding read is a GET relay, same cookie mechanism.
  */
 
 type CreateServiceRequestBody = components['schemas']['CreateServiceRequestDto'];
+/** Candidate + envelope come from the GENERATED contract — no hand-written mirror. */
+type GeocodeCandidate = components['schemas']['GeocodeCandidateDto'];
+type GeocodeResult = components['schemas']['GeocodeResultDto'];
 
 /**
- * Fixed Québec City point, GeoJSON order [lng, lat] (lng negative). Phase
- * 3.14c-1 turned this into a FALLBACK ONLY: the happy path (search → booking)
- * now threads the REAL searched coordinate through the URL. This placeholder
- * survives on the direct-profile edge (a shared link carrying no coords) until
- * 3.14c-2 adds in-form capture — and it NEVER blocks the submit.
+ * In-form location resolution as ONE discriminated union (not three booleans —
+ * `isGeocoding` + `candidates` + `selectedCandidate` would allow impossible
+ * combinations like « geocoding AND resolved »). Only reachable when the happy
+ * path (URL coords) is absent.
+ */
+type LocationState =
+  | { kind: 'idle' }
+  | { kind: 'geocoding' }
+  | { kind: 'candidates'; candidates: GeocodeCandidate[] }
+  | { kind: 'resolved'; label: string; lat: number; lng: number };
+
+/**
+ * Fixed Québec City point, GeoJSON order [lng, lat] (lng negative). It is the
+ * LAST-RESORT fallback only: the happy path (search → booking) threads the real
+ * searched coordinate through the URL (3.14c-1), and on the direct-profile edge
+ * the submit now geocodes the entered address in-form (3.14c-2). This placeholder
+ * survives ONLY when geocoding yields nothing usable (no candidate, « Aucune de
+ * ces adresses », network/502) — and it NEVER blocks the submit. (`service_location`
+ * is NOT NULL; the nullable migration is a separate, tracked PR.)
  */
 const QUEBEC_SERVICE_LOCATION = { type: 'Point', coordinates: [-71.21, 46.81] };
 
@@ -106,8 +131,9 @@ export interface CreateRequestFormProps {
   /**
    * Searched coordinate threaded through the URL (voie Ⓐ, Phase 3.14c-1);
    * the GeoJSON Point is assembled as [lng, lat] at submit. Undefined on the
-   * direct-profile edge (no search) → the form falls back to the placeholder,
-   * never blocking the submit.
+   * direct-profile edge (no search) → the submit geocodes the entered address
+   * in-form (3.14c-2), and only if THAT yields nothing does it fall back to the
+   * placeholder — never blocking the submit.
    */
   lat?: string;
   lng?: string;
@@ -131,57 +157,32 @@ export function CreateRequestForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [locationState, setLocationState] = useState<LocationState>({ kind: 'idle' });
 
   const priceLabel = formatMoney(priceAmount, priceCurrency);
+  const geocoding = locationState.kind === 'geocoding';
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) return;
-
-    // Light client validation — the API is the real judge; this only spares an
-    // obviously-doomed round-trip. No network call on failure.
-    const trimmedTitle = title.trim();
-    const trimmedDescription = description.trim();
-    const trimmedAddress = serviceAddress.trim();
-    if (!trimmedTitle || !trimmedDescription || !trimmedAddress) {
-      setError('Veuillez remplir tous les champs.');
-      return;
-    }
-    if (trimmedTitle.length > TITLE_MAX || trimmedAddress.length > ADDRESS_MAX) {
-      setError('Certains champs dépassent la longueur autorisée.');
-      return;
-    }
-
-    // serviceLocation now carries the REAL searched coordinate, threaded
-    // result-card → profile → here via the URL (voie Ⓐ, Phase 3.14c-1). GeoJSON
-    // order is [lng, lat]: LONGITUDE FIRST — inverting would send the request to
-    // the wrong hemisphere. When coords are absent/invalid (direct-profile
-    // entry, a shared link), it falls back to the placeholder — the submit is
-    // NEVER blocked.
-    const latNum = parseCoord(lat);
-    const lngNum = parseCoord(lng);
-    const serviceLocation =
-      latNum !== null && lngNum !== null
-        ? { type: 'Point', coordinates: [lngNum, latNum] }
-        : // TODO 3.14c-2: capture in-form quand pas de coords (entrée profil-direct)
-          QUEBEC_SERVICE_LOCATION;
-
-    // Derived/constant fields are assembled HERE, never entered nor URL-borne:
-    // requestType, the targeted provider (URL), the service/category ids +
-    // amount/currency (server re-read), and the service location above.
+  /**
+   * The terminal action for EVERY path: assemble the payload with the resolved
+   * `serviceLocation` and POST to the BFF. Reuses the frozen status mapping. It
+   * deliberately does NOT touch `locationState` — the caller owns that (a failed
+   * POST from `resolved` keeps the confirmation for a cheap retry).
+   */
+  async function postRequest(serviceLocation: { type: string; coordinates: number[] }) {
+    // Derived/constant fields are assembled HERE, never entered nor URL-borne.
     const payload: CreateServiceRequestBody = {
       requestType: 'DIRECT_BOOKING',
       requestedServiceProviderId: providerId,
       serviceCategoryId,
       serviceItemId,
-      title: trimmedTitle,
-      description: trimmedDescription,
-      serviceAddress: trimmedAddress,
+      title: title.trim(),
+      description: description.trim(),
+      serviceAddress: serviceAddress.trim(),
       estimatedAmount: priceAmount,
       estimatedCurrency: priceCurrency,
       // The generated type degrades GeoJSON to `Record<string, never>` (JSONB
       // quirk, CLAUDE.md §6) — cast the real Point through `unknown`. The cast
-      // stays for BOTH branches (real coords and the placeholder fallback).
+      // stays for ALL branches (URL coords, resolved candidate, placeholder).
       serviceLocation:
         serviceLocation as unknown as CreateServiceRequestBody['serviceLocation'],
     };
@@ -211,9 +212,102 @@ export function CreateRequestForm({
     }
 
     // 201 — the request was created OPEN and targeted at the provider. Swap the
-    // form for an in-place confirmation (no redirect, no router.refresh): the
-    // « Mes demandes » destination is still a stub (task 4).
+    // form for an in-place confirmation (no redirect, no router.refresh).
     setSubmitted(true);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending || geocoding) return;
+
+    // Light client validation — the API is the real judge; this only spares an
+    // obviously-doomed round-trip. No network call on failure.
+    const trimmedTitle = title.trim();
+    const trimmedDescription = description.trim();
+    const trimmedAddress = serviceAddress.trim();
+    if (!trimmedTitle || !trimmedDescription || !trimmedAddress) {
+      setError('Veuillez remplir tous les champs.');
+      return;
+    }
+    if (trimmedTitle.length > TITLE_MAX || trimmedAddress.length > ADDRESS_MAX) {
+      setError('Certains champs dépassent la longueur autorisée.');
+      return;
+    }
+
+    // Branch 1 — HAPPY PATH: the real searched coordinate arrived through the URL
+    // (voie Ⓐ, 3.14c-1). NEVER intercepted — one click, direct POST, unchanged.
+    // GeoJSON order [lng, lat]: LONGITUDE FIRST (inverting would send the request
+    // to the wrong hemisphere; at Québec, lng is negative, lat positive).
+    const latNum = parseCoord(lat);
+    const lngNum = parseCoord(lng);
+    if (latNum !== null && lngNum !== null) {
+      await postRequest({ type: 'Point', coordinates: [lngNum, latNum] });
+      return;
+    }
+
+    // Branch 2 — a candidate was already resolved in-form: POST its coordinates,
+    // same [lng, lat] order.
+    if (locationState.kind === 'resolved') {
+      await postRequest({
+        type: 'Point',
+        coordinates: [locationState.lng, locationState.lat],
+      });
+      return;
+    }
+
+    // Branch 3 — no URL coords, nothing resolved yet: geocode the entered address,
+    // intercepting THIS submit. Any failure (non-ok, network, malformed, or zero
+    // candidates) falls through to a placeholder POST — the submit is NEVER
+    // blocked (decision 5). Geocoding failures produce NO error message.
+    setError(null);
+    setLocationState({ kind: 'geocoding' });
+    let candidates: GeocodeCandidate[] = [];
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(trimmedAddress)}`);
+      if (res.ok) {
+        const body = (await res.json()) as GeocodeResult;
+        candidates = Array.isArray(body?.candidates) ? body.candidates : [];
+      }
+    } catch {
+      // Network/parse failure → leave candidates empty → placeholder POST below.
+    }
+
+    if (candidates.length > 0) {
+      // Stop the submission and let the client disambiguate. No POST.
+      setLocationState({ kind: 'candidates', candidates });
+      return;
+    }
+
+    // Zero candidates or any failure → submit with the placeholder, never
+    // stranded. Reset to `idle` first so the button leaves the geocoding state.
+    setLocationState({ kind: 'idle' });
+    await postRequest(QUEBEC_SERVICE_LOCATION);
+  }
+
+  /** Picking a candidate resolves the location — it does NOT submit. */
+  function chooseCandidate(candidate: GeocodeCandidate) {
+    setLocationState({
+      kind: 'resolved',
+      label: candidate.label,
+      lat: candidate.lat,
+      lng: candidate.lng,
+    });
+  }
+
+  /** Explicit escape hatch — submit immediately with the placeholder. */
+  function chooseNone() {
+    setLocationState({ kind: 'idle' });
+    void postRequest(QUEBEC_SERVICE_LOCATION);
+  }
+
+  /**
+   * Editing the address invalidates any pending resolution: the candidate list
+   * AND the confirmation line disappear together with their coordinates — no
+   * stale coordinate ever survives an address change.
+   */
+  function handleAddressChange(value: string) {
+    setServiceAddress(value);
+    if (locationState.kind !== 'idle') setLocationState({ kind: 'idle' });
   }
 
   if (submitted) {
@@ -322,10 +416,47 @@ export function CreateRequestForm({
             required
             maxLength={ADDRESS_MAX}
             value={serviceAddress}
-            onChange={(e) => setServiceAddress(e.target.value)}
+            onChange={(e) => handleAddressChange(e.target.value)}
             className={fieldClass}
           />
         </div>
+
+        {/* Candidate list (state `candidates`) — the client disambiguates. Each
+            option is `type="button"` (the default in a <form> is submit). */}
+        {locationState.kind === 'candidates' && (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Choisissez l’adresse exacte&nbsp;:
+            </p>
+            <ul className="mt-3 space-y-2">
+              {locationState.candidates.map((candidate, index) => (
+                <li key={`${candidate.lat},${candidate.lng},${index}`}>
+                  <button
+                    type="button"
+                    onClick={() => chooseCandidate(candidate)}
+                    className="block w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-800 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    {candidate.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={chooseNone}
+              className="mt-3 text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+            >
+              Aucune de ces adresses
+            </button>
+          </div>
+        )}
+
+        {/* Confirmation line (state `resolved`) — sober, coordinates held. */}
+        {locationState.kind === 'resolved' && (
+          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+            Localisé&nbsp;: {locationState.label}
+          </p>
+        )}
 
         {error && (
           <p
@@ -338,10 +469,10 @@ export function CreateRequestForm({
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || geocoding}
           className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending ? 'Envoi…' : 'Envoyer la demande'}
+          {geocoding ? 'Localisation…' : pending ? 'Envoi…' : 'Envoyer la demande'}
         </button>
       </form>
     </section>
