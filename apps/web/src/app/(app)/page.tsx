@@ -41,7 +41,7 @@ export default async function HubPage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <HubCard
-            href="/providers"
+            href="/recherche"
             title="Trouver un pro"
             description="Recherchez un prestataire près de chez vous et réservez un service."
           />
