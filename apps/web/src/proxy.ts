@@ -30,12 +30,21 @@ import { refreshTokens } from '@/lib/auth/refresh';
  * browser auto-dropped the 15-min access cookie at its maxAge while the 7-day
  * refresh cookie lives on), regenerate the pair silently — still presence-only, no
  * JWT decode. See `attemptRefresh`.
+ *
+ * Response shape: an `/api/*` request ALWAYS gets JSON, never HTML — see
+ * `denyUnauthenticated`, the single place that arbitrates 401-JSON vs
+ * redirect-HTML.
  */
 
 // Deny-by-default: every route is protected EXCEPT the ones listed here.
 // `/` is now the authenticated client hub (3.13-PR2) — no longer public.
 const PUBLIC_PAGES = ['/login'];
 const PUBLIC_API_PREFIX = '/api/auth';
+const API_PREFIX = '/api/';
+
+// Not meant for direct display — the front maps by HTTP code alone (locked since
+// 3.12b). It still respects the project-wide vouvoiement.
+const UNAUTHENTICATED_MESSAGE = 'Votre session a expiré. Veuillez vous reconnecter.';
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -56,9 +65,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Protected route (deny-by-default). For a future protected `/api/*` BFF
-  //    proxy we'd return a 401 JSON instead of an HTML redirect here, but no such
-  //    route exists yet.
+  // 3. Protected route (deny-by-default). Every denial below goes through
+  //    `denyUnauthenticated`, which alone decides 401-JSON (`/api/*`) vs
+  //    redirect-HTML (pages).
   //    3a. Access cookie present → let through (unchanged; page does real auth).
   if (hasAccess) {
     return NextResponse.next();
@@ -70,25 +79,70 @@ export async function proxy(request: NextRequest) {
     return attemptRefresh(request, refreshValue);
   }
 
-  //    3c. Neither cookie → genuinely unauthenticated.
-  return NextResponse.redirect(new URL('/login', request.url));
+  //    3c. Neither cookie → genuinely unauthenticated. Nothing to purge (this
+  //        exit never carried a `Set-Cookie`).
+  return denyUnauthenticated(request, { clearCookies: false });
+}
+
+/**
+ * THE single decision point for "this request is not authenticated": 401 JSON for
+ * `/api/*`, HTML redirect to `/login` for everything else. Every deny path in
+ * this file routes through here — no duplicated condition at each exit.
+ *
+ * WHY: `fetch('/api/…')` follows a redirect transparently. The caller received
+ * the `/login` HTML page with a 200 — `res.ok` true, `res.json()` throwing inside
+ * its own catch — and read that as an empty result rather than an auth failure.
+ * In the request form that mis-read fabricated a fake location (the Québec
+ * placeholder) on a perfectly credible typed address; the 15-min access token
+ * makes it reachable by simply filling a form slowly on a phone.
+ *
+ * Discrimination is on the path prefix ONLY — never `Accept`, never
+ * `sec-fetch-mode`. The path is the sole source of truth. `/api/auth/*` never
+ * reaches this helper: it short-circuits at step 1, so sign-in is unaffected.
+ *
+ * `clearCookies` mirrors the response each caller replaces. A freshly built JSON
+ * response carries NONE of the `Set-Cookie` of the redirect it stands in for, so
+ * the fail-safe path must re-pose both deletions — a client that gets a 401
+ * without the purge stays stuck with dead cookies.
+ *
+ * Those deletions target `path` EXPLICITLY. A `Set-Cookie` expiry only clears a
+ * cookie whose Path matches, and a bare `delete(name)` defaults to the request's
+ * own path — from `/api/geocode` it would emit `Path=/api`, missing the real
+ * cookies entirely. Both are always posed with `baseCookieOptions.path` (login
+ * route + the R2 double-write below — the only two writers, same options), so
+ * reusing that constant keeps the purge aligned with the contract by
+ * construction.
+ */
+function denyUnauthenticated(
+  request: NextRequest,
+  { clearCookies }: { clearCookies: boolean },
+) {
+  const response = request.nextUrl.pathname.startsWith(API_PREFIX)
+    ? NextResponse.json({ message: UNAUTHENTICATED_MESSAGE }, { status: 401 })
+    : NextResponse.redirect(new URL('/login', request.url));
+
+  if (clearCookies) {
+    response.cookies.delete({ name: ACCESS_COOKIE, path: baseCookieOptions.path });
+    response.cookies.delete({ name: REFRESH_COOKIE, path: baseCookieOptions.path });
+  }
+
+  return response;
 }
 
 /**
  * Exchange the refresh cookie for a fresh pair, then either:
  *  - SUCCESS → R2 double-write (request header rewrite + response Set-Cookie), or
- *  - FAILURE → redirect-clear (fail-safe strict, both cookies dropped).
+ *  - FAILURE → deny-clear (fail-safe strict, both cookies dropped).
  */
 async function attemptRefresh(request: NextRequest, refreshToken: string) {
   const result = await refreshTokens(refreshToken);
 
   // FAIL-SAFE STRICT: an invalid/expired refresh (401/403), a 5xx, or an
   // unreachable API all land here → clean logout. No retry, no degraded mode.
+  // The decision to refresh, the rotation and the R2 double-write below are
+  // untouched — only the SHAPE of this failure response varies (see the helper).
   if (!result.ok) {
-    const redirect = NextResponse.redirect(new URL('/login', request.url));
-    redirect.cookies.delete(ACCESS_COOKIE);
-    redirect.cookies.delete(REFRESH_COOKIE);
-    return redirect;
+    return denyUnauthenticated(request, { clearCookies: true });
   }
 
   // SUCCESS → R2 double-write. The backend ROTATES the refresh token, so BOTH
