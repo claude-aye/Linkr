@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { components } from '@linkr/api-client';
 
@@ -44,16 +44,30 @@ type LocationState =
   | { kind: 'idle' }
   | { kind: 'geocoding' }
   | { kind: 'candidates'; candidates: GeocodeCandidate[] }
-  | { kind: 'resolved'; label: string; lat: number; lng: number };
+  | { kind: 'resolved'; label: string; lat: number; lng: number }
+  /**
+   * Geocoding produced no coordinate the client has SEEN and accepted.
+   * `no-match` — the service answered but placed nothing (address truncated,
+   * typo), or the client rejected every candidate. `unavailable` — a technical
+   * failure: non-2xx (including an expired session's relayed 401), network
+   * error, unreadable payload. The reason drives the left-hand action only;
+   * « Envoyer quand même » is offered either way, so the submit is never a
+   * dead end.
+   */
+  | { kind: 'unresolved'; reason: 'no-match' | 'unavailable' };
 
 /**
  * Fixed Québec City point, GeoJSON order [lng, lat] (lng negative). It is the
  * LAST-RESORT fallback only: the happy path (search → booking) threads the real
  * searched coordinate through the URL (3.14c-1), and on the direct-profile edge
- * the submit now geocodes the entered address in-form (3.14c-2). This placeholder
- * survives ONLY when geocoding yields nothing usable (no candidate, « Aucune de
- * ces adresses », network/502) — and it NEVER blocks the submit. (`service_location`
- * is NOT NULL; the nullable migration is a separate, tracked PR.)
+ * the submit geocodes the entered address in-form (3.14c-2).
+ *
+ * INVARIANT: exactly ONE call site passes it to `postRequest` — the « Envoyer
+ * quand même » handler. Every path that used to reach it silently (zero
+ * candidates, geocoding failure, « Aucune de ces adresses ») now stops on the
+ * `unresolved` panel first. No coordinate is submitted that the client has not
+ * seen and accepted; the submit is still never blocked. (`service_location` is
+ * NOT NULL; the nullable migration is a separate, tracked PR.)
  */
 const QUEBEC_SERVICE_LOCATION = { type: 'Point', coordinates: [-71.21, 46.81] };
 
@@ -159,8 +173,32 @@ export function CreateRequestForm({
   const [submitted, setSubmitted] = useState(false);
   const [locationState, setLocationState] = useState<LocationState>({ kind: 'idle' });
 
+  /** Scroll anchor for the « address field + announced region » block. */
+  const addressBlockRef = useRef<HTMLDivElement>(null);
+  /** Focus target of « Corriger l’adresse » — the only focus move we make. */
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
   const priceLabel = formatMoney(priceAmount, priceCurrency);
   const geocoding = locationState.kind === 'geocoding';
+  const locationKind = locationState.kind;
+
+  /**
+   * Perceptibility, the mobile half of the fix: the candidate list is born
+   * UNDER the virtual keyboard — the client sees nothing happen, retries, and
+   * truncates the address further. Bring the whole block into view instead.
+   *
+   * `block: 'start'` and NOT 'center': with the keyboard open the layout
+   * viewport does not shrink, so "centre" lands behind the keyboard. At the
+   * start, the field rises toward the top and the panel sits right under it —
+   * both above the keyboard, the typed address visible next to the outcome.
+   *
+   * In an effect, never inline in the handler: the panel must be committed to
+   * the DOM before we can scroll to it.
+   */
+  useEffect(() => {
+    if (locationKind !== 'candidates' && locationKind !== 'unresolved') return;
+    addressBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [locationKind]);
 
   /**
    * The terminal action for EVERY path: assemble the payload with the resolved
@@ -216,6 +254,45 @@ export function CreateRequestForm({
     setSubmitted(true);
   }
 
+  /**
+   * Geocodes `address` through the BFF relay and lands on exactly one of three
+   * states: `candidates` (≥ 1 hit), `unresolved`/'no-match' (the service
+   * answered with an empty list), `unresolved`/'unavailable' (technical
+   * failure). It NEVER posts — the client always gets to see the outcome.
+   *
+   * Shared by the intercepted submit and by « Réessayer », so both produce the
+   * same states from the same address.
+   */
+  async function runGeocode(address: string) {
+    setError(null);
+    setLocationState({ kind: 'geocoding' });
+
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`);
+      if (!res.ok) {
+        // Includes the expired session's 401, relayed as JSON: a failure of
+        // OURS, never a statement about the address the client typed.
+        setLocationState({ kind: 'unresolved', reason: 'unavailable' });
+        return;
+      }
+      const body = (await res.json()) as GeocodeResult;
+      const candidates = body?.candidates;
+      if (!Array.isArray(candidates)) {
+        // Well-formed HTTP, malformed payload → technical failure too.
+        setLocationState({ kind: 'unresolved', reason: 'unavailable' });
+        return;
+      }
+      setLocationState(
+        candidates.length > 0
+          ? { kind: 'candidates', candidates }
+          : { kind: 'unresolved', reason: 'no-match' },
+      );
+    } catch {
+      // Network error, or a body that is not readable JSON.
+      setLocationState({ kind: 'unresolved', reason: 'unavailable' });
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || geocoding) return;
@@ -255,33 +332,10 @@ export function CreateRequestForm({
       return;
     }
 
-    // Branch 3 — no URL coords, nothing resolved yet: geocode the entered address,
-    // intercepting THIS submit. Any failure (non-ok, network, malformed, or zero
-    // candidates) falls through to a placeholder POST — the submit is NEVER
-    // blocked (decision 5). Geocoding failures produce NO error message.
-    setError(null);
-    setLocationState({ kind: 'geocoding' });
-    let candidates: GeocodeCandidate[] = [];
-    try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(trimmedAddress)}`);
-      if (res.ok) {
-        const body = (await res.json()) as GeocodeResult;
-        candidates = Array.isArray(body?.candidates) ? body.candidates : [];
-      }
-    } catch {
-      // Network/parse failure → leave candidates empty → placeholder POST below.
-    }
-
-    if (candidates.length > 0) {
-      // Stop the submission and let the client disambiguate. No POST.
-      setLocationState({ kind: 'candidates', candidates });
-      return;
-    }
-
-    // Zero candidates or any failure → submit with the placeholder, never
-    // stranded. Reset to `idle` first so the button leaves the geocoding state.
-    setLocationState({ kind: 'idle' });
-    await postRequest(QUEBEC_SERVICE_LOCATION);
+    // Branch 3 — no URL coords, nothing resolved yet: geocode the entered
+    // address, intercepting THIS submit. EVERY outcome is now shown to the
+    // client (candidate list, or the `unresolved` panel); none of them posts.
+    await runGeocode(trimmedAddress);
   }
 
   /** Picking a candidate resolves the location — it does NOT submit. */
@@ -294,16 +348,48 @@ export function CreateRequestForm({
     });
   }
 
-  /** Explicit escape hatch — submit immediately with the placeholder. */
+  /**
+   * « Aucune de ces adresses » — the client rejects every candidate. It no
+   * longer submits on the spot: it lands on the same panel a failed geocoding
+   * produces, where sending anyway costs one more, deliberate tap.
+   */
   function chooseNone() {
+    setLocationState({ kind: 'unresolved', reason: 'no-match' });
+  }
+
+  /** `unresolved`/'no-match' → back to `idle`, focus on the address field. */
+  function correctAddress() {
     setLocationState({ kind: 'idle' });
+    addressInputRef.current?.focus();
+  }
+
+  /** `unresolved`/'unavailable' → re-run the geocoding on the SAME address. */
+  function retryGeocode() {
+    if (pending || geocoding) return;
+    void runGeocode(serviceAddress.trim());
+  }
+
+  /**
+   * THE one and only door to the placeholder, reachable solely by an explicit
+   * gesture on a panel the client has read. `type="button"` + onClick: it must
+   * NEVER re-enter the submit handler, which would re-geocode instead of
+   * posting. Same `pending` guard as the main button (anti double-click).
+   *
+   * `locationState` is deliberately left on `unresolved`: a POST that fails
+   * (401, 409…) keeps the panel in place for a cheap retry, exactly as a failed
+   * POST from `resolved` keeps its confirmation line.
+   */
+  function submitAnyway() {
+    if (pending || geocoding) return;
     void postRequest(QUEBEC_SERVICE_LOCATION);
   }
 
   /**
-   * Editing the address invalidates any pending resolution: the candidate list
-   * AND the confirmation line disappear together with their coordinates — no
-   * stale coordinate ever survives an address change.
+   * Editing the address invalidates any pending resolution: the candidate list,
+   * the confirmation line AND the `unresolved` panel disappear together with
+   * their coordinates — no stale coordinate, and no stale verdict about an
+   * address that no longer exists, survives an edit. Rule unchanged; the new
+   * state simply falls under the existing « anything but idle → idle ».
    */
   function handleAddressChange(value: string) {
     setServiceAddress(value);
@@ -405,13 +491,17 @@ export function CreateRequestForm({
           />
         </div>
 
-        <div>
+        {/* The address field and its announced region share ONE scroll anchor:
+            on mobile they have to clear the virtual keyboard together, or the
+            client sees neither what was typed nor what came back. */}
+        <div ref={addressBlockRef} className="scroll-mt-6">
           <label htmlFor="serviceAddress" className={labelClass}>
             Adresse du service
           </label>
           <input
             id="serviceAddress"
             name="serviceAddress"
+            ref={addressInputRef}
             type="text"
             required
             maxLength={ADDRESS_MAX}
@@ -419,37 +509,84 @@ export function CreateRequestForm({
             onChange={(e) => handleAddressChange(e.target.value)}
             className={fieldClass}
           />
-        </div>
 
-        {/* Candidate list (state `candidates`) — the client disambiguates. Each
-            option is `type="button"` (the default in a <form> is submit). */}
-        {locationState.kind === 'candidates' && (
-          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Choisissez l’adresse exacte&nbsp;:
-            </p>
-            <ul className="mt-3 space-y-2">
-              {locationState.candidates.map((candidate, index) => (
-                <li key={`${candidate.lat},${candidate.lng},${index}`}>
+          {/* ONE live region for BOTH outcomes — never two. It stays in the DOM
+              even when empty: a live region inserted at the same time as its
+              content is very often not announced at all. `polite`, and no focus
+              stealing — focus only moves on « Corriger l’adresse ». */}
+          <div aria-live="polite">
+            {/* Candidate list (state `candidates`) — the client disambiguates.
+                Each option is `type="button"` (default in a <form> is submit). */}
+            {locationState.kind === 'candidates' && (
+              <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Choisissez l’adresse exacte&nbsp;:
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {locationState.candidates.map((candidate, index) => (
+                    <li key={`${candidate.lat},${candidate.lng},${index}`}>
+                      <button
+                        type="button"
+                        onClick={() => chooseCandidate(candidate)}
+                        className="block w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-800 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                      >
+                        {candidate.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={chooseNone}
+                  className="mt-3 text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+                >
+                  Aucune de ces adresses
+                </button>
+              </div>
+            )}
+
+            {/* Unresolved (state `unresolved`) — the geocoding produced nothing
+                the client has accepted. Left action depends on the reason; the
+                right one is the single, explicit door to the placeholder. */}
+            {locationState.kind === 'unresolved' && (
+              <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
+                <p className="text-sm text-amber-900 dark:text-amber-200">
+                  {locationState.reason === 'no-match'
+                    ? 'Nous n’avons pas pu localiser cette adresse. Vérifiez qu’elle est complète, ou envoyez votre demande sans localisation précise.'
+                    : 'La localisation d’adresse est momentanément indisponible. Vous pouvez réessayer, ou envoyer votre demande sans localisation précise.'}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-4">
+                  {locationState.reason === 'no-match' ? (
+                    <button
+                      type="button"
+                      onClick={correctAddress}
+                      className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-zinc-800"
+                    >
+                      Corriger l’adresse
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={retryGeocode}
+                      disabled={pending || geocoding}
+                      className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-zinc-800"
+                    >
+                      Réessayer
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => chooseCandidate(candidate)}
-                    className="block w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-800 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                    onClick={submitAnyway}
+                    disabled={pending || geocoding}
+                    className="text-sm font-medium text-amber-800 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-amber-300"
                   >
-                    {candidate.label}
+                    Envoyer quand même
                   </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={chooseNone}
-              className="mt-3 text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
-            >
-              Aucune de ces adresses
-            </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Confirmation line (state `resolved`) — sober, coordinates held. */}
         {locationState.kind === 'resolved' && (
