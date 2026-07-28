@@ -20,10 +20,16 @@ import type { components } from '@linkr/api-client';
  * Posts to the BFF `POST /api/service-requests` (transparent relay, 3.13-3a),
  * NOT a Server Action — consistent with every other mutation in the app.
  *
- * In-form geocoding (Phase 3.14c-2): on the direct-profile edge (no URL coords),
- * the submit is INTERCEPTED once to geocode the entered `serviceAddress` via the
- * BFF `GET /api/geocode` relay, disambiguate the candidates, and POST the chosen
- * point. That GET is the one read the « BFF = mutations » rule now admits — a
+ * In-form geocoding (Phase 3.14c-2, now the SOLE path): EVERY submit is
+ * INTERCEPTED once to geocode the entered `serviceAddress` via the BFF
+ * `GET /api/geocode` relay, disambiguate the candidates, and POST the chosen
+ * point — whichever door the client came through. The typed address is the only
+ * source of the service location. The coordinate carried by the URL describes
+ * where the client LOOKED FOR a provider, not where the service will take
+ * place: two different data, and the form asks for the second one. It is now a
+ * last-resort fallback only (see `submitAnyway`).
+ *
+ * That GET is the one read the « BFF = mutations » rule now admits — a
  * `router.push` cannot carry it without destroying the half-filled form (see the
  * admissibility test in CLAUDE.md §Frontend). The POST is still NOT a Server
  * Action; the geocoding read is a GET relay, same cookie mechanism.
@@ -58,16 +64,19 @@ type LocationState =
 
 /**
  * Fixed Québec City point, GeoJSON order [lng, lat] (lng negative). It is the
- * LAST-RESORT fallback only: the happy path (search → booking) threads the real
- * searched coordinate through the URL (3.14c-1), and on the direct-profile edge
- * the submit geocodes the entered address in-form (3.14c-2).
+ * BOTTOM rung of an explicit degradation ladder:
  *
- * INVARIANT: exactly ONE call site passes it to `postRequest` — the « Envoyer
- * quand même » handler. Every path that used to reach it silently (zero
- * candidates, geocoding failure, « Aucune de ces adresses ») now stops on the
- * `unresolved` panel first. No coordinate is submitted that the client has not
- * seen and accepted; the submit is still never blocked. (`service_location` is
- * NOT NULL; the nullable migration is a separate, tracked PR.)
+ *   geocoded typed address  ›  searched area (URL coords)  ›  this placeholder
+ *
+ * Every submit geocodes the typed address first; only « Envoyer quand même »
+ * degrades, and it prefers the searched area whenever the URL carries one.
+ *
+ * INVARIANT: exactly ONE call site can reach it — the « Envoyer quand même »
+ * handler. Every path that used to reach it silently (zero candidates,
+ * geocoding failure, « Aucune de ces adresses ») stops on the `unresolved`
+ * panel first. No coordinate is submitted that the client has not seen and
+ * accepted; the submit is still never blocked. (`service_location` is NOT NULL;
+ * the nullable migration is a separate, tracked PR.)
  */
 const QUEBEC_SERVICE_LOCATION = { type: 'Point', coordinates: [-71.21, 46.81] };
 
@@ -143,14 +152,18 @@ export interface CreateRequestFormProps {
   priceAmount: number;
   priceCurrency: string;
   /**
-   * Searched coordinate threaded through the URL (voie Ⓐ, Phase 3.14c-1);
-   * the GeoJSON Point is assembled as [lng, lat] at submit. Undefined on the
-   * direct-profile edge (no search) → the submit geocodes the entered address
-   * in-form (3.14c-2), and only if THAT yields nothing does it fall back to the
-   * placeholder — never blocking the submit.
+   * Coordinates of the AREA the client searched a provider in, threaded through
+   * the URL (voie Ⓐ, Phase 3.14c-1). They do NOT describe where the service will
+   * take place — the typed address does — and are used ONLY as a last-resort
+   * fallback, behind « Envoyer quand même », when geocoding that address
+   * produced nothing the client accepted. Undefined when the client arrived
+   * through a shared profile link (no search upstream).
+   *
+   * The URL parameters keep their `lat`/`lng` names; only this props boundary is
+   * renamed, so the sense is impossible to mistake at the point of use.
    */
-  lat?: string;
-  lng?: string;
+  searchLat?: string;
+  searchLng?: string;
 }
 
 export function CreateRequestForm({
@@ -162,8 +175,8 @@ export function CreateRequestForm({
   serviceLabel,
   priceAmount,
   priceCurrency,
-  lat,
-  lng,
+  searchLat,
+  searchLng,
 }: CreateRequestFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -311,19 +324,9 @@ export function CreateRequestForm({
       return;
     }
 
-    // Branch 1 — HAPPY PATH: the real searched coordinate arrived through the URL
-    // (voie Ⓐ, 3.14c-1). NEVER intercepted — one click, direct POST, unchanged.
+    // Branch 1 — a candidate was already resolved in-form: POST its coordinates.
     // GeoJSON order [lng, lat]: LONGITUDE FIRST (inverting would send the request
     // to the wrong hemisphere; at Québec, lng is negative, lat positive).
-    const latNum = parseCoord(lat);
-    const lngNum = parseCoord(lng);
-    if (latNum !== null && lngNum !== null) {
-      await postRequest({ type: 'Point', coordinates: [lngNum, latNum] });
-      return;
-    }
-
-    // Branch 2 — a candidate was already resolved in-form: POST its coordinates,
-    // same [lng, lat] order.
     if (locationState.kind === 'resolved') {
       await postRequest({
         type: 'Point',
@@ -332,9 +335,13 @@ export function CreateRequestForm({
       return;
     }
 
-    // Branch 3 — no URL coords, nothing resolved yet: geocode the entered
-    // address, intercepting THIS submit. EVERY outcome is now shown to the
-    // client (candidate list, or the `unresolved` panel); none of them posts.
+    // Branch 2 — DEFAULT, and the only other one: geocode the entered address,
+    // intercepting THIS submit. The URL coordinates are deliberately NOT
+    // consulted here — they locate the client's SEARCH, not the service, so
+    // taking them would silently discard the address the form just required.
+    // Both doors (search result, shared link) now behave identically, and every
+    // outcome is shown to the client (candidate list, or the `unresolved`
+    // panel); none of them posts.
     await runGeocode(trimmedAddress);
   }
 
@@ -370,10 +377,17 @@ export function CreateRequestForm({
   }
 
   /**
-   * THE one and only door to the placeholder, reachable solely by an explicit
-   * gesture on a panel the client has read. `type="button"` + onClick: it must
-   * NEVER re-enter the submit handler, which would re-geocode instead of
-   * posting. Same `pending` guard as the main button (anti double-click).
+   * THE one and only door to a degraded location, reachable solely by an
+   * explicit gesture on a panel the client has read. `type="button"` + onClick:
+   * it must NEVER re-enter the submit handler, which would re-geocode instead
+   * of posting. Same `pending` guard as the main button (anti double-click).
+   *
+   * It degrades ONE rung at a time: the searched area (URL coordinates) when
+   * the client came from a search — a coarse but real neighbourhood — and only
+   * the Québec placeholder when there is nothing else, i.e. on a shared link.
+   * The panel's copy stays the same for both: distinguishing them would buy a
+   * conditional of copy for a marginal gain, and the honesty of the wording is
+   * the `location_is_approximate` debt, tracked separately.
    *
    * `locationState` is deliberately left on `unresolved`: a POST that fails
    * (401, 409…) keeps the panel in place for a cheap retry, exactly as a failed
@@ -381,7 +395,15 @@ export function CreateRequestForm({
    */
   function submitAnyway() {
     if (pending || geocoding) return;
-    void postRequest(QUEBEC_SERVICE_LOCATION);
+
+    // Same [lng, lat] order as every other branch — longitude first.
+    const searchLatNum = parseCoord(searchLat);
+    const searchLngNum = parseCoord(searchLng);
+    void postRequest(
+      searchLatNum !== null && searchLngNum !== null
+        ? { type: 'Point', coordinates: [searchLngNum, searchLatNum] }
+        : QUEBEC_SERVICE_LOCATION,
+    );
   }
 
   /**
