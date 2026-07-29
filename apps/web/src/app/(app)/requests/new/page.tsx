@@ -29,7 +29,11 @@ export default async function NewRequestPage({
   searchParams: Promise<{
     providerId?: string;
     serviceId?: string;
-    // Real searched coordinate, threaded via the URL (voie Ⓐ, Phase 3.14c-1).
+    // Coordinates of the AREA the client searched in, threaded via the URL
+    // (voie Ⓐ, Phase 3.14c-1). They locate the SEARCH, not the service: the
+    // form geocodes the typed address and keeps these as a last-resort
+    // fallback. The URL names stay `lat`/`lng` (the links that write them are
+    // out of scope); only the props boundary below carries the new sense.
     lat?: string;
     lng?: string;
   }>;
@@ -42,7 +46,12 @@ export default async function NewRequestPage({
     redirect('/login');
   }
 
-  const { providerId, serviceId, lat, lng } = await searchParams;
+  const {
+    providerId,
+    serviceId,
+    lat: searchLat,
+    lng: searchLng,
+  } = await searchParams;
   // Missing or malformed ids can never resolve a bookable service → not-found.
   if (!providerId || !serviceId || !UUID_RE.test(providerId) || !UUID_RE.test(serviceId)) {
     notFound();
@@ -117,8 +126,8 @@ export default async function NewRequestPage({
         serviceLabel={pickTranslation(item.serviceItemNameTranslations)}
         priceAmount={priceAmount}
         priceCurrency={item.priceCurrency}
-        lat={lat}
-        lng={lng}
+        searchLat={searchLat}
+        searchLng={searchLng}
       />
     </main>
   );
