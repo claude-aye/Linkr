@@ -3,6 +3,7 @@ import {
   Logger,
   Module,
   OnModuleDestroy,
+  OnModuleInit,
   Provider,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,6 +28,35 @@ const COMMAND_TIMEOUT_MS = 200;
  * reconnect loop cycling instead of holding a dead socket open for 10 s.
  */
 const CONNECT_TIMEOUT_MS = 1000;
+
+/**
+ * How often the supervisor below checks that the client is still on its way
+ * back. Cheap enough to run forever (a status comparison), long enough that it
+ * is not itself a source of churn.
+ */
+const RECONNECT_WATCHDOG_INTERVAL_MS = 5_000;
+
+/**
+ * How long the client may sit outside `ready` without emitting a single
+ * lifecycle event before we stop believing it is retrying.
+ *
+ * A live reconnect loop is noisy by construction: every cycle emits `close`
+ * then `reconnecting`, the default retryStrategy caps its delay at 2 s and
+ * `connectTimeout` caps an attempt at 1 s, so a healthy loop is never silent
+ * for more than ~3 s. Ten seconds is over three times that — long enough never
+ * to fire on a loop that is merely waiting, short enough to bound recovery.
+ */
+const STALL_TIMEOUT_MS = 10_000;
+
+/** Statuses whose arrival proves the client is still cycling. */
+const LIFECYCLE_EVENTS = [
+  'connecting',
+  'connect',
+  'ready',
+  'close',
+  'reconnecting',
+  'end',
+] as const;
 
 const redisProvider: Provider = {
   provide: REDIS_CLIENT,
@@ -60,6 +90,11 @@ const redisProvider: Provider = {
     // non-event. Logged at debug, not warn: the default retryStrategy retries
     // forever, so the same error recurs every ~2 s — `/health` is the intended
     // signal for "Redis is down", not the application log.
+    //
+    // Note that this listener going quiet does NOT mean Redis came back: once
+    // the client reaches status "end", `silentEmit` drops error events before
+    // any listener sees them. That silence is what `superviseConnection` below
+    // exists to catch.
     client.on('error', (err: Error) => {
       logger.debug(`Redis client error: ${err.message}`);
     });
@@ -86,12 +121,101 @@ const redisProvider: Provider = {
   providers: [redisProvider],
   exports: [REDIS_CLIENT],
 })
-export class RedisModule implements OnModuleDestroy {
+export class RedisModule implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisModule.name);
+
+  private watchdog: NodeJS.Timeout | null = null;
+
+  private lastLifecycleEventAt = Date.now();
 
   constructor(@Inject(REDIS_CLIENT) private readonly client: Redis) {}
 
+  onModuleInit(): void {
+    const noteProgress = (): void => {
+      this.lastLifecycleEventAt = Date.now();
+    };
+    for (const event of LIFECYCLE_EVENTS) {
+      this.client.on(event, noteProgress);
+    }
+
+    this.watchdog = setInterval(
+      () => this.superviseConnection(),
+      RECONNECT_WATCHDOG_INTERVAL_MS,
+    );
+    // Never a reason to keep the process alive: the supervisor exists to heal a
+    // long-running API, not to outlive it.
+    this.watchdog.unref();
+  }
+
+  /**
+   * ioredis reconnects on its own, but only along one path: a stream event
+   * reaches `closeHandler`, which consults `retryStrategy` and arms the next
+   * attempt. The default strategy never gives up, so a *refused* Redis retries
+   * forever and comes back by itself. Two states fall outside that path, and
+   * from either one the cache is dead until the process restarts:
+   *
+   * - **`end` is terminal.** `Redis#connect` sets it directly when the
+   *   connector rejects, without consulting `retryStrategy` and without going
+   *   through `closeHandler`, so no attempt is ever armed. Nothing in the
+   *   library leaves this status, and `silentEmit` drops every subsequent
+   *   error, so it fails silently — the debug log simply goes quiet.
+   * - **`connecting` has no unconditional watchdog.** `connectTimeout` is
+   *   armed as a socket idle-timeout and only inside `if (stream.connecting)`.
+   *   An attempt whose socket never reports connect, error or close therefore
+   *   parks here forever: no event means `closeHandler` never runs, and
+   *   `connect()` refuses to start a fresh attempt while in this status, so
+   *   even an armed timer would reject harmlessly.
+   *
+   * Hence a supervisor rather than a configuration change: no `retryStrategy`
+   * can help, because in both cases it is never called.
+   */
+  private superviseConnection(): void {
+    const { status } = this.client;
+    if (status === 'ready') {
+      return;
+    }
+
+    if (status === 'end') {
+      // Terminal and unambiguous — there is nothing to wait for.
+      this.logger.debug(
+        'Redis client is in terminal status "end" — restarting the connection',
+      );
+      void this.client.connect().catch(() => {
+        // Redis is still unreachable. Either the client fell back into the
+        // normal reconnect loop, or it returned to "end" and the next tick
+        // tries again. A cache failure is never allowed to surface.
+      });
+      return;
+    }
+
+    // Any other status means ioredis claims to be working on it. Take it at its
+    // word for as long as it keeps emitting.
+    if (Date.now() - this.lastLifecycleEventAt < STALL_TIMEOUT_MS) {
+      return;
+    }
+
+    this.logger.debug(
+      `Redis client stalled in status "${status}" — forcing a reconnect`,
+    );
+    // Count the intervention itself as progress. Tearing the socket down
+    // normally emits `close` straight away, which refreshes this anyway; doing
+    // it here too means that even an intervention that emits nothing at all
+    // (a connector holding no stream) is retried once per stall window rather
+    // than on every tick, so the debug log cannot run away.
+    this.lastLifecycleEventAt = Date.now();
+    // `true` = "reconnect afterwards": unlike the no-argument form it leaves
+    // `manuallyClosing` unset, so tearing the dead socket down produces the
+    // `close` event that puts `closeHandler` — and with it the ordinary retry
+    // loop — back in charge.
+    this.client.disconnect(true);
+  }
+
   async onModuleDestroy(): Promise<void> {
+    if (this.watchdog) {
+      clearInterval(this.watchdog);
+      this.watchdog = null;
+    }
+
     try {
       // QUIT drains in flight and closes politely. It is itself a command, so
       // it rejects when the client never reached a server (status "end", or
