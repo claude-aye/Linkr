@@ -6,6 +6,7 @@ import { REDIS_CLIENT } from '../redis/redis.constants';
 import { CachedGeocodingService } from './cached-geocoding.service';
 import { GEOCODING_SERVICE, IGeocodingService } from './geocoding.interface';
 import { NominatimGeocodingAdapter } from './nominatim-geocoding.adapter';
+import { RateLimitedGeocodingService } from './rate-limited-geocoding.service';
 
 const geocodingProvider: Provider = {
   provide: GEOCODING_SERVICE,
@@ -20,11 +21,17 @@ const geocodingProvider: Provider = {
     );
     const logger = new Logger('GeocodingModule');
     if (provider === 'nominatim') {
-      logger.log('Using Nominatim geocoding adapter (Redis-cached)');
-      // The cache wraps the adapter here, at the composition root, so no token
-      // is needed for the concrete adapter and the controller is untouched.
+      logger.log(
+        'Using Nominatim geocoding adapter (Redis-cached, rate-limited)',
+      );
+      // The decorators wrap the adapter here, at the composition root, so no
+      // token is needed for the concrete adapter and the controller is
+      // untouched. Order matters: the rate cap sits UNDER the cache, so a cache
+      // hit consumes no slot and only calls that really leave are metered.
       return new CachedGeocodingService(
-        new NominatimGeocodingAdapter(configService),
+        new RateLimitedGeocodingService(
+          new NominatimGeocodingAdapter(configService),
+        ),
         redis,
       );
     }
