@@ -65,6 +65,8 @@ export class User {
     enum: VerificationLevel,
     enumName: 'users_verification_level_enum',
     default: VerificationLevel.NONE,
+    comment:
+      'Declarative only, NOT enforced. No code path writes this column; SMS OTP is not implemented. Do not build guards on this value until OTP exists. See CLAUDE.md.',
   })
   verificationLevel!: VerificationLevel;
 

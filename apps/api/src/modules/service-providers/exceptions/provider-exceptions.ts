@@ -7,15 +7,6 @@ export class ProviderOwnerConflictException extends HttpException {
   }
 }
 
-/** 403 — the acting user has not reached PHONE verification, required for Pro mode. */
-export class PhoneVerificationRequiredException extends HttpException {
-  constructor(
-    message = 'Phone verification is required to activate Pro mode',
-  ) {
-    super(message, HttpStatus.FORBIDDEN);
-  }
-}
-
 /** 403 — the acting user is not the owner/authorized manager of the provider. */
 export class NotProviderOwnerException extends HttpException {
   constructor(
