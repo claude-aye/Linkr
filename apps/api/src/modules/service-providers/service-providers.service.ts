@@ -8,7 +8,6 @@ import { UsersRepository } from '../users/users.repository';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
 import { OrganizationMembershipsRepository } from '../organization-memberships/organization-memberships.repository';
 import { OrganizationRole } from '../organization-memberships/enums/organization-role.enum';
-import { VerificationLevel } from '../users/enums/verification-level.enum';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
@@ -28,14 +27,8 @@ import {
 } from './repositories/professional-service-zone.repository';
 import {
   NotProviderOwnerException,
-  PhoneVerificationRequiredException,
   ProviderOwnerConflictException,
 } from './exceptions/provider-exceptions';
-
-const PRO_ALLOWED_LEVELS: ReadonlySet<VerificationLevel> = new Set([
-  VerificationLevel.PHONE,
-  VerificationLevel.IDENTITY,
-]);
 
 @Injectable()
 export class ServiceProvidersService {
@@ -53,13 +46,11 @@ export class ServiceProvidersService {
     currentUserId: string,
     dto: CreateServiceProviderDto,
   ): Promise<ServiceProviderResponseDto> {
-    // Onboarding gate — applies to whoever is acting, both provider types.
-    const user = await this.usersRepository.findById(currentUserId);
-    if (!user) throw new NotFoundException('User not found');
-    if (!PRO_ALLOWED_LEVELS.has(user.verificationLevel)) {
-      throw new PhoneVerificationRequiredException();
-    }
-
+    // No verification-level gate here: `users.verification_level` is declarative
+    // only — no code path ever writes it (SMS OTP is not implemented), so any
+    // guard on it is a dead end. The phone requirement comes back with the OTP.
+    // Money stays protected downstream: `assertPayable` blocks assignment until
+    // Stripe Connect is live, and Stripe runs its own KYC.
     if (dto.providerType === ProviderType.INDIVIDUAL) {
       if (dto.organizationId) {
         throw new BadRequestException(
