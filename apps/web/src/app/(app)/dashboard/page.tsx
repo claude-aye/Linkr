@@ -3,13 +3,17 @@ import { redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { pickTranslation } from '@/lib/i18n/translations';
+import type { CategoryOption } from '@/lib/providers/discovery-types';
 import type {
+  ProviderCategory,
   ProviderProfile,
   ProviderServiceRequestItem,
+  PscVerificationStatus,
   ServiceRequestStatus,
 } from '@/lib/providers/types';
 
 import { AcceptRequestAction } from './_actions/accept-request-action';
+import { AddCategoryForm, type TradeOption } from './_actions/add-category-form';
 import { DeclineRequestAction } from './_actions/decline-request-action';
 import { JobPipelineAction } from './_actions/job-pipeline-action';
 
@@ -99,6 +103,63 @@ const STATUS_BADGES: Record<ServiceRequestStatus, { label: string; className: st
     className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
   },
 };
+
+/**
+ * Declared-trade badge — the REAL `verification_status` the row holds, never a
+ * hoped-for one. A paused trade (`is_active = false`) is reported as such
+ * instead, because it is genuinely out of the discovery predicate whatever its
+ * verification says.
+ *
+ * Deliberately a LOCAL const, like {@link STATUS_BADGES} above: the tracked
+ * « shared status-badge helper » debt is not widened here, and not paid here
+ * either (cf. CLAUDE.md, 3.13-B « VOIE 2 »). Same colour families as the
+ * request badges — no new colour is introduced.
+ */
+const TRADE_BADGES: Record<PscVerificationStatus, { label: string; className: string }> = {
+  NOT_REQUIRED: {
+    label: 'Aucune vérification requise',
+    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  },
+  VERIFIED: {
+    label: 'Licence vérifiée',
+    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  },
+  PENDING: {
+    label: 'Vérification en attente',
+    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  },
+  REJECTED: {
+    label: 'Vérification refusée',
+    className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+  },
+};
+
+const PAUSED_BADGE = {
+  label: 'En pause',
+  className: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+};
+
+/** One declared trade: its name (joined from the catalog) and its real status. */
+function TradeRow({ trade, label }: { trade: ProviderCategory; label: string }) {
+  const badge = trade.isActive ? TRADE_BADGES[trade.verificationStatus] : PAUSED_BADGE;
+
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      {/* UUID on hover, same affordance as the request cards above. */}
+      <span
+        className="font-medium text-zinc-900 dark:text-zinc-50"
+        title={trade.serviceCategoryId}
+      >
+        {label}
+      </span>
+      <span
+        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
+      >
+        {badge.label}
+      </span>
+    </li>
+  );
+}
 
 /** « Plomberie · Déboucher un évier » — item-less tenders show the trade alone. */
 function tradeLine(item: ProviderServiceRequestItem): string {
@@ -368,6 +429,55 @@ export default async function DashboardPage() {
     }
   }
 
+  // « Mes métiers » — TWO reads, joined here: the declared claims carry only a
+  // `serviceCategoryId`, and the catalog carries the labels + the regulation
+  // level the form needs. Neither failure sets the page-wide `failed`: a catalog
+  // outage must not blank the inbox, so both degrade inside their own section.
+  let trades: ProviderCategory[] | null = null;
+  let catalog: CategoryOption[] = [];
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET(
+        '/service-providers/{providerId}/categories',
+        { params: { path: { providerId: provider.id } } },
+      );
+      // This operation ships no response schema (`content: never`), so `data` is
+      // typed `never` — cast through the faithful mirror, as for `/auth/me`.
+      // openapi-fetch still parses the JSON body at runtime regardless.
+      if (!error && response.ok && Array.isArray(data)) {
+        trades = data as unknown as ProviderCategory[];
+      }
+    } catch {
+      trades = null;
+    }
+
+    try {
+      const { data, error, response } = await client.GET('/service-categories');
+      // Same contract gap, same minimal local mirror as `/recherche`.
+      if (!error && response.ok && Array.isArray(data)) {
+        catalog = data as unknown as CategoryOption[];
+      }
+    } catch {
+      catalog = [];
+    }
+  }
+
+  /** Trade id → display label. The claims carry no name of their own. */
+  const catalogLabels = new Map(
+    catalog.map((category) => [category.id, pickTranslation(category.nameTranslations)]),
+  );
+
+  // Whole active catalog, ordered — REGULATED trades included and flagged, so
+  // the form can present them without letting them be picked.
+  const tradeOptions: TradeOption[] = [...catalog]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((category) => ({
+      id: category.id,
+      label: pickTranslation(category.nameTranslations),
+      regulated: category.regulationLevel === 'REGULATED',
+    }));
+
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
       <section className="w-full max-w-3xl">
@@ -441,6 +551,65 @@ export default async function DashboardPage() {
                 </ul>
               )}
             </section>
+
+            {/* Last, after the activity: this is profile configuration, and the
+                inbox-first ordering above is a locked decision. On a fresh
+                provider the two sections above read « aucune demande » / « aucun
+                job » and this one explains why.
+
+                Guarded on `provider` rather than assumed: this branch only runs
+                when the profile did load, but the narrowing has to be written
+                down for the id passed to the form to be sound. */}
+            {provider && (
+              <section aria-labelledby="trades-title">
+                <div className="mb-3 flex items-center gap-2">
+                  <h2
+                    id="trades-title"
+                    className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+                  >
+                    Mes métiers
+                  </h2>
+                  {trades && trades.length > 0 && (
+                    <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
+                      {trades.length}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  {trades === null ? (
+                    <StateCard title="Chargement impossible">
+                      Vos métiers n’ont pas pu être récupérés. Veuillez réessayer plus tard.
+                    </StateCard>
+                  ) : trades.length === 0 ? (
+                    <EmptyHint>
+                      Vous n’avez déclaré aucun métier. Sans métier déclaré, vous
+                      n’apparaissez dans aucune recherche&nbsp;: déclarez celui que vous
+                      exercez pour être trouvé par des clients.
+                    </EmptyHint>
+                  ) : (
+                    <ul className="space-y-3">
+                      {trades.map((trade) => (
+                        <TradeRow
+                          key={trade.id}
+                          trade={trade}
+                          label={catalogLabels.get(trade.serviceCategoryId) ?? '—'}
+                        />
+                      ))}
+                    </ul>
+                  )}
+
+                  {tradeOptions.length === 0 ? (
+                    <EmptyHint>
+                      La liste des métiers n’a pas pu être chargée. Veuillez réessayer
+                      plus tard.
+                    </EmptyHint>
+                  ) : (
+                    <AddCategoryForm providerId={provider.id} options={tradeOptions} />
+                  )}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </section>
