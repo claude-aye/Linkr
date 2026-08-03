@@ -10,10 +10,13 @@ export const dynamic = 'force-dynamic';
  * Client hub — the post-login landing (Phase 3.13-PR2).
  *
  * Deliberately SOBER: a personalised greeting + the two client entry points
- * (« Trouver un pro », « Mes demandes »), plus a discreet provider shortcut when
- * the session is a Pro. NO provider listing, NO search, NO geo call — discovery
- * lands in phase 3.14; the hub is wired to a real provider profile in a later
- * 3.13 task. We do not speculate here.
+ * (« Trouver un pro », « Mes demandes »), plus ONE role-conditional element —
+ * a provider already has a discreet dashboard shortcut, a non-provider gets the
+ * « Devenir prestataire » card instead. NO provider listing, NO search, NO geo
+ * call: the hub only routes. We do not speculate here.
+ *
+ * Both branches read `isProvider` from the shell helper this page already
+ * awaits — the hub adds NO request of its own.
  */
 export default async function HubPage() {
   const { user, isProvider } = await getShellCapabilities();
@@ -50,6 +53,19 @@ export default async function HubPage() {
             title="Mes demandes"
             description="Suivez vos réservations et vos projets en cours."
           />
+          {/* Third card for the OTHER side of the marketplace, shown only to a
+              session that is not a provider yet — the mirror image of the
+              dashboard shortcut below. It reuses `isProvider`, ALREADY resolved
+              above: no extra request (`GET /service-providers/me` has two call
+              sites — the shell helper this page shares with the layout, and the
+              dashboard — and this adds no third one). */}
+          {!isProvider && (
+            <HubCard
+              href="/providers/new"
+              title="Devenir prestataire"
+              description="Créez votre profil pour offrir vos services et recevoir des demandes."
+            />
+          )}
         </div>
 
         {isProvider && (
