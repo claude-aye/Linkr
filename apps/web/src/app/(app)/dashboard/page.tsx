@@ -143,6 +143,33 @@ function StateCard({
   );
 }
 
+/**
+ * Empty state for a signed-in user with NO provider profile — the entry point to
+ * « devenir prestataire ». This screen is where the post-signup bounce lands, so
+ * it carries the CTA rather than a dead end. Same shell as {@link StateCard} (kept
+ * untouched for the `failed` branch), plus the app's primary-button link style.
+ */
+function BecomeProviderCard() {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        Vous n’avez pas encore de profil prestataire
+      </h2>
+      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+        Créez-en un pour offrir vos services et recevoir des demandes.
+      </p>
+      <div className="mt-6">
+        <Link
+          href="/providers/new"
+          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+        >
+          Devenir prestataire
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
@@ -297,8 +324,8 @@ export default async function DashboardPage() {
   try {
     const { data, error, response } = await client.GET('/service-providers/me');
     if (response.status === 404) {
-      // The user never activated Pro mode — sober empty state (the full
-      // « Devenir prestataire » onboarding CTA is deferred to a later phase).
+      // The user never activated Pro mode → the « Devenir prestataire » entry
+      // point below. This 404 IS the detection: no extra request is made.
       notPro = true;
     } else if (error || !response.ok || !data) {
       failed = true;
@@ -360,9 +387,7 @@ export default async function DashboardPage() {
             Le tableau de bord n’a pas pu être récupéré. Réessaie plus tard.
           </StateCard>
         ) : notPro ? (
-          <StateCard title="Vous n’avez pas encore de profil prestataire">
-            Ce tableau de bord est réservé aux prestataires Linkr.
-          </StateCard>
+          <BecomeProviderCard />
         ) : (
           <div className="space-y-8">
             {/* Inbox first and visually dominant: OPEN targeted bookings are
