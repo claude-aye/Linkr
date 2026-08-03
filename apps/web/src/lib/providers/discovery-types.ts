@@ -27,7 +27,20 @@ import type { components } from '@linkr/api-client';
  *
  * Source of truth:
  * apps/api/src/modules/service-providers/dto/discovered-provider.dto.ts
+ * apps/api/src/modules/services-catalog/entities/service-category.entity.ts
  */
+
+/**
+ * Catalog regulation level of a trade.
+ *
+ * DERIVED from the generated schema rather than hand-written, so the union can
+ * never silently drift from the backend enum. `CreateServiceCategoryDto` (an
+ * admin WRITE DTO) is the only place the contract spells this enum out — the
+ * public read endpoint ships no schema at all — but it is the same
+ * `service_category_regulation_level` enum on the same column.
+ */
+export type RegulationLevel =
+  components['schemas']['CreateServiceCategoryDto']['regulationLevel'];
 
 /** One discovered provider — the real runtime shape of a `discover` item. */
 export type DiscoveredProvider = Omit<
@@ -49,12 +62,24 @@ export interface DiscoveredProviderList {
 }
 
 /**
- * Minimal option for the trade `<select>`. `GET /service-categories` has no
- * response schema in the contract, so we read only what the selector needs.
+ * Minimal option for a trade `<select>`. `GET /service-categories` has no
+ * response schema in the contract, so we read only what the selectors need.
+ *
+ * Shared by BOTH trade selectors — `/recherche` (geo discovery) and the
+ * dashboard's « Mes métiers » form — deliberately: one mirror per endpoint, so
+ * the two can never drift apart.
+ *
+ * `regulationLevel` really is on the wire: `listPublicCategories()` →
+ * `findActivePublic()` runs a plain `find()` with NO projection, and the API
+ * installs no `ClassSerializerInterceptor`, so the whole `ServiceCategory`
+ * entity is serialized. It is what tells the dashboard which trades it must
+ * present as non-selectable (see `add-category-form.tsx`).
  */
 export interface CategoryOption {
   id: string;
   /** Trade i18n name map; resolve via `pickTranslation`. */
   nameTranslations: Record<string, string>;
   sortOrder: number;
+  /** REGULATED → the API would file the claim as PENDING; INFORMAL → NOT_REQUIRED. */
+  regulationLevel: RegulationLevel;
 }

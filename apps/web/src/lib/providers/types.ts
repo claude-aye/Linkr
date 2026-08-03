@@ -85,6 +85,48 @@ export type ProviderCatalogItem = Omit<
 };
 
 /**
+ * Verification status of a declared trade. DERIVED from the generated schema
+ * (`DiscoveredProviderDto` is the one place the contract spells this enum out)
+ * rather than hand-written, so the union cannot silently drift.
+ */
+export type PscVerificationStatus =
+  components['schemas']['DiscoveredProviderDto']['categoryVerificationStatus'];
+
+/**
+ * Mirror of `ProviderCategoryResponseDto` — one declared trade, as returned by
+ * `GET /service-providers/{providerId}/categories` (owner view: every status,
+ * soft-deleted rows excluded, oldest first).
+ *
+ * A FULL hand-mirror, unlike `ProviderCatalogItem`: that controller carries no
+ * `@ApiResponse`, so the operation is generated with `content?: never` and the
+ * DTO is not emitted in `components.schemas` at all — there is nothing to
+ * derive from except the status union above. Contract debt of the same family
+ * as `GET /service-categories` and `/auth/me`; NOT fixed here (this slice is
+ * front-pure). Fixing it backend-side means annotating the controller with
+ * `@ApiOkResponse({ type: ProviderCategoryResponseDto, isArray: true })` —
+ * honest, since the runtime really does return a bare array.
+ *
+ * ⚠️ It carries `serviceCategoryId` (a UUID) and NO label: the trade's name
+ * must be joined client-side against the catalog (`GET /service-categories`).
+ *
+ * Source of truth:
+ * apps/api/src/modules/service-providers/dto/provider-category-response.dto.ts
+ */
+export interface ProviderCategory {
+  id: string;
+  serviceProviderId: string;
+  serviceCategoryId: string;
+  verificationStatus: PscVerificationStatus;
+  requestedAtUtc: string;
+  verifiedAtUtc: string | null;
+  rejectionReason: string | null;
+  /** The provider can pause a trade (`PATCH …/categories/{pscId}`; no web UI yet). */
+  isActive: boolean;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+/**
  * Mirror of `ProviderServiceRequestItemDto` (Vision B item: assigned job OR
  * OPEN direct booking targeted at the provider). Amounts are decimal strings
  * (e.g. `"150.00"`); GPS and `clientUserId` are excluded upstream (Loi 25).
