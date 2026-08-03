@@ -1,6 +1,7 @@
 'use client';
 
 import { type FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -102,6 +103,16 @@ export default function LoginPage() {
             {submitting ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          Vous n’avez pas de compte?{' '}
+          <Link
+            href="/signup"
+            className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+          >
+            Créer un compte
+          </Link>
+        </p>
       </section>
     </main>
   );

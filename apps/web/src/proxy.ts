@@ -38,7 +38,12 @@ import { refreshTokens } from '@/lib/auth/refresh';
 
 // Deny-by-default: every route is protected EXCEPT the ones listed here.
 // `/` is now the authenticated client hub (3.13-PR2) — no longer public.
-const PUBLIC_PAGES = ['/login'];
+// `/signup` is the second auth surface and MUST be listed: under
+// deny-by-default an anonymous visitor — i.e. every visitor who needs it — would
+// otherwise be bounced to `/login`, leaving the page reachable only by an
+// account that already exists. Its BFF (`/api/auth/signup`) needs no entry: it
+// already falls under `PUBLIC_API_PREFIX`.
+const PUBLIC_PAGES = ['/login', '/signup'];
 const PUBLIC_API_PREFIX = '/api/auth';
 const API_PREFIX = '/api/';
 
