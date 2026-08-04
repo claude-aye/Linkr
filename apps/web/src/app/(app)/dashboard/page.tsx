@@ -478,6 +478,140 @@ export default async function DashboardPage() {
       regulated: category.regulationLevel === 'REGULATED',
     }));
 
+  // The three provider sections, each built ONCE here and merely ORDERED below.
+  // They carry stable keys because they are rendered from an array — and the
+  // keys must stay stable across the flip described further down: without them
+  // React would rebuild whatever sits at a given index instead of MOVING the
+  // sections, remounting `AddCategoryForm` and wiping the confirmation the
+  // provider just earned by declaring their first trade.
+  const pendingSection = (
+    // Inbox first and visually dominant: OPEN targeted bookings are
+    // time-sensitive revenue opportunities.
+    <section key="pending" aria-labelledby="pending-title">
+      <div className="mb-3 flex items-center gap-2">
+        <h2
+          id="pending-title"
+          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        >
+          En attente de réponse
+        </h2>
+        {pending.length > 0 && (
+          <span className="inline-flex items-center rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-medium text-white">
+            {pending.length}
+          </span>
+        )}
+      </div>
+      {pending.length === 0 ? (
+        <EmptyHint>Aucune demande en attente.</EmptyHint>
+      ) : (
+        <ul className="space-y-4">
+          {pending.map((item) => (
+            <PendingRequestCard key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  const jobsSection = (
+    <section key="jobs" aria-labelledby="jobs-title">
+      <div className="mb-3 flex items-center gap-2">
+        <h2 id="jobs-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          Mes jobs
+        </h2>
+        {jobs.length > 0 && (
+          <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
+            {jobs.length}
+          </span>
+        )}
+      </div>
+      {jobs.length === 0 ? (
+        <EmptyHint>Aucun job pour le moment.</EmptyHint>
+      ) : (
+        <ul className="space-y-4">
+          {jobs.map((item) => (
+            <JobCard key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  // Guarded on `provider` rather than assumed: the branch that renders this only
+  // runs when the profile did load, but the narrowing has to be written down for
+  // the id passed to the form to be sound.
+  const tradesSection = provider && (
+    <section key="trades" aria-labelledby="trades-title">
+      <div className="mb-3 flex items-center gap-2">
+        <h2
+          id="trades-title"
+          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        >
+          Mes métiers
+        </h2>
+        {trades && trades.length > 0 && (
+          <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
+            {trades.length}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        {trades === null ? (
+          <StateCard title="Chargement impossible">
+            Vos métiers n’ont pas pu être récupérés. Veuillez réessayer plus tard.
+          </StateCard>
+        ) : trades.length === 0 ? (
+          <EmptyHint>
+            Vous n’avez déclaré aucun métier. Sans métier déclaré, vous n’apparaissez
+            dans aucune recherche&nbsp;: déclarez celui que vous exercez pour être
+            trouvé par des clients.
+          </EmptyHint>
+        ) : (
+          <ul className="space-y-3">
+            {trades.map((trade) => (
+              <TradeRow
+                key={trade.id}
+                trade={trade}
+                label={catalogLabels.get(trade.serviceCategoryId) ?? '—'}
+              />
+            ))}
+          </ul>
+        )}
+
+        {tradeOptions.length === 0 ? (
+          <EmptyHint>
+            La liste des métiers n’a pas pu être chargée. Veuillez réessayer plus tard.
+          </EmptyHint>
+        ) : (
+          <AddCategoryForm providerId={provider.id} options={tradeOptions} />
+        )}
+      </div>
+    </section>
+  );
+
+  /**
+   * CONDITIONAL hoist — this is NOT a reversal of inbox-first.
+   *
+   * A provider with ZERO declared trades is invisible to every search, so the
+   * two sections above him can only ever read « aucune demande » / « aucun job »:
+   * the one thing that can change that is the section explaining it. For him,
+   * and ONLY for him, « Mes métiers » leads.
+   *
+   * The moment a first trade is declared the list is non-empty and the locked
+   * 3.12-front order resumes — an established provider never sees his inbox
+   * demoted. Read from `trades`, already loaded above: no extra request.
+   *
+   * `trades === null` (the read failed) deliberately does NOT hoist: we do not
+   * know whether he has trades, and pushing the inbox below an error card we
+   * cannot act on would trade a certainty for a guess.
+   */
+  const hoistTrades = trades !== null && trades.length === 0;
+
+  const sections = hoistTrades
+    ? [tradesSection, pendingSection, jobsSection]
+    : [pendingSection, jobsSection, tradesSection];
+
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
       <section className="w-full max-w-3xl">
@@ -499,118 +633,10 @@ export default async function DashboardPage() {
         ) : notPro ? (
           <BecomeProviderCard />
         ) : (
-          <div className="space-y-8">
-            {/* Inbox first and visually dominant: OPEN targeted bookings are
-                time-sensitive revenue opportunities. */}
-            <section aria-labelledby="pending-title">
-              <div className="mb-3 flex items-center gap-2">
-                <h2
-                  id="pending-title"
-                  className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
-                >
-                  En attente de réponse
-                </h2>
-                {pending.length > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-medium text-white">
-                    {pending.length}
-                  </span>
-                )}
-              </div>
-              {pending.length === 0 ? (
-                <EmptyHint>Aucune demande en attente.</EmptyHint>
-              ) : (
-                <ul className="space-y-4">
-                  {pending.map((item) => (
-                    <PendingRequestCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section aria-labelledby="jobs-title">
-              <div className="mb-3 flex items-center gap-2">
-                <h2
-                  id="jobs-title"
-                  className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
-                >
-                  Mes jobs
-                </h2>
-                {jobs.length > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
-                    {jobs.length}
-                  </span>
-                )}
-              </div>
-              {jobs.length === 0 ? (
-                <EmptyHint>Aucun job pour le moment.</EmptyHint>
-              ) : (
-                <ul className="space-y-4">
-                  {jobs.map((item) => (
-                    <JobCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {/* Last, after the activity: this is profile configuration, and the
-                inbox-first ordering above is a locked decision. On a fresh
-                provider the two sections above read « aucune demande » / « aucun
-                job » and this one explains why.
-
-                Guarded on `provider` rather than assumed: this branch only runs
-                when the profile did load, but the narrowing has to be written
-                down for the id passed to the form to be sound. */}
-            {provider && (
-              <section aria-labelledby="trades-title">
-                <div className="mb-3 flex items-center gap-2">
-                  <h2
-                    id="trades-title"
-                    className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
-                  >
-                    Mes métiers
-                  </h2>
-                  {trades && trades.length > 0 && (
-                    <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
-                      {trades.length}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  {trades === null ? (
-                    <StateCard title="Chargement impossible">
-                      Vos métiers n’ont pas pu être récupérés. Veuillez réessayer plus tard.
-                    </StateCard>
-                  ) : trades.length === 0 ? (
-                    <EmptyHint>
-                      Vous n’avez déclaré aucun métier. Sans métier déclaré, vous
-                      n’apparaissez dans aucune recherche&nbsp;: déclarez celui que vous
-                      exercez pour être trouvé par des clients.
-                    </EmptyHint>
-                  ) : (
-                    <ul className="space-y-3">
-                      {trades.map((trade) => (
-                        <TradeRow
-                          key={trade.id}
-                          trade={trade}
-                          label={catalogLabels.get(trade.serviceCategoryId) ?? '—'}
-                        />
-                      ))}
-                    </ul>
-                  )}
-
-                  {tradeOptions.length === 0 ? (
-                    <EmptyHint>
-                      La liste des métiers n’a pas pu être chargée. Veuillez réessayer
-                      plus tard.
-                    </EmptyHint>
-                  ) : (
-                    <AddCategoryForm providerId={provider.id} options={tradeOptions} />
-                  )}
-                </div>
-              </section>
-            )}
-          </div>
+          // Order decided above; the sections themselves are built once. The
+          // fragments-free array keeps them DIRECT children of this div, so
+          // `space-y-8` still spaces them — no style change, only order.
+          <div className="space-y-8">{sections}</div>
         )}
       </section>
     </main>
