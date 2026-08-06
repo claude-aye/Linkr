@@ -121,6 +121,21 @@ export class ServiceRequestsService {
       });
     }
 
+    // Same terms for a DIRECT_BOOKING, but targeted: the client picked this one
+    // provider, so only that provider is told. A separate call rather than a
+    // branch inside broadcastTenderMatch(), whose geographic fan-out is exactly
+    // what a direct booking must not trigger.
+    if (
+      record.requestType === ServiceRequestType.DIRECT_BOOKING &&
+      record.requestedServiceProviderId
+    ) {
+      this.notificationsService.notifyDirectBooking(record).catch((err: unknown) => {
+        this.logger.error(
+          `notifyDirectBooking failed for request ${record.id}: ${String(err)}`,
+        );
+      });
+    }
+
     return this.toResponseDto(record);
   }
 
