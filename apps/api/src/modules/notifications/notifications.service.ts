@@ -1,10 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { NotificationsRepository } from './repositories/notifications.repository';
+import { NotificationItemDto } from './dto/notification-item.dto';
+import { NotificationListDto } from './dto/notification-list.dto';
+import { NotificationReadResponseDto } from './dto/notification-read-response.dto';
 import { NotificationType } from './enums/notification-type.enum';
 import { ServiceRequestRecord } from '../service-requests/repositories/service-request.repository';
+
+/**
+ * Hard server-side cap on `GET /notifications`. No cursor, no page parameter:
+ * real pagination is a debt assumed elsewhere in the codebase (dashboard,
+ * /requests, /recherche) and this PR does not open it. `unreadCount` is
+ * computed over the whole set, so the cap never makes the badge lie.
+ */
+const NOTIFICATIONS_LIST_LIMIT = 50;
 
 @Injectable()
 export class NotificationsService {
@@ -15,6 +26,45 @@ export class NotificationsService {
     private readonly providerRepo: ServiceProviderRepository,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * Everything addressed to this user, personally or through a provider profile
+   * they own, newest first. One query — see the repository for why the union,
+   * the counts and the labels all ride in the same round trip.
+   */
+  async listForUser(userId: string): Promise<NotificationListDto> {
+    const { items, unreadCount, total } =
+      await this.notificationsRepo.findForRecipient(
+        userId,
+        NOTIFICATIONS_LIST_LIMIT,
+      );
+
+    return {
+      items: items.map((record) => NotificationItemDto.from(record)),
+      unreadCount,
+      total,
+      limit: NOTIFICATIONS_LIST_LIMIT,
+    };
+  }
+
+  /**
+   * Mark one notification read. Idempotent: a second call returns the first
+   * call's timestamp untouched.
+   *
+   * A notification addressed to neither the caller nor their profiles yields
+   * 404, NOT 403 — the same answer as one that does not exist. 403 would confirm
+   * that a given id is a real notification belonging to someone else, and there
+   * is nothing to gain from telling a stranger that.
+   */
+  async markRead(
+    userId: string,
+    notificationId: string,
+  ): Promise<NotificationReadResponseDto> {
+    const updated = await this.notificationsRepo.markRead(notificationId, userId);
+    if (!updated) throw new NotFoundException('Notification not found');
+
+    return { id: updated.id, readAtUtc: updated.readAtUtc.toISOString() };
+  }
 
   /**
    * Broadcast a NEW_TENDER_MATCH notification to every provider eligible for

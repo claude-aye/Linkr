@@ -798,6 +798,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's notifications — those addressed to them personally OR to a provider profile they own — newest first, capped at 50. No cursor, no paging. unreadCount counts the whole set, not the page. */
+        get: operations["NotificationsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Mark a notification read. Idempotent — a repeat call keeps the first read timestamp. 404 (never 403) when it targets neither the caller nor their provider profiles. */
+        patch: operations["NotificationsController_markRead"];
+        trace?: never;
+    };
     "/service-requests": {
         parameters: {
             query?: never;
@@ -1679,6 +1713,77 @@ export interface components {
         RejectVerificationDocumentDto: {
             /** @description Reason shown to the provider for the rejection */
             rejectionReason: string;
+        };
+        /** @enum {string} */
+        NotificationType: "NEW_TENDER_MATCH" | "NEW_DIRECT_BOOKING";
+        /**
+         * @description The request’s CURRENT status, not the one it had when notified — a cancelled or expired request reports what it really is.
+         * @enum {string}
+         */
+        ServiceRequestStatus: "DRAFT" | "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "PAID" | "EXPIRED" | "CANCELLED" | "REFUNDED";
+        /** @enum {string} */
+        ServiceRequestType: "DIRECT_BOOKING" | "PROJECT_TENDER";
+        NotificationItemDto: {
+            /** Format: uuid */
+            id: string;
+            type: components["schemas"]["NotificationType"];
+            /**
+             * Format: date-time
+             * @description When the recipient read it. Null means unread.
+             */
+            readAtUtc: string | null;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /**
+             * @description Free-form payload. Identifiers are NOT duplicated here: the recipient and the service request are real columns, and this endpoint joins on them. Reserved for what cannot be joined — a rendering hint, a snapshot of a value that will legitimately drift from its source.
+             * @example {
+             *       "serviceCategoryId": "0c44ccbd-…",
+             *       "title": "Fuite sous l’évier"
+             *     }
+             */
+            data: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Format: uuid
+             * @description The request this notification is about, if any.
+             */
+            serviceRequestId: string | null;
+            /** @description Request title. Null when the notification carries no request. */
+            serviceRequestTitle: string | null;
+            /** @description The request’s CURRENT status, not the one it had when notified — a cancelled or expired request reports what it really is. */
+            serviceRequestStatus: components["schemas"]["ServiceRequestStatus"] | null;
+            serviceRequestType: components["schemas"]["ServiceRequestType"] | null;
+            /** @description True when the request has been soft-deleted. The notification is kept and returned anyway — hiding it would leave the recipient with nothing, and this flag lets the reader say so instead of linking somewhere that 404s. */
+            serviceRequestDeleted: boolean;
+            /**
+             * @description i18n labels of the request’s trade (métier).
+             * @example {
+             *       "fr-CA": "Plomberie",
+             *       "en-CA": "Plumbing"
+             *     }
+             */
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            } | null;
+        };
+        NotificationListDto: {
+            items: components["schemas"]["NotificationItemDto"][];
+            /** @description Unread notifications across the WHOLE set, not just this page — a badge computed on the page would under-count as soon as the cap truncates. */
+            unreadCount: number;
+            /** @description Total matching notifications, before the cap. */
+            total: number;
+            /** @description The hard server cap applied to `items` (no cursor, no paging). */
+            limit: number;
+        };
+        NotificationReadResponseDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it was first read. Never null in this response.
+             */
+            readAtUtc: string;
         };
         CreateServiceRequestDto: {
             /** @enum {string} */
@@ -3405,6 +3510,53 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NotificationsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListDto"];
+                };
+            };
+        };
+    };
+    NotificationsController_markRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationReadResponseDto"];
+                };
+            };
+            /** @description Unknown, soft-deleted, or not addressed to the caller. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

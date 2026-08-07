@@ -1890,6 +1890,62 @@
         ]
       }
     },
+    "/notifications": {
+      "get": {
+        "operationId": "NotificationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The caller's notifications — those addressed to them personally OR to a provider profile they own — newest first, capped at 50. No cursor, no paging. unreadCount counts the whole set, not the page.",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationReadResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, soft-deleted, or not addressed to the caller."
+          }
+        },
+        "summary": "Mark a notification read. Idempotent — a repeat call keeps the first read timestamp. 404 (never 403) when it targets neither the caller nor their provider profiles.",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/service-requests": {
       "post": {
         "operationId": "ServiceRequestsController_create",
@@ -4119,6 +4175,175 @@
         },
         "required": [
           "rejectionReason"
+        ]
+      },
+      "NotificationType": {
+        "type": "string",
+        "enum": [
+          "NEW_TENDER_MATCH",
+          "NEW_DIRECT_BOOKING"
+        ]
+      },
+      "ServiceRequestStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "OPEN",
+          "ASSIGNED",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "PAID",
+          "EXPIRED",
+          "CANCELLED",
+          "REFUNDED"
+        ],
+        "description": "The request’s CURRENT status, not the one it had when notified — a cancelled or expired request reports what it really is."
+      },
+      "ServiceRequestType": {
+        "type": "string",
+        "enum": [
+          "DIRECT_BOOKING",
+          "PROJECT_TENDER"
+        ]
+      },
+      "NotificationItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationType"
+              }
+            ]
+          },
+          "readAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "When the recipient read it. Null means unread."
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Free-form payload. Identifiers are NOT duplicated here: the recipient and the service request are real columns, and this endpoint joins on them. Reserved for what cannot be joined — a rendering hint, a snapshot of a value that will legitimately drift from its source.",
+            "example": {
+              "serviceCategoryId": "0c44ccbd-…",
+              "title": "Fuite sous l’évier"
+            }
+          },
+          "serviceRequestId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The request this notification is about, if any."
+          },
+          "serviceRequestTitle": {
+            "type": "string",
+            "nullable": true,
+            "description": "Request title. Null when the notification carries no request."
+          },
+          "serviceRequestStatus": {
+            "nullable": true,
+            "description": "The request’s CURRENT status, not the one it had when notified — a cancelled or expired request reports what it really is.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestStatus"
+              }
+            ]
+          },
+          "serviceRequestType": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestType"
+              }
+            ]
+          },
+          "serviceRequestDeleted": {
+            "type": "boolean",
+            "description": "True when the request has been soft-deleted. The notification is kept and returned anyway — hiding it would leave the recipient with nothing, and this flag lets the reader say so instead of linking somewhere that 404s."
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "i18n labels of the request’s trade (métier).",
+            "example": {
+              "fr-CA": "Plomberie",
+              "en-CA": "Plumbing"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "readAtUtc",
+          "createdAtUtc",
+          "data",
+          "serviceRequestId",
+          "serviceRequestTitle",
+          "serviceRequestStatus",
+          "serviceRequestType",
+          "serviceRequestDeleted",
+          "serviceCategoryNameTranslations"
+        ]
+      },
+      "NotificationListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItemDto"
+            }
+          },
+          "unreadCount": {
+            "type": "number",
+            "description": "Unread notifications across the WHOLE set, not just this page — a badge computed on the page would under-count as soon as the cap truncates."
+          },
+          "total": {
+            "type": "number",
+            "description": "Total matching notifications, before the cap."
+          },
+          "limit": {
+            "type": "number",
+            "description": "The hard server cap applied to `items` (no cursor, no paging)."
+          }
+        },
+        "required": [
+          "items",
+          "unreadCount",
+          "total",
+          "limit"
+        ]
+      },
+      "NotificationReadResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "readAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was first read. Never null in this response."
+          }
+        },
+        "required": [
+          "id",
+          "readAtUtc"
         ]
       },
       "CreateServiceRequestDto": {
