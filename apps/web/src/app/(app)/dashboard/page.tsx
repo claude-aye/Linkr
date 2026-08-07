@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import type { components } from '@linkr/api-client';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { pickTranslation } from '@/lib/i18n/translations';
@@ -16,6 +17,19 @@ import { AcceptRequestAction } from './_actions/accept-request-action';
 import { AddCategoryForm, type TradeOption } from './_actions/add-category-form';
 import { DeclineRequestAction } from './_actions/decline-request-action';
 import { JobPipelineAction } from './_actions/job-pipeline-action';
+import {
+  NotificationsSection,
+  type NotificationView,
+} from './_components/notifications-section';
+
+/**
+ * Both notification types are consumed NATIVELY from the generated schema — no
+ * local mirror, no cast. PR B annotated every property explicitly (`nullable`
+ * ones included), so none of them degrades to `Record<string, never>`: the
+ * JSONB/nullable debt of §6 simply does not reach this endpoint.
+ */
+type NotificationList = components['schemas']['NotificationListDto'];
+type NotificationItem = components['schemas']['NotificationItemDto'];
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
@@ -24,6 +38,9 @@ const dateTimeFmt = new Intl.DateTimeFormat('fr-CA', {
   dateStyle: 'medium',
   timeStyle: 'short',
 });
+
+/** Date only — the fallback once a relative age stops carrying meaning. */
+const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium' });
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return '—';
@@ -62,6 +79,31 @@ function formatDeadline(iso: string | null): string | null {
   return m > 0
     ? `Expire dans ~${h} h ${String(m).padStart(2, '0')}`
     : `Expire dans ~${h} h`;
+}
+
+/**
+ * Static relative age (« il y a 2 h »), computed once server-side at render —
+ * same deliberate snapshot semantics as {@link formatDeadline} above, and the
+ * same reason: no live ticking. The absolute timestamp rides along on hover, so
+ * a stale relative label is never the only thing on offer.
+ */
+function formatRelative(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+
+  const diffMin = Math.round((Date.now() - then) / 60_000);
+  // A clock skew (or a notification written mid-render) must not read « dans ».
+  if (diffMin < 1) return 'à l’instant';
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+
+  const hours = Math.floor(diffMin / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `il y a ${days} j`;
+
+  // Past a week « il y a 43 j » stops meaning anything — give the date instead.
+  return dateFmt.format(new Date(then));
 }
 
 /** One distinct color per pipeline status (feminine: la demande). */
@@ -168,6 +210,38 @@ function tradeLine(item: ProviderServiceRequestItem): string {
     ? pickTranslation(item.serviceItemNameTranslations)
     : null;
   return service ? `${trade} · ${service}` : trade;
+}
+
+/**
+ * One notification → the flat, fully-resolved shape the client island renders.
+ * Everything that needs i18n, formatting or a status badge is decided HERE, so
+ * the island carries no second status map: the badge is resolved against
+ * {@link STATUS_BADGES}, which therefore stays a NON-exported local const (the
+ * tracked « shared status helper » debt is neither widened nor paid).
+ */
+function toNotificationView(item: NotificationItem): NotificationView {
+  // A soft-deleted request is still LISTED (the API keeps it and flags it —
+  // hiding it would leave the recipient with nothing), but it must not link
+  // anywhere: `/dashboard/requests/{id}` would be a dead end.
+  const linkable = item.serviceRequestId !== null && !item.serviceRequestDeleted;
+
+  return {
+    id: item.id,
+    unread: item.readAtUtc === null,
+    // The joined title is the sense-carrier. It is null only when the row points
+    // at no request at all — a sober stand-in, never a fabricated explanation,
+    // and never the `data` snapshot (identifiers and labels live in columns).
+    title: item.serviceRequestTitle ?? 'Demande indisponible',
+    tradeLabel: item.serviceCategoryNameTranslations
+      ? pickTranslation(item.serviceCategoryNameTranslations)
+      : null,
+    // The request's CURRENT status, as the API insists — a request cancelled or
+    // expired since the notification was written reports what it really is.
+    badge: item.serviceRequestStatus ? STATUS_BADGES[item.serviceRequestStatus] : null,
+    timeLabel: formatRelative(item.createdAtUtc),
+    timeTitle: formatDateTime(item.createdAtUtc),
+    href: linkable ? `/dashboard/requests/${item.serviceRequestId}` : null,
+  };
 }
 
 function Detail({
@@ -463,6 +537,33 @@ export default async function DashboardPage() {
     }
   }
 
+  // « Notifications » — read exactly like every other section: Server Component
+  // straight to the API, never a BFF GET (the BFF stays reserved for mutations;
+  // the only relay this PR adds is the PATCH that marks one read).
+  //
+  // Fetched inside the `provider` branch on purpose: both writers of this table
+  // address a PROVIDER profile today (tender broadcast, direct-booking notice),
+  // so a user without one has nothing to read and is spared the round trip.
+  //
+  // Failure degrades to `null` in its own catch and NEVER touches the page-wide
+  // `failed` — same rule as the trades/catalog reads above. `null` makes the
+  // section vanish entirely (below): unlike « Mes métiers », which must keep its
+  // form on screen, there is nothing here to act on, so an error card would be
+  // noise the provider cannot answer.
+  let notifications: NotificationList | null = null;
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET('/notifications');
+      // Envelope AND items are typed natively by the generated schema.
+      if (!error && response.ok && data && Array.isArray(data.items)) {
+        notifications = data;
+      }
+    } catch {
+      notifications = null;
+    }
+  }
+
   /** Trade id → display label. The claims carry no name of their own. */
   const catalogLabels = new Map(
     catalog.map((category) => [category.id, pickTranslation(category.nameTranslations)]),
@@ -608,9 +709,40 @@ export default async function DashboardPage() {
    */
   const hoistTrades = trades !== null && trades.length === 0;
 
+  /**
+   * Notifications sit LAST, in BOTH orders — a placement, not a new rule.
+   *
+   * It cannot go on top: above « En attente de réponse » it would demote the
+   * inbox, which is exactly what the locked 3.12-front decision forbids; and in
+   * the zero-trade case it would push « Mes métiers » off the lead, undoing the
+   * hoist above. Appending is the only position that leaves BOTH invariants
+   * untouched — `hoistTrades` is not read here and not modified.
+   *
+   * It also reads right: a notification about a targeted booking points at a
+   * request the inbox is ALREADY showing, actionable, at the top. This section
+   * is the log — including the tender matches the dashboard shows nowhere else
+   * (Vision B lists only requests assigned to or targeted at this provider).
+   *
+   * Absent entirely when the read failed (`null`): nothing to act on here, so
+   * the dashboard simply stands without it. `.filter(Boolean)` is not needed —
+   * React skips a `false`/`null` child — but the `key` is, exactly like its
+   * three siblings, and for the same reason: the array is re-ordered by the
+   * hoist, and stable keys make React MOVE the sections instead of rebuilding
+   * whatever sits at a given index (which would wipe this island's optimistic
+   * read marks along with `AddCategoryForm`'s confirmation).
+   */
+  const notificationsSection = notifications && (
+    <NotificationsSection
+      key="notifications"
+      items={notifications.items.map(toNotificationView)}
+      unreadCount={notifications.unreadCount}
+      total={notifications.total}
+    />
+  );
+
   const sections = hoistTrades
-    ? [tradesSection, pendingSection, jobsSection]
-    : [pendingSection, jobsSection, tradesSection];
+    ? [tradesSection, pendingSection, jobsSection, notificationsSection]
+    : [pendingSection, jobsSection, tradesSection, notificationsSection];
 
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
