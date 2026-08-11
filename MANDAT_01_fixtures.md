@@ -38,29 +38,62 @@ naturelles stables, son upsert est idempotent, et c'est un meilleur patron que d
 figés pour un catalogue. Ton seeder le **suppose déjà exécuté** et résout les catégories
 par leur `slug`.
 
-**Contenu attendu** — comptes, tous avec le mot de passe `Password123!` :
+**Contenu attendu** — ce décor est **dérivé d'une inspection de la base du fondateur du 8 août
+2026**, pas d'une supposition. Les comptes de rebut observés (`smoke-*`, `debug-*`,
+`shape-check-*`, `david@linkr.test`) ne sont **pas** reproduits.
 
-| Compte | Rôle |
-|---|---|
-| `alice@linkr.test` | ADMIN **et** prestataire INDIVIDUAL (« Alice Coiffure ») |
-| `bob@linkr.test` | Prestataire INDIVIDUAL (« Bob Services »), base à Québec |
-| `carol@linkr.test` | Cliente pure, aucun profil prestataire |
-| `carol2@linkr.test` | Prestataire INDIVIDUAL (« Coiffure Carole »), base à Montréal |
+**Comptes**, tous avec le mot de passe `Password123!` :
 
-Plus, pour chaque prestataire : sa localisation de base (PostGIS), ses zones de service,
-au moins une catégorie professionnelle **informelle** (coiffure → `NOT_REQUIRED`, donc
-immédiatement réservable) et au moins un service professionnel avec un prix.
+| Compte | Rôle | Prestataire |
+|---|---|---|
+| `alice@linkr.test` | ADMIN (`users.system_role`) | INDIVIDUAL — « Alice Coiffure » |
+| `bob@linkr.test` | USER | INDIVIDUAL — « Bob Services », base à Québec |
+| `carol@linkr.test` | USER | **aucun** — cliente pure |
+| `carol2@linkr.test` | USER | INDIVIDUAL — « Coiffure Carole », base à Montréal |
+| `dave@linkr.test` | USER | **OWNER d'une ORGANIZATION** — voir ci-dessous |
 
-Plus **au moins deux `service_requests`** dans des états connus et distincts — une
-`OPEN` ciblant bob, une déjà `ASSIGNED` — pour donner un décor observable.
+**⚠️ Le prestataire ORGANIZATION est délibéré et important.** La base du fondateur ne contient
+**que** des prestataires `INDIVIDUAL` — la branche polymorphe ORGANIZATION n'a **jamais été
+exécutée au runtime**, alors que le code la supporte. Il faut donc créer : une ligne
+`organizations`, une `organization_memberships` avec `dave` en OWNER, et un `service_providers` de
+type `ORGANIZATION` rattaché à cette organisation.
+
+**Cadrage strict :** tu crées le **décor**, tu ne touches **pas** au code de résolution. La dette
+« notifications ORGANIZATION illisibles » (§6 de `CLAUDE.md`) reste ouverte — elle devient
+simplement observable au lieu de théorique. Si tu constates qu'un OWNER ne voit pas ses
+notifications, **c'est le comportement attendu aujourd'hui** : note-le dans la PR, ne le corrige
+pas.
+
+Pour chaque prestataire : localisation de base (PostGIS), zones de service, au moins une catégorie
+professionnelle **informelle** (coiffure → `NOT_REQUIRED`, donc immédiatement réservable) et au
+moins un service professionnel avec un prix.
+
+**Demandes de service — plusieurs statuts, c'est le point.** La base actuelle contient 33 demandes
+**toutes `OPEN`** : aucun autre état de la machine n'est observable, donc impossible de vérifier à
+l'œil qu'un badge « Terminée » ou « Annulée » s'affiche correctement. Crée **une poignée de
+demandes couvrant au minimum `OPEN`, `ASSIGNED`, `COMPLETED` et `CANCELLED`.**
+
+⚠️ **Lis l'enum réel** (`service_requests.status`) plutôt que de te fier à cette liste, et vérifie
+si un état `ASSIGNED` exige une ligne `service_request_assignments` associée — la table existe.
+Si un état s'avère impossible à produire sans passer par Stripe (typiquement `PAID`), **saute-le et
+dis-le dans la PR** : c'est une limite du périmètre, pas un échec.
+
+**Noms de colonnes vérifiés en base** (pour t'éviter des allers-retours) :
+`users.system_role` (pas `role`) · `payments.payment_type` (pas `type`) ·
+`payments.gross_amount` (pas `amount`) · tous les horodatages en `*_at_utc`.
 
 **UUID écrits en dur**, avec une convention lisible :
 
 ```
-users              11111111-1111-4111-8111-00000000000N
-service_providers  22222222-2222-4222-8222-00000000000N
-service_requests   33333333-3333-4333-8333-00000000000N
+users                       11111111-1111-4111-8111-00000000000N
+service_providers           22222222-2222-4222-8222-00000000000N
+service_requests            33333333-3333-4333-8333-00000000000N
+organizations               44444444-4444-4444-8444-00000000000N
+professional_services       55555555-5555-4555-8555-00000000000N
 ```
+
+⚠️ Les identifiants du **catalogue** (`service_categories`, `service_items`) ne sont **pas**
+concernés : ils sont générés par `quebec-catalog.seed.ts` et se résolvent par `slug`.
 
 ⚠️ Vérifie qu'aucun `@IsUUID()` du dépôt n'impose une version spécifique. Si c'est le
 cas, adapte la convention et **dis-le dans la PR** plutôt que de la contourner
@@ -145,8 +178,10 @@ deviens aussi aveugle que le fondateur.
 4. Les UUID obtenus en base correspondent **exactement** à ceux écrits en dur — prouvé
    par une sortie `psql`, pas par lecture du code.
 5. Le tableau de bord prestataire de bob (`http://localhost:3001`) affiche la demande
-   `OPEN`.
-6. La séquence du `README.md` réécrit a été suivie **telle quelle**, dans l'ordre, sans
+   `OPEN`, et les demandes des autres statuts s'affichent avec le bon badge.
+6. Connexion réussie avec `dave@linkr.test`, et `GET /service-providers/me` retourne le
+   prestataire **ORGANIZATION** — prouvé par une sortie, pas par lecture de code.
+7. La séquence du `README.md` réécrit a été suivie **telle quelle**, dans l'ordre, sans
    connaissance implicite.
 
 **Dans la description de PR**, joins :
