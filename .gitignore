@@ -50,3 +50,10 @@ Thumbs.db
 /apps/api/storage/
 docker/data/
 body.json
+
+# Outils et artefacts locaux
+stripe.exe
+test-doc.pdf
+/openapi.json
+menage_seeds.sql
+inventaire.txt
