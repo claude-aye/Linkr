@@ -1,9 +1,16 @@
 # Linkr — AI Coding Agent Brief
 
 **Project Codename:** Linkr
-**Status:** Pre-implementation (Architecture & Stack frozen, ready to scaffold)
-**Document Version:** 1.0
-**Last Updated:** 2026-05-22
+**Status:** En développement actif — phases 3.1 → 3.13 livrées, 3.14 en cours (voir §11)
+**Document Version:** 1.1
+**Last Updated:** 2026-08-08
+
+---
+
+> **Nouveau sur ce dépôt ?** Pour installer et démarrer Linkr sur une machine neuve,
+> lire **`ONBOARDING.md`** à la racine — ce fichier-ci décrit l'architecture, pas l'installation.
+> Les fichiers `HANDOFF_*.md` sont un **journal de bord**, pas de la documentation :
+> ils décrivent des états passés et **ne font pas autorité**.
 
 ---
 
@@ -620,7 +627,6 @@ The following domains are **not yet modeled** but expected to be added before th
 
 ### Technical Debt (tracked)
 
-- **Tracking de `docker/data/`** — ~2100 fichiers suivis par git (DB pgAdmin, sessions). Le `.gitignore` racine ignore `/data/` (ancré à la racine) mais **pas** `docker/data/`. Fix : ajouter `docker/data/` au `.gitignore` puis `git rm -r --cached docker/data`.
 - **Rotation refresh = usage unique** — l'API renouvelle le refresh à chaque appel. Risque de **course** (étroit) quand des `fetch` BFF parallèles authentifiés arriveront (la 2ᵉ requête expirée pourrait présenter un refresh **déjà consommé** → 401 → déconnexion parasite). À traiter (**verrou / dédup**) avant les proxies de données. **Contrepartie sécurité** : sans blacklist, un refresh compromis reste valide jusqu'à `exp` (7 j) et les anciens refresh ne sont **jamais** invalidés — à durcir (**révocation / blacklist**) lors d'une phase sécurité auth dédiée.
 - **Endpoints auth confirmés depuis le source** — `POST /auth/refresh`, body `{ refreshToken }`, réponse `TokenPair { accessToken, refreshToken }`, **401** sur échec.
 - **Typage JSONB free-form (`Record<string, never>`) — dette *traduction* résolue (fix `openapi`), dette *nullable* toujours ouverte** : un `@ApiProperty` de map JSONB **sans** `additionalProperties` génère `Record<string, never>` (inexploitable) côté `schema.d.ts`. **Tous les champs de traduction (`*Translations`) sont désormais annotés `additionalProperties: { type: 'string' }` → typés `Record<string, string>`** : d'abord `GET /service-providers/{id}/service-requests` (3.12a-back), puis les 5 DTO source restants — `CreateServiceCategoryDto`, `CreateServiceItemDto`, `SuggestServiceItemDto`, `CreateRegulatoryRequirementDto` (`services-catalog`) + `AdminVerificationQueueItemDto` (`verifications`) — dont les 3 DTO `Update` héritent mécaniquement via `PartialType` (13 occurrences `Record<string, never>` → `Record<string, string>` dans `schema.d.ts`). **Reste ouvert et distinct — dette *nullable*** : les maps/nullables dégradés en `Record<string, never>` (`| null` sans type concret) sur `ServiceRequestResponseDto`, `PaymentMethodResponseDto`, `RefundResponseDto`, `ServiceProviderResponseDto` (`businessName`/`headline`/`bio`/`activatedAtUtc`…), `caption`, etc., ainsi que le GeoJSON (`serviceBaseLocation`, `zonePolygon`, `serviceLocation`) — **non corrigés ici** ; les casts/mirrors front (`lib/providers/types.ts`…) restent conservés en attendant. **Ajout 3.14a — dette *contrat* symétrique à #23/3.12a/3.13-A** : `GET /service-providers/discover` est **annoté tableau nu** `DiscoveredProviderDto[]` alors que le runtime renvoie l'**enveloppe** `{items,total,page,limit}` (l'annotation ment) → miroir front `lib/providers/discovery-types.ts` (`DiscoveredProviderList`) + cast `as unknown as`. **Fix backend futur** : DTO d'enveloppe dédié `DiscoveredProviderListDto` (`@ApiOkResponse({ type })`, patron 3.12a-back-fix), après quoi supprimer le miroir + cast front. En sus, les 2 nullables `displayName`/`headline` de l'item dégradent en `Record<string, never>` (dette *nullable* ci-dessus) → re-typés chirurgicalement `string | null` dans le même miroir.
@@ -780,7 +786,14 @@ docs(readme): document local setup steps
 
 Tasks should be executed sequentially. Each task must produce **something testable** before moving on.
 
-> **État réel (juillet 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) + 3.11b-1/b-2 (BFF auth httpOnly cookies + proxy deny-by-default, PR #17/#18) mergés sur `main`. Numérotation exécutée (alignée sur la table §11) : **3.11 = portail web**, **3.12 = dashboard prestataire (web)**, **3.13 = boucle transactionnelle cliente** *(en cours)*, **3.14 = découverte / recherche geo**, **3.15 = mobile / Expo**. **3.11b-3** (refresh silencieux dans le proxy : R2 double-écriture + rotation du refresh token, fail-safe clear) mergé (PR #19). La 3.11b est complète. **3.11c-A** (console admin de revue des `verification_documents` : work queue PENDING + approve/reject via Route Handlers BFF, RBAC API-side, refresh via `router.refresh()`) livré sur la branche. Première page métier. **3.11c-A-bis** (backend) : endpoint file admin (`GET /admin/verification-documents`) enrichi des libellés joints — métier i18n (`serviceCategoryNameTranslations`) + `authorityCode` + `providerDisplayName` (résolu polymorphe ORG→`organization.displayName` / INDIVIDUAL→`businessName ?? prénom nom`) — via un DTO + mapper dédiés (`AdminVerificationQueueItemDto.fromWithLabels`, lecture `findByStatusWithRelations`). Isolation totale : `VerificationDocumentResponseDto.from()` global, `findByStatus()` et les autres endpoints (upload/list/approve/reject) **intacts** ; relation lecture-seule `ProfessionalServiceCategory→ServiceCategory` ajoutée sur la FK existante (`select:false` géo non touché — vérifié au runtime). OpenAPI + `schema.d.ts` régénérés (PR #21). **3.11c-A-ter** (front) : la console admin affiche désormais les libellés enrichis (métier i18n via `pickTranslation`, autorité, nom prestataire) au lieu des UUID bruts (conservés en `title` au survol). La console de vérification est **terminée et utilisable** (« 100 % humain »). Reste différé : le BFF file-proxy pour « Voir le fichier » (→ 401, candidat 3.11c-B). **3.12a-back** (backend) : nouvel endpoint `GET /service-providers/{id}/service-requests` — dashboard prestataire, **Vision B** (`assigned_service_provider_id = id` **OU** `requested_service_provider_id = id ET status = OPEN`), paginé. DTO dédié `ProviderServiceRequestItemDto` (libellés joints métier/service i18n + `clientDisplayName` ; **`serviceLocation` GPS et `clientUserId` exclus — Loi 25**), mapper `fromWithLabels`, chemin repo dédié `findAssignedOrTargetedToProvider` (SQL brut, **zéro colonne géo** : ni `service_location` ni `users.default_location` — ce dernier **non** `select:false` — donc aucun WKB lu) ; `toResponseDto`/`findAll`/`findById` **intacts**. **Garde** `loadOwnedProvider` (404/403) côté providers, listing délégué au domaine service-requests. **Anti-cycle (déviation §6 assumée)** : la route vit dans un contrôleur dédié `ProviderServiceRequestsController` **du module service-requests** (et non dans `ServiceProvidersController` — `ServiceProvidersModule` est un « sink » importé par notifications/payments→stripe-connect/quotes/verifications ; l'importer en retour cascade des cycles, **vérifié au boot**). Dépendance gardée **à sens unique** (`service-requests → service-providers`) : **zéro `forwardRef`, zéro cycle**, boot Nest OK. Dette typage JSONB corrigée à la source (`additionalProperties`) pour cet endpoint. OpenAPI + `schema.d.ts` régénérés. **Client soft-deleted masqué au mapper** `mapProviderRow` via projection `client_deleted_at_utc`, **pas** par filtre SQL : un filtre ferait disparaître un job assigné encore actif le prestataire doit le clôturer et désaccorderait `COUNT` de la requête principale ; libellés catégorie/item **non** masqués aucune saveur Loi 25. Validé runtime `:5000` : 2 branches Vision B, filtre `?status=OPEN`, i18n, **403** ownership alice ADMIN non-propriétaire, pagination COUNT-cohérente. **3.12a-back-bis** (backend) : nouvel endpoint `GET /service-providers/me` — résout « le provider du user courant » depuis le `sub` du JWT via `findByUserId` (déjà au repo `service-provider.repository.ts:136`, appelé en interne par `quotes.service` mais **jamais routé** jusqu'ici), pour que le dashboard prestataire (front) sache quel `{id}` mettre dans ses appels. Déclaré **AVANT** `GET /service-providers/:id` dans `ServiceProvidersController` (sinon `me` est avalé comme `:id` → `ParseUUIDPipe` 400). **Contrat de retour identique à `:id`** (même `ServiceProviderResponseDto` + `toResponse` — **zéro nouveau type**, `getMine` réutilise `findByUserId` qui **ne filtre pas `is_active`** et exclut les soft-deleted). **Inclut les providers `is_active = false`** (un prestataire en pause gère quand même son dashboard — sémantique **opposée** à `discover`). **404** (`NotFoundException`, **même chemin/exception que `:id`**) si le user n'a pas de provider. Auth = guard JWT global (pas de `@Public()`, comme `PATCH :id`), **owner-safe par construction** (dérivé du propre `sub`, aucun `:id` à vérifier → **pas de `loadOwnedProvider`**). Zéro migration (lecture seule). OpenAPI + `schema.d.ts` régénérés (le champ `ServiceProviderResponseDto` hérite du typage `Record<string, never>` sur ses maps/nullables — quirk JSONB free-form connu, non corrigé ici car le DTO est partagé avec `:id`). **3.12-front** (front) : **dashboard prestataire read-only à `/dashboard`** (remplace le stub d'atterrissage 3.11b-1 ; guard `getCurrentUser()` + `LogoutButton` préservés). Server Component : `GET /service-providers/me` (**404 → état vide sobre**, le CTA onboarding « Devenir prestataire » est **différé**) puis **Option A verrouillée : UN SEUL appel** `GET /service-providers/{id}/service-requests?limit=100` sans filtre `status` (les 2 branches Vision B sont disjointes) + **split côté serveur** : `status === 'OPEN'` → section « En attente de réponse » (inbox, en haut, accent ambre — revenue-opportunity time-sensitive) ; le reste → « Mes jobs » (badges de statut colorés, map exhaustive) — **pagination différée assumée**. i18n des libellés via `pickTranslation` (tender sans item → métier seul). **Compte à rebours statique** calculé au rendu serveur depuis `responseDeadlineUtc` (« Expire dans ~2 h 15 ») — **live-tick = fast-follow différé** (zéro `'use client'` dans la slice). **Piège de typage documenté** : l'OpenAPI déclare cette liste comme tableau plat (`isArray`) mais le runtime renvoie l'enveloppe `{items,total,page,limit}` → cast via miroirs locaux `lib/providers/types.ts` (même exception justifiée que `lib/auth/types.ts`) ; unions `status`/`requestType` **dérivées** du schéma généré. **Dette Loi 25 réaffirmée (choix produit délibéré, pas un oubli)** : `serviceAddress` complète affichée sur la carte « En attente » **AVANT** acceptation d'un booking OPEN multi-ciblable (pattern livraison : voir pour évaluer) — à statuer en phase B (bascule de l'adresse post-accept ?). « Voir le détail » → **stub** `/dashboard/requests/[id]` (id + mention Phase B, pas de 404) ; **vraie vue détail + actions Accepter/Refuser/Marquer complété = phase B, hors scope**. **3.12a-back-fix** (contrat) : le contrat de `GET /service-providers/{id}/service-requests` a été corrigé — l'annotation `@ApiResponse({ type: ProviderServiceRequestItemDto, isArray: true })` (tableau nu **mensonger**) est remplacée par un DTO d'enveloppe dédié `ProviderServiceRequestListDto` (`items`/`total`/`page`/`limit`), **spécifique à l'endpoint** (pas de générique `PaginatedResponseDto<T>` spéculatif — généralisation reportée à un vrai usage répété en phase B). La **logique du service est intacte** (le runtime renvoyait déjà l'enveloppe — c'était l'annotation qui mentait ; aucun changement de comportement). OpenAPI + `schema.d.ts` régénérés **en bootant l'app** (diff scopé : nouveau schéma + bascule de la réponse `array → $ref`, zéro champ collatéral). Côté front, le **« piège de typage » 3.12-front est résorbé** : le cast d'enveloppe au call-site (`data as unknown as ProviderServiceRequestList`) et le miroir local `ProviderServiceRequestList` sont **supprimés** (l'enveloppe est désormais typée nativement par le schéma généré) ; **seul** le cast **des items** subsiste (quirk JSONB/nullable `Record<string, never>` du DTO d'item — dette §6 distincte, non traitée ici). Dette de contrat #23 résorbée.
+> **⚠️ Statut des phases — révisé le 8 août 2026.** Numérotation **verrouillée** (alignée sur la table ci-dessous) :
+> **3.11** = portail web · **3.12** = dashboard prestataire · **3.13** = boucle transactionnelle cliente + shell `(app)` · **3.14** = découverte / recherche geo · **3.15** = mobile / Expo.
+> **Complétées et mergées :** 3.1 → 3.13 (shell, nav conditionnelle, hub client, boucle de réservation fermée), puis 3.14a (recherche geo), 3.14b-back/front (géocodage), 3.14c-1 (threading des coords, happy path), et les notifications in-app (PR A/B/C, août 2026).
+> **En cours :** 3.14 — reste **3.14c-2** (capture in-form sur l'edge profil-direct, cf. §6).
+> **Suivant :** 3.15 (mobile) après arbitrage, et le **chantier courriel** (canal externe de notification) — voir `ONBOARDING.md`.
+> Le paragraphe historique ci-dessous est conservé comme journal ; **en cas de contradiction, la présente note fait foi.**
+>
+> **État historique (juillet 2026) :** 3.1–3.9 + 3.10a-c (paiements) + 3.11a (scaffold web + client API, PR #16) + 3.11b-1/b-2 (BFF auth httpOnly cookies + proxy deny-by-default, PR #17/#18) mergés sur `main`. Numérotation exécutée (alignée sur la table §11) : **3.11 = portail web**, **3.12 = dashboard prestataire (web)**, **3.13 = boucle transactionnelle cliente** *(en cours)*, **3.14 = découverte / recherche geo**, **3.15 = mobile / Expo**. **3.11b-3** (refresh silencieux dans le proxy : R2 double-écriture + rotation du refresh token, fail-safe clear) mergé (PR #19). La 3.11b est complète. **3.11c-A** (console admin de revue des `verification_documents` : work queue PENDING + approve/reject via Route Handlers BFF, RBAC API-side, refresh via `router.refresh()`) livré sur la branche. Première page métier. **3.11c-A-bis** (backend) : endpoint file admin (`GET /admin/verification-documents`) enrichi des libellés joints — métier i18n (`serviceCategoryNameTranslations`) + `authorityCode` + `providerDisplayName` (résolu polymorphe ORG→`organization.displayName` / INDIVIDUAL→`businessName ?? prénom nom`) — via un DTO + mapper dédiés (`AdminVerificationQueueItemDto.fromWithLabels`, lecture `findByStatusWithRelations`). Isolation totale : `VerificationDocumentResponseDto.from()` global, `findByStatus()` et les autres endpoints (upload/list/approve/reject) **intacts** ; relation lecture-seule `ProfessionalServiceCategory→ServiceCategory` ajoutée sur la FK existante (`select:false` géo non touché — vérifié au runtime). OpenAPI + `schema.d.ts` régénérés (PR #21). **3.11c-A-ter** (front) : la console admin affiche désormais les libellés enrichis (métier i18n via `pickTranslation`, autorité, nom prestataire) au lieu des UUID bruts (conservés en `title` au survol). La console de vérification est **terminée et utilisable** (« 100 % humain »). Reste différé : le BFF file-proxy pour « Voir le fichier » (→ 401, candidat 3.11c-B). **3.12a-back** (backend) : nouvel endpoint `GET /service-providers/{id}/service-requests` — dashboard prestataire, **Vision B** (`assigned_service_provider_id = id` **OU** `requested_service_provider_id = id ET status = OPEN`), paginé. DTO dédié `ProviderServiceRequestItemDto` (libellés joints métier/service i18n + `clientDisplayName` ; **`serviceLocation` GPS et `clientUserId` exclus — Loi 25**), mapper `fromWithLabels`, chemin repo dédié `findAssignedOrTargetedToProvider` (SQL brut, **zéro colonne géo** : ni `service_location` ni `users.default_location` — ce dernier **non** `select:false` — donc aucun WKB lu) ; `toResponseDto`/`findAll`/`findById` **intacts**. **Garde** `loadOwnedProvider` (404/403) côté providers, listing délégué au domaine service-requests. **Anti-cycle (déviation §6 assumée)** : la route vit dans un contrôleur dédié `ProviderServiceRequestsController` **du module service-requests** (et non dans `ServiceProvidersController` — `ServiceProvidersModule` est un « sink » importé par notifications/payments→stripe-connect/quotes/verifications ; l'importer en retour cascade des cycles, **vérifié au boot**). Dépendance gardée **à sens unique** (`service-requests → service-providers`) : **zéro `forwardRef`, zéro cycle**, boot Nest OK. Dette typage JSONB corrigée à la source (`additionalProperties`) pour cet endpoint. OpenAPI + `schema.d.ts` régénérés. **Client soft-deleted masqué au mapper** `mapProviderRow` via projection `client_deleted_at_utc`, **pas** par filtre SQL : un filtre ferait disparaître un job assigné encore actif le prestataire doit le clôturer et désaccorderait `COUNT` de la requête principale ; libellés catégorie/item **non** masqués aucune saveur Loi 25. Validé runtime `:5000` : 2 branches Vision B, filtre `?status=OPEN`, i18n, **403** ownership alice ADMIN non-propriétaire, pagination COUNT-cohérente. **3.12a-back-bis** (backend) : nouvel endpoint `GET /service-providers/me` — résout « le provider du user courant » depuis le `sub` du JWT via `findByUserId` (déjà au repo `service-provider.repository.ts:136`, appelé en interne par `quotes.service` mais **jamais routé** jusqu'ici), pour que le dashboard prestataire (front) sache quel `{id}` mettre dans ses appels. Déclaré **AVANT** `GET /service-providers/:id` dans `ServiceProvidersController` (sinon `me` est avalé comme `:id` → `ParseUUIDPipe` 400). **Contrat de retour identique à `:id`** (même `ServiceProviderResponseDto` + `toResponse` — **zéro nouveau type**, `getMine` réutilise `findByUserId` qui **ne filtre pas `is_active`** et exclut les soft-deleted). **Inclut les providers `is_active = false`** (un prestataire en pause gère quand même son dashboard — sémantique **opposée** à `discover`). **404** (`NotFoundException`, **même chemin/exception que `:id`**) si le user n'a pas de provider. Auth = guard JWT global (pas de `@Public()`, comme `PATCH :id`), **owner-safe par construction** (dérivé du propre `sub`, aucun `:id` à vérifier → **pas de `loadOwnedProvider`**). Zéro migration (lecture seule). OpenAPI + `schema.d.ts` régénérés (le champ `ServiceProviderResponseDto` hérite du typage `Record<string, never>` sur ses maps/nullables — quirk JSONB free-form connu, non corrigé ici car le DTO est partagé avec `:id`). **3.12-front** (front) : **dashboard prestataire read-only à `/dashboard`** (remplace le stub d'atterrissage 3.11b-1 ; guard `getCurrentUser()` + `LogoutButton` préservés). Server Component : `GET /service-providers/me` (**404 → état vide sobre**, le CTA onboarding « Devenir prestataire » est **différé**) puis **Option A verrouillée : UN SEUL appel** `GET /service-providers/{id}/service-requests?limit=100` sans filtre `status` (les 2 branches Vision B sont disjointes) + **split côté serveur** : `status === 'OPEN'` → section « En attente de réponse » (inbox, en haut, accent ambre — revenue-opportunity time-sensitive) ; le reste → « Mes jobs » (badges de statut colorés, map exhaustive) — **pagination différée assumée**. i18n des libellés via `pickTranslation` (tender sans item → métier seul). **Compte à rebours statique** calculé au rendu serveur depuis `responseDeadlineUtc` (« Expire dans ~2 h 15 ») — **live-tick = fast-follow différé** (zéro `'use client'` dans la slice). **Piège de typage documenté** : l'OpenAPI déclare cette liste comme tableau plat (`isArray`) mais le runtime renvoie l'enveloppe `{items,total,page,limit}` → cast via miroirs locaux `lib/providers/types.ts` (même exception justifiée que `lib/auth/types.ts`) ; unions `status`/`requestType` **dérivées** du schéma généré. **Dette Loi 25 réaffirmée (choix produit délibéré, pas un oubli)** : `serviceAddress` complète affichée sur la carte « En attente » **AVANT** acceptation d'un booking OPEN multi-ciblable (pattern livraison : voir pour évaluer) — à statuer en phase B (bascule de l'adresse post-accept ?). « Voir le détail » → **stub** `/dashboard/requests/[id]` (id + mention Phase B, pas de 404) ; **vraie vue détail + actions Accepter/Refuser/Marquer complété = phase B, hors scope**. **3.12a-back-fix** (contrat) : le contrat de `GET /service-providers/{id}/service-requests` a été corrigé — l'annotation `@ApiResponse({ type: ProviderServiceRequestItemDto, isArray: true })` (tableau nu **mensonger**) est remplacée par un DTO d'enveloppe dédié `ProviderServiceRequestListDto` (`items`/`total`/`page`/`limit`), **spécifique à l'endpoint** (pas de générique `PaginatedResponseDto<T>` spéculatif — généralisation reportée à un vrai usage répété en phase B). La **logique du service est intacte** (le runtime renvoyait déjà l'enveloppe — c'était l'annotation qui mentait ; aucun changement de comportement). OpenAPI + `schema.d.ts` régénérés **en bootant l'app** (diff scopé : nouveau schéma + bascule de la réponse `array → $ref`, zéro champ collatéral). Côté front, le **« piège de typage » 3.12-front est résorbé** : le cast d'enveloppe au call-site (`data as unknown as ProviderServiceRequestList`) et le miroir local `ProviderServiceRequestList` sont **supprimés** (l'enveloppe est désormais typée nativement par le schéma généré) ; **seul** le cast **des items** subsiste (quirk JSONB/nullable `Record<string, never>` du DTO d'item — dette §6 distincte, non traitée ici). Dette de contrat #23 résorbée.
 
 | Step | Task | Deliverable |
 |---|---|---|
@@ -796,8 +809,8 @@ Tasks should be executed sequentially. Each task must produce **something testab
 | 3.10 | Stripe Connect + Payments | Express onboarding (3.10a); deposit/balance capture (3.10b); refunds + balance auto-release (3.10c); async Stripe webhook pipeline |
 | 3.11 | Bootstrap portail Web | Next.js + generated API client; BFF auth (httpOnly cookies, silent refresh); admin verification console |
 | 3.12 | Dashboard prestataire (web) | Provider dashboard: read-only listing → transactional actions (accept / decline / start / complete) |
-| 3.13 | Boucle transactionnelle cliente *(en cours)* | Client booking → deposit → confirm-completion / contest loop; shared `(app)` web shell |
-| 3.14 | Découverte / recherche geo | Geo-based provider discovery & search (`ST_DWithin` radius + zone polygons) |
+| 3.13 | Boucle transactionnelle cliente ✅ | Client booking → deposit → confirm-completion / contest loop; shared `(app)` web shell |
+| 3.14 | Découverte / recherche geo *(en cours — 3.14c-2)* | Geo-based provider discovery & search (`ST_DWithin` radius + zone polygons) |
 | 3.15 | Bootstrap Mobile / Expo | Expo app with auth flow; provider search screen using geolocation |
 **3.12b-PR2-étape4** (front) : **composant `JobPipelineAction`** (`apps/web/src/app/dashboard/_actions/job-pipeline-action.tsx`) — quatrième et dernier composant d'action, **le SEUL sans `ConfirmDialog`**. Un composant unique piloté par le statut : ASSIGNED → « Démarrer » → `/start` ; IN_PROGRESS → « Compléter » → `/complete` ; tout autre statut → rend `null`. **Transitions financièrement INERTES** (le `complete` prestataire ne déclenche aucune capture Stripe — solde capturé plus tard par client/cron) et réversibles → **clic DIRECT sans dialogue**, juste `pending` (anti double-clic). `POST` sans corps, succès → `router.refresh()`. **Erreur INLINE sous le bouton** (`role="alert"`, pas de modale). **Mapping par statut HTTP seul** (verrouillé), vocabulaire « mandat » : 409 (« plus dans l'état attendu, la page va être actualisée »), 404 (« plus accessible »), fallback réseau/autre. **Comportement 409 spécifique** : affiche le message PUIS déclenche `router.refresh()` automatiquement (désync affichage↔base) ; 404/fallback affichent le message SANS refresh (succès refresh aussi). Pas de 502/422 (ni Stripe ni montant). `ConfirmDialog` NON touché. Validé : revue code (sélection statut, mapping byte-exact, refresh isolé au 409) + test navigateur (harnais comptant les appels refresh : succès+409 incrémentent, 404/500/réseau non ; COMPLETED rend null). Harnais jetable `app/_dev/job-pipeline-action`. **Les 4 composants d'action PR 2 sont désormais livrés** (ConfirmDialog + Accept + Decline + JobPipeline). **Reste PR 2** : câblage ⑥ dans `PendingRequestCard`/`JobCard` + **purge des 4 harnais `_dev`** (confirm-dialog, accept-action, decline-action, job-pipeline-action).
 **3.12b-PR2-étape6a** (front, câblage) : **branchement des 4 composants d'action dans le dashboard réel** (`apps/web/src/app/dashboard/page.tsx`, Server Component `force-dynamic` — un Server Component rend directement les Client Components, aucun `'use client'` ajouté). Diff **purement additif** (+23 lignes, que des `+`, zéro ligne existante modifiée) : 3 imports, une rangée `flex flex-wrap gap-2` dans `PendingRequestCard` (`AcceptRequestAction` primaire avec les 6 props depuis `item` + `DeclineRequestAction` secondaire), et `JobPipelineAction` dans `JobCard` **posé sans condition** (self-null hors ASSIGNED/IN_PROGRESS → aucun `if` de statut dans la carte). `DetailLink` conservé et distinct dans les deux cartes (« décider » séparé de « consulter »). **Dette Loi 25 : statu quo assumé** — `serviceAddress` complète reste visible avant acceptation (décision produit ; la minimisation exigerait de décomposer ville/rue côté backend → tâche dédiée future, hors périmètre câblage). **Validé end-to-end sur stack Docker réelle** (le seul test non mocké de PR 2) : seed OPEN ciblé bob à 150,00 $ → clic « Accepter » → modale riche (montant total, **aucun % ni montant de dépôt affiché**) → BFF → API → **capture Stripe réelle** → webhooks tous `[200]` (`payment_intent.created/succeeded`, `charge.succeeded`, `transfer.created`, `application_fee.created`) → `router.refresh()` → la demande migre de « En attente » (5→4) vers « Mes jobs ». Base confirmée : `payments` = DEPOSIT / SUCCEEDED / **30,00 CAD** (20 % de 150) / commission 10 % / `platform_fee` **3,00** / `pi_` corrélé aux events. Self-nulling de `JobPipelineAction` vérifié en réel sur COMPLETED/PAID/REFUNDED (aucun bouton) et ASSIGNED (« Démarrer »). **Reste PR 2 : ⑥b — purge des 4 harnais `_dev`** (confirm-dialog, accept-action, decline-action, job-pipeline-action) dans une PR séparée dédiée.
@@ -868,69 +881,85 @@ Tasks should be executed sequentially. Each task must produce **something testab
 
 ## 12. Environment Variables (Mandatory at Boot)
 
-Each app MUST validate these via Joi/Zod schema at startup. Missing or malformed = crash immediately.
+> ⚠️ **CETTE SECTION EST DÉRIVÉE DE `apps/api/src/config/env.validation.ts`. NE PAS LA RÉDIGER À LA MAIN.**
+> La source de vérité est le schéma Joi, jamais ce tableau. Toute modification du schéma
+> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 8 août 2026
+> (37 variables).
 
-### API (`apps/api/.env`)
+Câblage : `apps/api/src/app.module.ts:28-32` → `ConfigModule.forRoot({ validate, isGlobal: true, envFilePath: '.env' })`.
+Échec : `env.validation.ts:127-130` lève une erreur au démarrage. `abortEarly: false` → **toutes**
+les variables manquantes sont listées d'un coup. `allowUnknown: true` tolère les variables
+inconnues, **pas** les manquantes.
 
-```
-NODE_ENV=development|production
-PORT=5000
+### API (`apps/api/.env`) — 37 variables
 
-DATABASE_URL=postgresql://user:password@host:5432/linkr
-REDIS_URL=redis://host:6379
+**Requises inconditionnellement (11) — l'API refuse de démarrer sans elles :**
 
-# JWT — stateless access/refresh token pair (distinct secrets, required)
-JWT_ACCESS_SECRET=...
-JWT_ACCESS_EXPIRES_IN=15m
-JWT_REFRESH_SECRET=...
-JWT_REFRESH_EXPIRES_IN=7d
+| Variable | Contrainte |
+|---|---|
+| `DATABASE_URL` | — |
+| `REDIS_URL` | — |
+| `JWT_ACCESS_SECRET` | min 32 caractères |
+| `JWT_REFRESH_SECRET` | min 32 caractères, **doit différer** de l'access |
+| `NOMINATIM_USER_AGENT` | sans défaut, délibéré (ToS Nominatim) |
+| `STRIPE_SECRET_KEY` | motif `^sk_` |
+| `STRIPE_WEBHOOK_SECRET` | motif `^whsec_` |
+| `STRIPE_PUBLISHABLE_KEY` | motif `^pk_` — **validée bien qu'inutilisée** côté API (contrat complet) |
+| `PLATFORM_COMMISSION_RATE_PERCENT` | — |
+| `PLATFORM_DEPOSIT_RATE_PERCENT` | — |
+| `PLATFORM_AUTO_RELEASE_HOURS` | entier ≥ 1 |
 
-GOOGLE_OAUTH_CLIENT_ID=...
-GOOGLE_OAUTH_CLIENT_SECRET=...
-APPLE_OAUTH_CLIENT_ID=...
-APPLE_OAUTH_TEAM_ID=...
-APPLE_OAUTH_KEY_ID=...
-APPLE_OAUTH_PRIVATE_KEY=...
+**Conditionnelles (4)** — requises **uniquement si** `STORAGE_DRIVER=s3` :
+`STORAGE_BUCKET` · `STORAGE_REGION` · `STORAGE_ACCESS_KEY_ID` · `STORAGE_SECRET_ACCESS_KEY`
 
-STRIPE_SECRET_KEY=sk_...
-STRIPE_PUBLISHABLE_KEY=pk_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_CONNECT_CLIENT_ID=ca_...
+**Optionnelles avec défaut (12) :**
 
-STORAGE_DRIVER=local            # local | s3 (default local)
-STORAGE_LOCAL_DIR=./storage/uploads
-# Required when STORAGE_DRIVER=s3 (AWS S3 ca-central-1 or Cloudflare R2):
-STORAGE_BUCKET=linkr-uploads
-STORAGE_REGION=ca-central-1
-STORAGE_ACCESS_KEY_ID=...
-STORAGE_SECRET_ACCESS_KEY=...
-STORAGE_ENDPOINT=               # optional — custom endpoint for S3-compatible (R2)
+| Variable | Défaut |
+|---|---|
+| `NODE_ENV` | `development` |
+| `PORT` | **`3000`** ⚠️ voir note ci-dessous |
+| `LOG_LEVEL` | `log` |
+| `JWT_ACCESS_EXPIRES_IN` | `15m` |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` |
+| `STORAGE_DRIVER` | `local` (`local` \| `s3`) |
+| `STORAGE_LOCAL_DIR` | `./storage/uploads` |
+| `GEOCODING_PROVIDER` | `nominatim` |
+| `NOMINATIM_BASE_URL` | `https://nominatim.openstreetmap.org` |
+| `CONNECT_ONBOARDING_RETURN_URL` | `http://localhost:3000/connect/return` |
+| `CONNECT_ONBOARDING_REFRESH_URL` | `http://localhost:3000/connect/refresh` |
+| `PLATFORM_DEFAULT_CURRENCY` | `CAD` |
 
-PLATFORM_COMMISSION_RATE_PERCENT=10.00
-PLATFORM_DEPOSIT_RATE_PERCENT=20.00
-PLATFORM_DEFAULT_CURRENCY=CAD
-PLATFORM_DEFAULT_COUNTRY_CODE=CA
-PLATFORM_DEFAULT_SUBDIVISION_CODE=CA-QC
-PLATFORM_DEFAULT_LOCALE=fr-CA
+**Optionnelles sans défaut (10) :**
+`GOOGLE_OAUTH_CLIENT_ID` · `GOOGLE_OAUTH_CLIENT_SECRET` · `GOOGLE_OAUTH_CALLBACK_URL` ·
+`APPLE_OAUTH_CLIENT_ID` · `APPLE_OAUTH_TEAM_ID` · `APPLE_OAUTH_KEY_ID` ·
+`APPLE_OAUTH_PRIVATE_KEY` · `APPLE_OAUTH_CALLBACK_URL` · `STORAGE_ENDPOINT` ·
+`STRIPE_CONNECT_CLIENT_ID` *(dormante)*
 
-SENTRY_DSN=...
-LOG_LEVEL=info|debug
-```
+⚠️ **`PORT` a pour défaut `3000`, mais l'API tourne sur `5000`** — c'est `apps/api/.env` qui le
+surcharge. Une machine dont le `.env` est incomplet démarrera sur le mauvais port, et le front
+(qui replie en dur sur `localhost:5000`) échouera de façon obscure.
+
+⚠️ **Un poste de développement sans accès Stripe est prévu.** `apps/api/.env.example` fournit
+`sk_test_change_me` / `whsec_change_me` / `pk_test_change_me`, conformes aux motifs. L'API démarre,
+tout appel Stripe réel échoue bruyamment. **Ne pas « corriger » cela en rendant les modules Stripe
+conditionnels** — `StripeConnectModule`, `PaymentsModule` et `StripeWebhooksModule` sont importés
+inconditionnellement (`app.module.ts:54-56`) et c'est voulu.
 
 ### Web (`apps/web/.env.local`)
 
 ```
 NEXT_PUBLIC_API_URL=http://localhost:5000
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
 ```
+
+⚠️ **`apps/web` n'a AUCUN schéma de validation d'environnement.** L'app démarre sans `.env.local` :
+`NEXT_PUBLIC_API_URL` porte un repli codé en dur `'http://localhost:5000'` sur 5 sites
+(`api/auth/{signup,login}/route.ts`, `(app)/admin/verifications/page.tsx`, `lib/auth/{refresh,session}.ts`).
+`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` **n'existe nulle part dans le code** — ne pas la réintroduire.
 
 ### Mobile (`apps/mobile/.env`)
 
-```
-EXPO_PUBLIC_API_URL=http://localhost:3000
-EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
-EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=...
-```
+⚠️ **NON VÉRIFIÉ.** Aucune phase mobile n'a été exécutée ; le contenu de `apps/mobile` n'a pas été
+audité. Toute variable listée ici serait de la spéculation.
 
 ---
 
@@ -946,6 +975,55 @@ EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=...
 8. **NEVER duplicate translations in separate columns** — use JSONB `name_translations` etc.
 9. **NEVER skip env var validation** at boot.
 10. **ALWAYS think about Quebec FIRST**, but design data structures so that another country/subdivision can be added without schema changes (Feature Toggling via `regulatory_requirements`, `tax_codes` rows).
+11. **NEVER merge to `main`.** Toute PR est validée et mergée par un humain (le fondateur). Il n'y a **aucune CI** — la relecture humaine est le seul filet.
+12. **NEVER modify a migration already merged.** Elle a été appliquée sur des bases qui ne peuvent pas revenir en arrière. Une correction est une **nouvelle** migration.
+13. **NEVER run `FLUSHDB` on Redis.** La base 0 est partagée entre le cache de géocodage (`linkr:geocode:v1:*`) et les files BullMQ. Un `FLUSHDB` détruit les jobs en vol.
+14. **NEVER treat the sandbox as ground truth.** La stack Docker fait foi. Un sandbox sans Docker ne prouve rien au runtime — dire « non vérifié » plutôt que « validé ».
+15. **One PR = one responsibility.** `CLAUDE.md` est mis à jour dans la **même** PR que le code (convention anti-branche-fantôme).
+
+---
+
+## 13.1 Locked Decisions — DO NOT "FIX"
+
+**Le code listé ici RESSEMBLE à des bogues. Ce n'en sont pas.**
+
+Si tu identifies un de ces points, **signale-le et ARRÊTE-TOI**. Ne le modifie pas. La divergence
+remonte au fondateur **avant** toute implémentation. Cette règle s'applique aussi à tout autre
+comportement surprenant rencontré **hors du périmètre du mandat en cours** : note-le dans la PR,
+ne le corrige pas.
+
+1. **La condition `PROJECT_TENDER` qui garde `broadcastTenderMatch()`** (`service-requests.service.ts`).
+   Le broadcast fait un **fan-out géographique**. La « corriger » enverrait la demande d'un client à
+   **TOUS** les prestataires du rayon. Les `DIRECT_BOOKING` passent par une branche **ciblée**
+   distincte (`notifyDirectBooking`). Les deux appels sont non-`await`és avec `.catch()` qui
+   journalise — **délibéré** : une notification qui échoue ne doit jamais faire échouer la création
+   de la demande.
+
+2. **`notifications.data` reste `{}`.** Les identifiants vivent dans les **colonnes**, la lecture
+   **joint**. Dénormaliser figerait des titres et des statuts qui mentiraient dès la première
+   annulation ou modification.
+
+3. **Aucune pastille de notification dans la barre de navigation.** Décision produit, pas un oubli :
+   la résolution `user → providers ORGANIZATION` est absente (dette §6), donc un OWNER
+   d'organisation verrait `0` en permanence sur toutes les pages — un compteur toujours à zéro
+   ressemble à une panne.
+
+4. **Le formulaire prestataire BLOQUE si l'adresse n'est pas géocodée**, alors que le formulaire de
+   demande ne bloque **jamais** (repli sur placeholder). Divergence **assumée** : la localisation de
+   base décide dans quelle ville un prestataire **apparaît** — un repli le rendrait invisible pour
+   ses voisins sans que personne ne s'en aperçoive. Côté client, aucun n'attend : ne jamais bloquer.
+
+5. **`users.verification_level` — ne jamais ajouter de garde** référençant un état qu'aucun chemin
+   de code n'écrit (cf. §6). Un membre d'enum sans chemin d'écriture est un cul-de-sac : la garde
+   rendrait la route inatteignable. OTP + écriture + garde se livrent **ensemble ou pas du tout**.
+
+6. **Le BFF sert les mutations uniquement.** Les lectures passent par des Server Components avec le
+   cookie httpOnly. Exception unique et validée : le relais `GET /api/geocode`. Ne pas ajouter de
+   route handler `GET` « pour simplifier ».
+
+7. **Les défauts de localisation (`CA` / `CA-QC` / `CAD`) sont figés serveur dans une constante
+   nommée**, en **deux** endroits (`api/auth/signup/route.ts` et `AuthService.handleOAuthCallback`).
+   Ne pas les éparpiller, ne pas les accepter depuis le corps de la requête entrante.
 
 ---
 
