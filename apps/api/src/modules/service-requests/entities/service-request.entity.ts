@@ -14,6 +14,7 @@ import { ServiceItem } from '../../services-catalog/entities/service-item.entity
 import { ServiceProvider } from '../../service-providers/entities/service-provider.entity';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
 import { ServiceRequestStatus } from '../enums/service-request-status.enum';
+import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 
 /**
  * Unified entity for both DIRECT_BOOKING and PROJECT_TENDER requests.
@@ -91,6 +92,28 @@ export class ServiceRequest {
     select: false,
   })
   serviceLocation!: object;
+
+  /**
+   * Provenance of `serviceLocation` — see the enum for why it is provenance and
+   * not accuracy.
+   *
+   * ⚠️ The `default:` below NEVER RUNS. Every read of this table, and the INSERT
+   * itself, go through hand-written raw SQL in `ServiceRequestRepository`, so
+   * TypeORM's entity defaults are bypassed entirely. What actually assigns the
+   * value is the repository's explicit `?? UNKNOWN`, backed by the column's
+   * `DEFAULT 'UNKNOWN'` in PG (migration 1780500000000) for any writer that
+   * omits the column. This declaration exists for schema coherence — so
+   * `migration:generate` does not propose to drop the column — not because it
+   * acts. Do not delete the PG default believing this line covers it.
+   */
+  @Column({
+    type: 'enum',
+    enum: ServiceRequestLocationPrecision,
+    enumName: 'service_request_location_precision',
+    name: 'service_location_precision',
+    default: ServiceRequestLocationPrecision.UNKNOWN,
+  })
+  serviceLocationPrecision!: ServiceRequestLocationPrecision;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
   desiredStartAtUtc!: Date | null;

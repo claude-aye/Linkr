@@ -4385,6 +4385,15 @@
             "type": "object",
             "description": "GeoJSON Point: { type: \"Point\", coordinates: [lng, lat] }."
           },
+          "serviceLocationPrecision": {
+            "type": "string",
+            "enum": [
+              "GEOCODED",
+              "SEARCH_AREA",
+              "UNKNOWN"
+            ],
+            "description": "Where serviceLocation came from. Omit and the request is stored as UNKNOWN — precision is never inferred from the coordinates themselves. Provenance, not accuracy: GEOCODED does not mean exact."
+          },
           "desiredStartAtUtc": {
             "type": "string",
             "format": "date-time"
@@ -4475,6 +4484,14 @@
           "serviceLocation": {
             "type": "object"
           },
+          "serviceLocationPrecision": {
+            "type": "string",
+            "enum": [
+              "GEOCODED",
+              "SEARCH_AREA",
+              "UNKNOWN"
+            ]
+          },
           "desiredStartAtUtc": {
             "type": "object"
           },
@@ -4542,6 +4559,7 @@
           "description",
           "serviceAddress",
           "serviceLocation",
+          "serviceLocationPrecision",
           "createdAtUtc",
           "updatedAtUtc"
         ]
@@ -4683,6 +4701,14 @@
           "serviceAddress": {
             "type": "string"
           },
+          "serviceLocationPrecision": {
+            "type": "string",
+            "enum": [
+              "GEOCODED",
+              "SEARCH_AREA",
+              "UNKNOWN"
+            ]
+          },
           "estimatedAmount": {
             "type": "object"
           },
@@ -4767,6 +4793,7 @@
           "title",
           "description",
           "serviceAddress",
+          "serviceLocationPrecision",
           "createdAtUtc",
           "updatedAtUtc",
           "serviceCategoryId",

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { GeoJSONPoint } from '../../../common/geojson/geojson.types';
 import { ServiceRequestStatus } from '../enums/service-request-status.enum';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
+import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 
 export class ServiceRequestResponseDto {
   @ApiProperty() id!: string;
@@ -16,6 +17,8 @@ export class ServiceRequestResponseDto {
   @ApiProperty() description!: string;
   @ApiProperty() serviceAddress!: string;
   @ApiProperty() serviceLocation!: GeoJSONPoint;
+  @ApiProperty({ enum: ServiceRequestLocationPrecision })
+  serviceLocationPrecision!: ServiceRequestLocationPrecision;
   @ApiPropertyOptional() desiredStartAtUtc!: Date | null;
   @ApiPropertyOptional() desiredEndAtUtc!: Date | null;
   @ApiPropertyOptional() scheduledAtUtc!: Date | null;

@@ -102,6 +102,10 @@ export class ServiceRequestsService {
       description: dto.description,
       serviceAddress: dto.serviceAddress,
       serviceLocation: dto.serviceLocation,
+      // Straight pass-through. Absent from the body ⇒ the repository stores
+      // UNKNOWN. Never derived from the coordinates: a caller that does not
+      // state where the point came from does not get to claim a provenance.
+      serviceLocationPrecision: dto.serviceLocationPrecision,
       desiredStartAtUtc: dto.desiredStartAtUtc ? new Date(dto.desiredStartAtUtc) : null,
       desiredEndAtUtc: dto.desiredEndAtUtc ? new Date(dto.desiredEndAtUtc) : null,
       estimatedAmount: dto.estimatedAmount != null ? String(dto.estimatedAmount) : null,
@@ -786,6 +790,7 @@ export class ServiceRequestsService {
     dto.description = record.description;
     dto.serviceAddress = record.serviceAddress;
     dto.serviceLocation = record.serviceLocation;
+    dto.serviceLocationPrecision = record.serviceLocationPrecision;
     dto.desiredStartAtUtc = record.desiredStartAtUtc;
     dto.desiredEndAtUtc = record.desiredEndAtUtc;
     dto.scheduledAtUtc = record.scheduledAtUtc;

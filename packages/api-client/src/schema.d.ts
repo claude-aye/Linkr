@@ -1805,6 +1805,11 @@ export interface components {
             serviceAddress: string;
             /** @description GeoJSON Point: { type: "Point", coordinates: [lng, lat] }. */
             serviceLocation: Record<string, never>;
+            /**
+             * @description Where serviceLocation came from. Omit and the request is stored as UNKNOWN — precision is never inferred from the coordinates themselves. Provenance, not accuracy: GEOCODED does not mean exact.
+             * @enum {string}
+             */
+            serviceLocationPrecision?: "GEOCODED" | "SEARCH_AREA" | "UNKNOWN";
             /** Format: date-time */
             desiredStartAtUtc?: string;
             /** Format: date-time */
@@ -1839,6 +1844,8 @@ export interface components {
             description: string;
             serviceAddress: string;
             serviceLocation: Record<string, never>;
+            /** @enum {string} */
+            serviceLocationPrecision: "GEOCODED" | "SEARCH_AREA" | "UNKNOWN";
             desiredStartAtUtc?: Record<string, never>;
             desiredEndAtUtc?: Record<string, never>;
             scheduledAtUtc?: Record<string, never>;
@@ -1900,6 +1907,8 @@ export interface components {
             title: string;
             description: string;
             serviceAddress: string;
+            /** @enum {string} */
+            serviceLocationPrecision: "GEOCODED" | "SEARCH_AREA" | "UNKNOWN";
             estimatedAmount?: Record<string, never>;
             estimatedCurrency?: Record<string, never>;
             finalAmount?: Record<string, never>;

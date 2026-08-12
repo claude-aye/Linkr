@@ -5,6 +5,7 @@ import { GeoJSONPoint } from '../../../common/geojson/geojson.types';
 import { ServiceRequest } from '../entities/service-request.entity';
 import { ServiceRequestStatus } from '../enums/service-request-status.enum';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
+import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 
 export interface ServiceRequestRecord {
   id: string;
@@ -19,6 +20,7 @@ export interface ServiceRequestRecord {
   description: string;
   serviceAddress: string;
   serviceLocation: GeoJSONPoint;
+  serviceLocationPrecision: ServiceRequestLocationPrecision;
   desiredStartAtUtc: Date | null;
   desiredEndAtUtc: Date | null;
   scheduledAtUtc: Date | null;
@@ -70,6 +72,8 @@ export interface ProviderServiceRequestRecord {
   requestedServiceProviderId: string | null;
   serviceCategoryId: string;
   serviceItemId: string | null;
+  /** Provenance of the (deliberately unselected) coordinate — geo-safe scalar. */
+  serviceLocationPrecision: ServiceRequestLocationPrecision;
   // Joined labels
   serviceCategoryNameTranslations: Record<string, string>;
   serviceItemNameTranslations: Record<string, string> | null;
@@ -89,6 +93,12 @@ export interface CreateServiceRequestData {
   description: string;
   serviceAddress: string;
   serviceLocation: GeoJSONPoint;
+  /**
+   * Omit and the row falls back to the column's `DEFAULT 'UNKNOWN'`. Never
+   * inferred from the coordinates — a caller that does not state the provenance
+   * does not get to claim one.
+   */
+  serviceLocationPrecision?: ServiceRequestLocationPrecision;
   desiredStartAtUtc?: Date | null;
   desiredEndAtUtc?: Date | null;
   estimatedAmount?: string | null;
@@ -124,6 +134,7 @@ interface RawRow {
   description: string;
   service_address: string;
   service_location: GeoJSONPoint;
+  service_location_precision: ServiceRequestLocationPrecision;
   desired_start_at_utc: Date | null;
   desired_end_at_utc: Date | null;
   scheduled_at_utc: Date | null;
@@ -150,6 +161,7 @@ const SELECT_COLUMNS = `
   requested_service_provider_id, assigned_service_provider_id,
   title, description, service_address,
   ST_AsGeoJSON(service_location)::json AS service_location,
+  service_location_precision,
   desired_start_at_utc, desired_end_at_utc, scheduled_at_utc,
   estimated_amount, estimated_currency, final_amount, final_currency,
   response_deadline_utc, quotes_deadline_utc,
@@ -172,6 +184,7 @@ function mapRow(row: RawRow): ServiceRequestRecord {
     description: row.description,
     serviceAddress: row.service_address,
     serviceLocation: row.service_location,
+    serviceLocationPrecision: row.service_location_precision,
     desiredStartAtUtc: row.desired_start_at_utc,
     desiredEndAtUtc: row.desired_end_at_utc,
     scheduledAtUtc: row.scheduled_at_utc,
@@ -201,10 +214,15 @@ function mapRow(row: RawRow): ServiceRequestRecord {
  * `sr.service_location` nor `users.default_location` (the latter is NOT
  * `select:false` on the User entity, so a relations-load would have read raw
  * WKB). The Loi-25-excluded GPS therefore never leaves the DB on this path.
+ *
+ * `sr.service_location_precision` is a scalar enum, not geometry, so it keeps
+ * that property intact — and the asymmetry is the point: the provider is told
+ * THAT the location is degraded without being handed the coordinate.
  */
 const PROVIDER_SELECT_COLUMNS = `
   sr.id, sr.status, sr.request_type,
   sr.title, sr.description, sr.service_address,
+  sr.service_location_precision,
   sr.estimated_amount, sr.estimated_currency, sr.final_amount, sr.final_currency,
   sr.scheduled_at_utc, sr.desired_start_at_utc, sr.desired_end_at_utc,
   sr.accepted_at_utc, sr.completed_at_utc, sr.paid_at_utc, sr.response_deadline_utc,
@@ -226,6 +244,7 @@ interface ProviderRawRow {
   title: string;
   description: string;
   service_address: string;
+  service_location_precision: ServiceRequestLocationPrecision;
   estimated_amount: string | null;
   estimated_currency: string | null;
   final_amount: string | null;
@@ -260,6 +279,7 @@ function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
     title: row.title,
     description: row.description,
     serviceAddress: row.service_address,
+    serviceLocationPrecision: row.service_location_precision,
     estimatedAmount: row.estimated_amount,
     estimatedCurrency: row.estimated_currency,
     finalAmount: row.final_amount,
@@ -433,11 +453,13 @@ export class ServiceRequestRepository {
          service_location,
          desired_start_at_utc, desired_end_at_utc,
          estimated_amount, estimated_currency,
-         response_deadline_utc, quotes_deadline_utc
+         response_deadline_utc, quotes_deadline_utc,
+         service_location_precision
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9,
          ST_SetSRID(ST_GeomFromGeoJSON($10), 4326)::geometry,
-         $11, $12, $13, $14, $15, $16
+         $11, $12, $13, $14, $15, $16,
+         $17
        ) RETURNING id`,
       [
         data.clientUserId,
@@ -456,6 +478,12 @@ export class ServiceRequestRepository {
         data.estimatedCurrency ?? null,
         data.responseDeadlineUtc ?? null,
         data.quotesDeadlineUtc ?? null,
+        // Resolved here rather than left to the column DEFAULT: the statement is
+        // fixed, so the column is always named, and a bound NULL would violate
+        // NOT NULL instead of falling back (a DEFAULT only applies to an
+        // OMITTED column). The absent-means-UNKNOWN rule is therefore spelled
+        // out, never inferred from the coordinates.
+        data.serviceLocationPrecision ?? ServiceRequestLocationPrecision.UNKNOWN,
       ],
     );
 
