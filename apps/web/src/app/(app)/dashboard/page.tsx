@@ -4,6 +4,10 @@ import type { components } from '@linkr/api-client';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { pickTranslation } from '@/lib/i18n/translations';
+import {
+  LOCATION_PRECISION_NOTICE_CLASS,
+  providerLocationPrecisionNotice,
+} from '@/lib/service-requests/location-precision';
 import type { CategoryOption } from '@/lib/providers/discovery-types';
 import type {
   ProviderCategory,
@@ -336,6 +340,8 @@ function DetailLink({ requestId }: { requestId: string }) {
  */
 function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
   const deadline = formatDeadline(item.responseDeadlineUtc);
+  // Exception marker: `null` on GEOCODED, so a precise request shows nothing.
+  const locationNotice = providerLocationPrecisionNotice(item.serviceLocationPrecision);
 
   return (
     <li className="rounded-2xl border border-amber-300/70 bg-white p-5 shadow-sm dark:border-amber-900 dark:bg-zinc-900">
@@ -366,6 +372,13 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
         </Detail>
         <Detail label="Adresse" wide>
           {item.serviceAddress}
+          {/* Plain text — no `role="alert"`/`aria-live`: a displayed state, not
+              an event (the repo reserves `role="alert"` for action errors). */}
+          {locationNotice && (
+            <span className={`mt-1 block ${LOCATION_PRECISION_NOTICE_CLASS}`}>
+              {locationNotice}
+            </span>
+          )}
         </Detail>
       </dl>
 
@@ -377,6 +390,7 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
           title={item.title}
           clientDisplayName={item.clientDisplayName}
           serviceAddress={item.serviceAddress}
+          serviceLocationPrecision={item.serviceLocationPrecision}
           estimatedAmount={item.estimatedAmount}
           estimatedCurrency={item.estimatedCurrency}
         />
@@ -392,6 +406,7 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
 function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   const badge = STATUS_BADGES[item.status];
   const showFinal = item.finalAmount != null;
+  const locationNotice = providerLocationPrecisionNotice(item.serviceLocationPrecision);
 
   return (
     <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -426,6 +441,11 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
         </Detail>
         <Detail label="Adresse" wide>
           {item.serviceAddress}
+          {locationNotice && (
+            <span className={`mt-1 block ${LOCATION_PRECISION_NOTICE_CLASS}`}>
+              {locationNotice}
+            </span>
+          )}
         </Detail>
       </dl>
 

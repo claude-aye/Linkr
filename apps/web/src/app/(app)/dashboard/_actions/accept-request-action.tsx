@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  type ServiceLocationPrecision,
+  providerLocationPrecisionNotice,
+} from '@/lib/service-requests/location-precision';
 
 /**
  * Accept action for an OPEN direct booking targeted at the provider (Phase B,
@@ -26,6 +30,14 @@ export interface AcceptRequestActionProps {
   clientDisplayName: string;
   /** Human-readable service address, shown in the modal. */
   serviceAddress: string;
+  /**
+   * Provenance of the request's coordinate. Surfaced INSIDE the modal, before
+   * the confirm button — accepting commits real money (Stripe deposit capture)
+   * and a physical trip, so a degraded location must be visible at the moment
+   * of decision, not only on the card behind. Friction proportional to risk
+   * (3.12b). It informs, it never blocks: the provider decides.
+   */
+  serviceLocationPrecision: ServiceLocationPrecision;
   /** TOTAL estimated amount as a decimal string (e.g. "120.00"); nullable. */
   estimatedAmount: string | null;
   /** ISO 4217 code (e.g. "CAD"); nullable. */
@@ -89,6 +101,7 @@ export function AcceptRequestAction({
   title,
   clientDisplayName,
   serviceAddress,
+  serviceLocationPrecision,
   estimatedAmount,
   estimatedCurrency,
 }: AcceptRequestActionProps) {
@@ -99,6 +112,9 @@ export function AcceptRequestAction({
   // basis). Guard it: the confirm button is disabled and, defensively, the
   // business path below refuses too — we never fire an accept doomed to 422.
   const hasAmount = estimatedAmount !== null && estimatedCurrency !== null;
+
+  // Exception marker: `null` on GEOCODED, so a precise request shows nothing.
+  const locationNotice = providerLocationPrecisionNotice(serviceLocationPrecision);
 
   async function handleConfirm(): Promise<void> {
     // Defense-in-depth for a money operation: unreachable while the confirm
@@ -151,7 +167,18 @@ export function AcceptRequestAction({
           <dl className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
             <Row label="Demande">{title}</Row>
             <Row label="Client">{clientDisplayName}</Row>
-            <Row label="Adresse">{serviceAddress}</Row>
+            <Row label="Adresse">
+              {serviceAddress}
+              {/* Attached to the address it qualifies, so it is read as part of
+                  the recap and lands ABOVE the confirm button. Plain text — no
+                  `role="alert"`/`aria-live`: a displayed state, not an event
+                  (unlike the null-amount guard below, which IS an error). */}
+              {locationNotice && (
+                <span className="mt-1 block text-xs font-normal text-amber-700 sm:text-right dark:text-amber-400">
+                  {locationNotice}
+                </span>
+              )}
+            </Row>
             {hasAmount && (
               <Row label="Montant total estimé">
                 {formatMoney(estimatedAmount, estimatedCurrency)}

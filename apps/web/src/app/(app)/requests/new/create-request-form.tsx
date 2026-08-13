@@ -196,6 +196,19 @@ export function CreateRequestForm({
   const locationKind = locationState.kind;
 
   /**
+   * Search coordinates carried by the URL — props, so stable for this render.
+   *
+   * Hoisted to component scope so the fallback panel's promise and the payload
+   * `submitAnyway` actually sends are read from the SAME two values. Computing
+   * them twice would let the panel announce « the area you searched » while the
+   * submit stored UNKNOWN — the panel would then lie about the very thing this
+   * phase exists to make honest.
+   */
+  const searchLatNum = parseCoord(searchLat);
+  const searchLngNum = parseCoord(searchLng);
+  const hasSearchCoords = searchLatNum !== null && searchLngNum !== null;
+
+  /**
    * Perceptibility, the mobile half of the fix: the candidate list is born
    * UNDER the virtual keyboard — the client sees nothing happen, retries, and
    * truncates the address further. Bring the whole block into view instead.
@@ -219,7 +232,21 @@ export function CreateRequestForm({
    * deliberately does NOT touch `locationState` — the caller owns that (a failed
    * POST from `resolved` keeps the confirmation for a cheap retry).
    */
-  async function postRequest(serviceLocation: { type: string; coordinates: number[] }) {
+  async function postRequest(
+    serviceLocation: { type: string; coordinates: number[] },
+    // REQUIRED second parameter, typed from the GENERATED union — never a local
+    // literal, so any change to the backend enum breaks here. Required on
+    // purpose: a caller that forgot to state the provenance would not compile,
+    // which makes the omission structurally impossible rather than merely
+    // discouraged. The provenance is therefore always decided ADJACENT to the
+    // coordinate it describes, never defaulted at this single assembly site —
+    // a constant set here and overwritten in the fallbacks would let a
+    // forgotten branch CLAIM precision it does not have, which is exactly the
+    // lie this phase removes.
+    serviceLocationPrecision: NonNullable<
+      CreateServiceRequestBody['serviceLocationPrecision']
+    >,
+  ) {
     // Derived/constant fields are assembled HERE, never entered nor URL-borne.
     const payload: CreateServiceRequestBody = {
       requestType: 'DIRECT_BOOKING',
@@ -236,6 +263,8 @@ export function CreateRequestForm({
       // stays for ALL branches (URL coords, resolved candidate, placeholder).
       serviceLocation:
         serviceLocation as unknown as CreateServiceRequestBody['serviceLocation'],
+      // Travels with the coordinate above; no cast needed (clean string union).
+      serviceLocationPrecision,
     };
 
     setPending(true);
@@ -328,10 +357,15 @@ export function CreateRequestForm({
     // GeoJSON order [lng, lat]: LONGITUDE FIRST (inverting would send the request
     // to the wrong hemisphere; at Québec, lng is negative, lat positive).
     if (locationState.kind === 'resolved') {
-      await postRequest({
-        type: 'Point',
-        coordinates: [locationState.lng, locationState.lat],
-      });
+      await postRequest(
+        {
+          type: 'Point',
+          coordinates: [locationState.lng, locationState.lat],
+        },
+        // Stated where the coordinate is built: this point comes from the
+        // address the client typed, geocoded, and picked from the candidates.
+        'GEOCODED',
+      );
       return;
     }
 
@@ -397,13 +431,17 @@ export function CreateRequestForm({
     if (pending || geocoding) return;
 
     // Same [lng, lat] order as every other branch — longitude first.
-    const searchLatNum = parseCoord(searchLat);
-    const searchLngNum = parseCoord(searchLng);
-    void postRequest(
+    // The existing coordinate fork is ENRICHED, not rewritten: each arm now
+    // yields the PAIR (point + where it came from), so the provenance cannot be
+    // separated from the point it describes.
+    const { location, precision } =
       searchLatNum !== null && searchLngNum !== null
-        ? { type: 'Point', coordinates: [searchLngNum, searchLatNum] }
-        : QUEBEC_SERVICE_LOCATION,
-    );
+        ? {
+            location: { type: 'Point', coordinates: [searchLngNum, searchLatNum] },
+            precision: 'SEARCH_AREA' as const,
+          }
+        : { location: QUEBEC_SERVICE_LOCATION, precision: 'UNKNOWN' as const };
+    void postRequest(location, precision);
   }
 
   /**
@@ -572,10 +610,26 @@ export function CreateRequestForm({
                 right one is the single, explicit door to the placeholder. */}
             {locationState.kind === 'unresolved' && (
               <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
+                {/* CAUSE — why geocoding failed. The former shared tail
+                    « …sans localisation précise » is GONE on purpose: it covered
+                    both fallbacks with one vague phrase, which was the whole
+                    debt. Adding the truth beside the vagueness would not have
+                    replaced it. */}
                 <p className="text-sm text-amber-900 dark:text-amber-200">
                   {locationState.reason === 'no-match'
-                    ? 'Nous n’avons pas pu localiser cette adresse. Vérifiez qu’elle est complète, ou envoyez votre demande sans localisation précise.'
-                    : 'La localisation d’adresse est momentanément indisponible. Vous pouvez réessayer, ou envoyer votre demande sans localisation précise.'}
+                    ? 'Nous n’avons pas pu localiser cette adresse. Vérifiez qu’elle est complète.'
+                    : 'La localisation d’adresse est momentanément indisponible. Vous pouvez réessayer.'}
+                </p>
+                {/* CONSEQUENCE — what will actually be recorded if they send
+                    anyway. Keyed on a DIFFERENT axis than the cause above
+                    (coordinates available or not), because that, not the reason
+                    for the failure, is what decides the stored provenance. Read
+                    from `hasSearchCoords`, the same value `submitAnyway` uses,
+                    so this cannot promise one thing and store another. */}
+                <p className="mt-2 text-sm text-amber-900 dark:text-amber-200">
+                  {hasSearchCoords
+                    ? 'Nous enregistrerons le secteur où vous avez cherché. L’adresse que vous avez saisie reste affichée au prestataire.'
+                    : 'Nous ne pourrons enregistrer aucune position. Seule l’adresse que vous avez saisie sera transmise au prestataire.'}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-4">
                   {locationState.reason === 'no-match' ? (

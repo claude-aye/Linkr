@@ -1,4 +1,8 @@
 import type { components } from '@linkr/api-client';
+import {
+  LOCATION_PRECISION_NOTICE_CLASS,
+  clientLocationPrecisionNotice,
+} from '@/lib/service-requests/location-precision';
 
 /**
  * Thin client-facing card for one of the user's own service requests (Phase
@@ -125,6 +129,10 @@ export function RequestCard({ request }: { request: ClientRequest }) {
   const estimatedAmount = request.estimatedAmount as unknown as string | null;
   const estimatedCurrency = request.estimatedCurrency as unknown as string | null;
 
+  // Exception marker: `null` on GEOCODED, so a precise request shows nothing.
+  // Read NATIVELY — the field is a required string union on the DTO, no cast.
+  const locationNotice = clientLocationPrecisionNotice(request.serviceLocationPrecision);
+
   return (
     <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -146,6 +154,14 @@ export function RequestCard({ request }: { request: ClientRequest }) {
         </Detail>
         <Detail label="Adresse" wide>
           {request.serviceAddress}
+          {/* Discreet mention under the address. Plain text — NO `role="alert"`
+              and no `aria-live`: nothing happens, this is a displayed state, and
+              the repo reserves `role="alert"` for action errors. */}
+          {locationNotice && (
+            <span className={`mt-1 block ${LOCATION_PRECISION_NOTICE_CLASS}`}>
+              {locationNotice}
+            </span>
+          )}
         </Detail>
       </dl>
     </li>
