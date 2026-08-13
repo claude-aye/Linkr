@@ -13,6 +13,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsGeoJSONPoint } from '../../../common/validators/is-geojson-point.validator';
 import { GeoJSONPoint } from '../../../common/geojson/geojson.types';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
+import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 
 export class CreateServiceRequestDto {
   @ApiProperty({ enum: ServiceRequestType })
@@ -67,6 +68,15 @@ export class CreateServiceRequestDto {
   })
   @IsGeoJSONPoint()
   serviceLocation!: GeoJSONPoint;
+
+  @ApiPropertyOptional({
+    enum: ServiceRequestLocationPrecision,
+    description:
+      'Where serviceLocation came from. Omit and the request is stored as UNKNOWN — precision is never inferred from the coordinates themselves. Provenance, not accuracy: GEOCODED does not mean exact.',
+  })
+  @IsOptional()
+  @IsEnum(ServiceRequestLocationPrecision)
+  serviceLocationPrecision?: ServiceRequestLocationPrecision;
 
   @ApiPropertyOptional({ format: 'date-time' })
   @IsOptional()

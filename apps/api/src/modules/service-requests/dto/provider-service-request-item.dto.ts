@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ServiceRequestStatus } from '../enums/service-request-status.enum';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
+import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 import type { ProviderServiceRequestRecord } from '../repositories/service-request.repository';
 
 /**
@@ -23,6 +24,20 @@ export class ProviderServiceRequestItemDto {
   @ApiProperty() title!: string;
   @ApiProperty() description!: string;
   @ApiProperty() serviceAddress!: string;
+
+  /**
+   * Provenance of the request's coordinate. This is the side that physically
+   * travels, so it is the side that most needs to know the location was
+   * degraded.
+   *
+   * Note the asymmetry, and preserve it: the precision rides along
+   * `PROVIDER_SELECT_COLUMNS`, which is geo-safe. The provider learns THAT the
+   * position is degraded without ever receiving the point itself (Loi 25 —
+   * `serviceLocation` stays excluded from this DTO).
+   */
+  @ApiProperty({ enum: ServiceRequestLocationPrecision })
+  serviceLocationPrecision!: ServiceRequestLocationPrecision;
+
   @ApiPropertyOptional() estimatedAmount!: string | null;
   @ApiPropertyOptional() estimatedCurrency!: string | null;
   @ApiPropertyOptional() finalAmount!: string | null;
@@ -75,6 +90,7 @@ export class ProviderServiceRequestItemDto {
     dto.title = record.title;
     dto.description = record.description;
     dto.serviceAddress = record.serviceAddress;
+    dto.serviceLocationPrecision = record.serviceLocationPrecision;
     dto.estimatedAmount = record.estimatedAmount;
     dto.estimatedCurrency = record.estimatedCurrency;
     dto.finalAmount = record.finalAmount;
