@@ -138,6 +138,17 @@ export interface ProviderServiceRequestItem {
   title: string;
   description: string;
   serviceAddress: string;
+  /**
+   * Provenance of the REQUEST's coordinate (Phase F). DERIVED from the schema,
+   * not hand-mirrored — same rule as the unions above: the field is a clean,
+   * required string union in `schema.d.ts`, untouched by the nullable quirk
+   * that forces the rest of this interface to exist.
+   *
+   * NB this says nothing about the coordinate itself: the provider DTO is
+   * geo-safe and carries no geometry. The provider learns THAT the position is
+   * degraded, never the point.
+   */
+  serviceLocationPrecision: components['schemas']['ProviderServiceRequestItemDto']['serviceLocationPrecision'];
   estimatedAmount: string | null;
   estimatedCurrency: string | null;
   finalAmount: string | null;
