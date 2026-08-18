@@ -58,6 +58,13 @@ et évaluations** (§8 du mandat).
    poser sur `:5000` un proxy de 40 lignes qui `500` **une seule** route. Mêmes données, même
    utilisateur, seule la lecture visée échoue — c'est ce qui a prouvé les trois chemins rouges
    de la PR #73.
+8. **La branche `claude/chantier-h-recherche-8idcnn` existe encore côté distant** au commit
+   pré-squash `ce1fa25` : le `git push --delete` a échoué au niveau transport
+   (`send-pack: unexpected disconnect`) — **même symptôme que la session 1, et sans
+   conséquence** : tout son contenu est dans `main` via le squash `71b9c1c`. Les noms de
+   branche sont auto-générés **et réutilisés** d'une PR à l'autre, donc **repars-la de `main`**
+   (`git checkout -B <nom> origin/main`) au lieu de la reprendre telle quelle ; un
+   `--force-with-lease` est légitime, elle ne porte que de l'historique déjà mergé.
 
 ## ⛔ En attente de décision humaine
 
