@@ -11,6 +11,7 @@ import type {
 } from '@/lib/providers/discovery-types';
 
 import { CandidateList } from './_components/candidate-list';
+import { DemandSignalRecorder } from './_components/demand-signal-recorder';
 import { NoResults } from './_components/no-results';
 import { ProviderCard } from './_components/provider-card';
 import { SearchForm } from './_components/search-form';
@@ -212,10 +213,22 @@ export default async function RecherchePage({
               // Chantier H — a product surface, not a bare « aucun résultat ». It
               // names the trade and explains WHY zero is possible, which differs
               // by regulation level. See the component header.
-              <NoResults
-                tradeLabel={selectedTradeLabel}
-                regulationLevel={selectedCategory?.regulationLevel ?? null}
-              />
+              <>
+                <NoResults
+                  tradeLabel={selectedTradeLabel}
+                  regulationLevel={selectedCategory?.regulationLevel ?? null}
+                />
+                {/* Chantier H, tranche 2a — records the unmet demand. Renders
+                    nothing; mounted ONLY here, so a failed `discover` (the
+                    branch above) can never be logged as an absence of supply.
+                    The write is a POST from the client precisely so that it is
+                    not a side effect of this render — see the component. */}
+                <DemandSignalRecorder
+                  categoryId={discoverQuery.categoryId}
+                  lat={discoverQuery.lat}
+                  lng={discoverQuery.lng}
+                />
+              </>
             ) : (
               <ul className="space-y-4">
                 {providers.map((provider) => (

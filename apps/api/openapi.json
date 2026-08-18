@@ -3230,6 +3230,40 @@
           "geocoding"
         ]
       }
+    },
+    "/demand-signals": {
+      "post": {
+        "operationId": "DemandSignalsController_record",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordDemandSignalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Signal recorded."
+          },
+          "400": {
+            "description": "Malformed body."
+          },
+          "404": {
+            "description": "Unknown service category."
+          },
+          "409": {
+            "description": "The search is not empty at this point for this trade — nothing recorded."
+          }
+        },
+        "summary": "Record an anonymous demand signal for a search that returned zero providers. The zero claim is re-verified server-side with discovery's own predicate; the coordinate is rounded to a coarse sector and the exact point is never stored. Stores NO caller identity.",
+        "tags": [
+          "demand-signals"
+        ]
+      }
     }
   },
   "info": {
@@ -5226,6 +5260,31 @@
         },
         "required": [
           "candidates"
+        ]
+      },
+      "RecordDemandSignalDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "description": "Service category (Métier) that was searched for.",
+            "format": "uuid"
+          },
+          "lat": {
+            "type": "number",
+            "description": "Latitude of the search that returned zero, -90..90. Used to re-verify the claim, then rounded to a coarse sector. NEVER stored as sent.",
+            "example": 45.5017
+          },
+          "lng": {
+            "type": "number",
+            "description": "Longitude of the search that returned zero, -180..180. Used to re-verify the claim, then rounded to a coarse sector. NEVER stored as sent.",
+            "example": -73.5673
+          }
+        },
+        "required": [
+          "categoryId",
+          "lat",
+          "lng"
         ]
       }
     }
