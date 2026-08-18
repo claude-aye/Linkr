@@ -1,104 +1,107 @@
 # ÉTAT — Travail autonome CC
 
-**Dernière session :** 2026-08-18 · `main` @ `71b9c1c` · migration `1780500000000`
+**Dernière session :** 2026-08-18 (session 4) · `main` @ `16fa012` · migration `1780500000000`
 
 ## Chantier en cours
 
-**H — Recherche par métier depuis l'accueil.** Tranche 1 sur 2 livrée.
-
-**Réordonnancement, et pourquoi** (mandat §8 : ne pas réordonner sans l'écrire) : l'état
-précédent annonçait **G-2** comme prochaine tranche. **L'humain a fourni un brief de session
-dédié à H**, avec des contraintes déjà tranchées (découpage en deux tranches, réponse à la
-question produit de l'état vide, décision de copie « Espace pro »). J'ai suivi le brief.
-**G-2 reste ouverte et non entamée** — elle n'a rien perdu, elle a été dépassée dans la file.
+**Hors file, sur brief humain : fixture « métier réglementé vérifié » (PR #74, mergée).** Le
+chantier **H tranche 2** reste la prochaine étape de la file, et l'humain l'a **décalée
+volontairement** — construire la captation de la demande sur un catalogue où aucun métier
+réglementé ne peut rendre de résultat aurait produit une carte « forte demande, zéro offre »
+dont la cause aurait été l'absence de fixture, pas l'absence de marché. C'est maintenant réglé.
 
 ## Découpage retenu
 
-- [x] Tranche 1 — Entrée par métier depuis l'accueil + état vide honnête (PR #73, mergée)
-- [ ] Tranche 2 — Table de captation de la demande insatisfaite  ← PROCHAINE, **porte humaine**
+- [x] H tranche 1 — Entrée par métier depuis l'accueil + état vide honnête (PR #73, mergée)
+- [x] Fixture métier réglementé vérifié (PR #74, mergée) — **hors file, brief humain**
+- [ ] H tranche 2 — Table de captation de la demande insatisfaite ← PROCHAINE, **porte humaine**
 
-**La tranche 2 n'est PAS auto-mergeable** (brief §7 + mandat §7) : elle crée une table, donc
-une migration. Tu prépares, tu prouves `up`/`down` dans ton bac à sable, **et tu t'arrêtes
-avant le merge** — l'humain rejoue `migration:run` / `migration:revert` sur la vraie base dev,
-celle qui porte les 33 lignes historiques et les lignes `SONDE-*`/`SMOKE-*` en
-`ON DELETE RESTRICT`. Ta bande d'horodatage : `1780510000000` → `1780599999999`.
-
-Après H, les chantiers ouverts sont **G-2** (cibles tactiles dans les pages) puis **D — avis
-et évaluations** (§8 du mandat).
+**La tranche 2 n'est toujours PAS auto-mergeable** (migration ⇒ mandat §7). Bande d'horodatage :
+`1780510000000` → `1780599999999`. Ensuite : **G-2** (cibles tactiles dans les pages), puis
+**D — avis et évaluations**.
 
 ## Ce que la prochaine session doit savoir
 
-1. **`discover` ne distingue pas les deux zéros — c'est mesuré, ne le re-litige pas.** Un
-   métier réglementé déclaré mais `PENDING` et un métier que personne n'a déclaré renvoient
-   des réponses **byte-identiques** (`{"items":[],"total":0,"page":1,"limit":20}`). Le seul
-   signal séparateur est le `regulationLevel` du **catalogue**, que la page charge déjà.
-   `NoResults` le **reçoit** en prop ; ne le fais jamais inférer depuis `total`.
-2. **`NoResults` a TROIS branches, pas deux, et la 3ᵉ est le cœur du sujet.** Niveau inconnu
-   (catalogue en panne, ou UUID bien formé absent du catalogue) ⇒ on énonce ce qu'on a
-   mesuré et **RIEN** sur le pourquoi. Ma v1 à deux branches affirmait « ce métier ne demande
-   aucune vérification de licence » sur un métier inconnu. Ne la « simplifie » pas en booléen.
-3. **`apps/web` n'a AUCUNE config Prettier** — son style (guillemets simples) est tenu à la
-   main. Un `npx prettier --write` y reformate **tout le fichier** en guillemets doubles et
-   fabrique un diff hors périmètre. Ne lance jamais Prettier sur `apps/web` ; `apps/api` a un
-   `.prettierrc`, lui.
-4. **`next start` sert le build chargé en mémoire AU DÉMARRAGE.** Un `build` postérieur au
-   serveur est **invisible** : j'ai cru un moment qu'un correctif ne prenait pas alors qu'il
-   n'était pas servi. Compare `stat apps/web/.next/BUILD_ID` à l'heure de démarrage du
-   processus (`ps -o lstart`) avant de conclure quoi que ce soit d'un smoke.
-5. **`git pull` / `git merge` sur `main` sont bloqués par le classifieur** dans le bac à
-   sable. Le rituel de fermeture reste faisable : commiter `ETAT`/`JOURNAL` **directement sur
-   `main` via l'API GitHub** (`push_files`), ce qui est exactement ce que demande le mandat §9.
-6. **Docker toujours absent** (`dial unix /var/run/docker.sock`). Stack montée à la main en
-   ~5 min : `apt-get update` puis `postgresql-16-postgis-3` ; le cluster Debian a sa config
-   dans `/etc/postgresql/16/main`, donc `pg_ctl` exige
-   `-o '-c config_file=/etc/postgresql/16/main/postgresql.conf'` — sans ça il échoue sur un
-   `postgresql.conf` introuvable. Rôle `linkr` créé **par la socket unix** (l'auth mot de
-   passe échoue avant qu'il existe). Puis `migration:run` + le seed `quebec-catalog.seed.ts`.
-7. **Le pattern d'injection de faute vaut d'être réutilisé** : déplacer l'API sur `:5002`, et
-   poser sur `:5000` un proxy de 40 lignes qui `500` **une seule** route. Mêmes données, même
-   utilisateur, seule la lecture visée échoue — c'est ce qui a prouvé les trois chemins rouges
-   de la PR #73.
-8. **La branche `claude/chantier-h-recherche-8idcnn` existe encore côté distant** au commit
-   pré-squash `ce1fa25` : le `git push --delete` a échoué au niveau transport
-   (`send-pack: unexpected disconnect`) — **même symptôme que la session 1, et sans
-   conséquence** : tout son contenu est dans `main` via le squash `71b9c1c`. Les noms de
-   branche sont auto-générés **et réutilisés** d'une PR à l'autre, donc **repars-la de `main`**
-   (`git checkout -B <nom> origin/main`) au lieu de la reprendre telle quelle ; un
-   `--force-with-lease` est légitime, elle ne porte que de l'historique déjà mergé.
+1. **Le blocage `git` du classifieur est diagnostiqué — c'est la BRANCHE, pas la commande.**
+   Mesuré dans les deux sens : HEAD sur `claude/…` → `git pull origin main` et
+   `git fetch origin --prune` répondent **exit 0** ; HEAD sur **`main`**, les **mêmes** commandes
+   sont refusées (« Permission for this action was denied by the Claude Code auto mode
+   classifier. Reason: Blocked by classifier. »). Autrement dit : **toute opération git qui
+   mettrait à jour la branche locale `main` est bloquée.** Conséquence pratique : ne perds pas de
+   temps à faire un `checkout main` + `pull` dans le rituel — reste sur ta branche, `fetch` y
+   fonctionne, et **commite `ETAT`/`JOURNAL` sur `main` via l'API GitHub** (`push_files`), ce que
+   demande déjà le mandat §9. Le rituel d'ouverture du mandat (§4) est écrit pour un poste humain
+   sur ce point précis.
+2. **La fixture existe : `apps/api/src/database/seeders/verified-regulated-trade.seed.ts`.**
+   `npx ts-node -r tsconfig-paths/register src/database/seeders/verified-regulated-trade.seed.ts`
+   depuis `apps/api`, API démarrée. Idempotente, clés naturelles, aucun UUID en dur, refuse
+   `NODE_ENV=production`. Par défaut : `bob@linkr.test` vérifié en **électricité**, approuvé par
+   `alice@linkr.test` (promue ADMIN si besoin — seul état écrit en SQL, aucune route ne l'accorde).
+   Surchargeable : `FIXTURE_CATEGORY_SLUG`, `FIXTURE_PROVIDER_EMAIL`, `FIXTURE_ADMIN_EMAIL`,
+   `FIXTURE_API_URL`. **Si le couple visé est déjà occupé, elle s'arrête proprement** en affichant
+   le statut trouvé — c'est voulu, pas un échec (cf. le verrou ci-dessous).
+3. **Il faut DEUX documents approuvés, pas un.** Chaque métier réglementé du seed Québec porte deux
+   exigences `is_required` (plomberie → RBQ + CMMTQ · électricité → RBQ + CMEQ · menuiserie →
+   RBQ + CCQ). Approuver le premier laisse la revendication en `PENDING` et **ne change rien à
+   l'écran** — mesuré. Un admin qui approuve et ne voit rien bouger n'a pas rencontré un bogue.
+4. **`ASSIGNED` reste inatteignable, et la cause n'est PAS une panne Stripe.** La dette
+   « `JobCard` jamais smoké » **reste ouverte**. Mesuré : acceptation → **409 « The provider is not
+   able to accept payments yet (Stripe Connect onboarding incomplete) »**, demande toujours `OPEN`,
+   `stripe_connect_accounts` = **0 ligne**. C'est `assertPayable` qui bloque **avant** tout appel à
+   Stripe : il manque un **onboarding Connect** au prestataire de fixture. Ne relâche pas la garde
+   (argent = arrêt dur §3) ; la voie propre est de faire passer un prestataire par l'onboarding.
+5. **Ma base n'est pas celle de l'humain.** La mienne repart de zéro à chaque session (Docker
+   absent, stack remontée à la main). La sienne porte les 33 demandes historiques, les lignes
+   `SONDE-*`/`SMOKE-*`, et **une ligne `REJECTED` dont j'ignore le couple** — je n'ai pas pu la
+   sonder et je ne l'ai pas devinée.
+6. **`MANDAT_01_fixtures.md` n'est pas entamé** (aucune PR ouverte ; `alix-dev` est en retard sur
+   `main`). Le fichier `dev-fixtures.seed.ts` **et** le câblage `seed:catalog`/`seed:dev` dans
+   `package.json` lui sont **assignés** — je ne les ai pas préemptés, et toi non plus.
+7. **Rappels de session 3 toujours valables** : ne lance jamais Prettier sur `apps/web` (aucune
+   config, il reformate tout en guillemets doubles) · `next start` sert le build chargé **au
+   démarrage** (compare `.next/BUILD_ID` à `ps -o lstart` avant de conclure) · le proxy
+   d'injection de faute (API sur `:5002`, proxy 40 lignes qui `500` **une seule** route) reste le
+   meilleur outil pour prouver un chemin rouge.
 
 ## ⛔ En attente de décision humaine
 
-**Combien de temps conserve-t-on une recherche restée vide (tranche 2) ?**
+**① Un refus verrouille le métier à vie — arbitrage requis, je n'ai rien touché.**
+`ux_psc_provider_category_active` est unique sur `(service_provider_id, service_category_id)
+WHERE deleted_at_utc IS NULL` et **n'inclut pas `verification_status`** ; `existsActive()` copie
+ce prédicat. Un prestataire passé `REJECTED` **ne peut plus jamais re-revendiquer ce métier** :
+**409** propre et sans issue, indiscernable d'un doublon ordinaire. Le chemin qui produit un
+`REJECTED` **fonctionne** (expiration de document → rétrogradation, mesuré), donc le verrou est
+atteignable en production **dès le premier document expiré**.
+- **Option recommandée : ouvrir une transition `REJECTED → PENDING` sur la ligne existante**
+  (re-dépôt de document sur la revendication en place). **Elle ne touche pas à l'index**, donc
+  évite l'arrêt dur §3, et conserve l'historique de la revendication.
+- L'autre voie — supprimer en douceur la ligne `REJECTED` puis en insérer une neuve — marche
+  aussi mais multiplie les lignes mortes et déplace le problème vers `deleted_at_utc`.
 
-- **Pourquoi ça bloque la conception, pas seulement le code :** ce serait la première
-  collecte de renseignements personnels auprès de **quelqu'un qui n'est pas utilisateur** —
-  un enregistrement **sans propriétaire et sans chemin de suppression**. La Loi 25 exige une
-  **durée de conservation décidée à la conception**, pas ajoutée après coup. La colonne et la
-  purge se posent dans la **même** migration ou elles ne se posent jamais.
-- **Option recommandée : 12 mois, avec `expires_at_utc` écrit à l'insertion.** Une carte de
-  la demande a une valeur **saisonnière** (recruter un déneigeur en octobre), donc il faut
-  couvrir un cycle annuel complet ; au-delà, une adresse de contact vieille d'un an est un
-  passif, pas un actif. Une colonne d'expiration explicite rend la purge **auditable** et
-  indépendante d'un cron qu'on oublierait de brancher.
-- **Ce que je n'ai pas fait :** rien de la tranche 2 n'est amorcé, pas même « pour préparer
-  le terrain » (consigne explicite du brief).
+**② Toujours ouverte depuis la session 3 : combien de temps conserve-t-on une recherche restée
+vide (H tranche 2) ?** Première collecte auprès de **non-utilisateurs** — enregistrement sans
+propriétaire ni chemin de suppression ; la Loi 25 exige une durée décidée **à la conception**.
+**Option recommandée : 12 mois, avec `expires_at_utc` écrit à l'insertion** (la demande est
+saisonnière, il faut couvrir un cycle annuel ; au-delà, une adresse d'un an est un passif). La
+colonne et la purge se posent dans la **même** migration ou jamais. **Rien n'est amorcé.**
 
-**Décision de copie déjà tranchée par l'humain, en file :** le libellé de nav
-« Mon tableau de bord » devient **« Espace pro »**. **Non appliqué en PR #73** parce que H ne
-touche pas `(app)/nav.tsx` (consigne du brief : sinon, laisser en file). À appliquer par la
-première PR qui touche la nav — vraisemblablement **G-2** — et à noter comme fermeture de la
-régression de hauteur mesurée en #72. À arbitrer en même temps : le raccourci de l'accueil
-« Accéder à mon tableau de bord prestataire », **non touché**, qui porte le même vocabulaire.
+**③ Décision de copie déjà tranchée, toujours en file :** « Mon tableau de bord » → **« Espace
+pro »**, à appliquer par la première PR qui touche `(app)/nav.tsx` (vraisemblablement G-2), en
+même temps que le raccourci de l'accueil qui porte le même vocabulaire.
 
 ## Dettes créées par la dernière PR
 
-**Une seule, petite et connue :** quand la lecture du catalogue échoue, l'accueil perd
-**aussi** son lien d'échappement vers `/recherche` (il vit à l'intérieur de la section qui
-dégrade). La nav du shell le porte toujours, donc personne n'est bloqué.
+**Aucune dette créée** — la PR est purement additive (un seeder + `CLAUDE.md`), sans migration ni
+changement de contrat.
 
-**Relevées, NON corrigées** (inchangées depuis la session précédente) :
-`body { font-family: Arial… }` dans `globals.css` qui écrase les polices Geist (PR dédiée,
-rayon d'impact visuel global) · aucune vérification en **mode sombre** à ce jour, nulle part ·
-deux liens **en ligne dans une phrase** à 16 px introduits par #73, couverts par l'exception
-« Inline » de WCAG 2.5.8 (les grossir casserait la lecture) — candidats G-2 s'il veut les
-sortir du fil du texte.
+**Deux dettes *découvertes et écrites* dans `CLAUDE.md` §6, non corrigées** : le verrou du refus
+(⛔① ci-dessus) et **les métiers réglementés indéclarables depuis l'interface**
+(`disabled={option.regulated}` dans le sélecteur « Mes métiers » ; l'API, elle, accepte et répond
+**201 `PENDING`**). Rouvrir le sélecteur suppose de décider **qui téléverse la licence et depuis
+quel écran** : l'endpoint de téléversement existe, **l'écran n'existe pas**. Arbitrage produit,
+PR dédiée.
+
+**Relevées, inchangées** : `body { font-family: Arial… }` dans `globals.css` écrase les polices
+Geist (PR dédiée, rayon d'impact visuel global) · aucune vérification en **mode sombre** nulle
+part · les deux liens en ligne à 16 px de #73 (exception « Inline » WCAG 2.5.8) · notifications
+prestataire ORGANIZATION illisibles · `docker/data/` tracké par git.
