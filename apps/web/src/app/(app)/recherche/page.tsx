@@ -10,6 +10,7 @@ import type {
 } from '@/lib/providers/discovery-types';
 
 import { CandidateList } from './_components/candidate-list';
+import { NoResults } from './_components/no-results';
 import { ProviderCard } from './_components/provider-card';
 import { SearchForm } from './_components/search-form';
 
@@ -52,6 +53,14 @@ function StateCard({ title, children }: { title: string; children: React.ReactNo
  *   else q + categoryId valid     → geocode  (address candidates)  [3.14b]
  *   else                          → form only (State 0)
  *
+ * Chantier H adds NO state and NO request — it makes two existing states speak:
+ *   - State 0 WITH a trade already chosen (how every hub tile arrives here) now
+ *     says what is still missing instead of rendering a silent form, so a search
+ *     whose location is unknown degrades EXPLICITLY rather than dead-ending.
+ *   - discover with `total === 0` now distinguishes « nobody practises here »
+ *     from « nobody is verified yet » — see `NoResults`.
+ * Both read the catalog the trade selector ALREADY loads: zero extra call.
+ *
  * Strict boundary: the search stops at the link to `/providers/{id}` — the 3.13
  * booking flow (and its fixed `serviceLocation` placeholder) is untouched (3.14c).
  */
@@ -92,6 +101,19 @@ export default async function RecherchePage({
   const lat = parseCoord(firstParam(sp.lat));
   const lng = parseCoord(firstParam(sp.lng));
   const q = firstParam(sp.q)?.trim();
+
+  // The chosen trade, resolved against the catalog ALREADY fetched above — NO
+  // second request. It carries the two things the H states need: a name to show
+  // (never a UUID) and the regulation level, which is the ONLY signal able to
+  // explain a zero result — `discover` returns the same empty envelope whether
+  // nobody practises the trade or every practitioner is still PENDING.
+  // Null when the id matches nothing, or when the catalog read failed above;
+  // both degrade to trade-less copy rather than inventing a label.
+  const selectedCategory =
+    categories.find((category) => category.id === validCategoryId) ?? null;
+  const selectedTradeLabel = selectedCategory
+    ? pickTranslation(selectedCategory.nameTranslations)
+    : null;
 
   // Discover wins when lat+lng+categoryId are present AND valid; the ternary
   // narrows lat/lng to `number` and categoryId to `string` for the call.
@@ -177,9 +199,13 @@ export default async function RecherchePage({
                 La recherche n’a pas pu aboutir pour le moment. Veuillez réessayer plus tard.
               </StateCard>
             ) : providers.length === 0 ? (
-              <StateCard title="Aucun prestataire proche">
-                Aucun prestataire proche pour ce métier. Essayez un autre métier ou réessayez.
-              </StateCard>
+              // Chantier H — a product surface, not a bare « aucun résultat ». It
+              // names the trade and explains WHY zero is possible, which differs
+              // by regulation level. See the component header.
+              <NoResults
+                tradeLabel={selectedTradeLabel}
+                regulationLevel={selectedCategory?.regulationLevel ?? null}
+              />
             ) : (
               <ul className="space-y-4">
                 {providers.map((provider) => (
@@ -209,6 +235,19 @@ export default async function RecherchePage({
             ) : (
               <CandidateList candidates={candidates} categoryId={validCategoryId} />
             )}
+          </div>
+        ) : validCategoryId ? (
+          // Chantier H — STATE 0 reached WITH a trade already chosen, i.e. how
+          // every hub tile lands here: half the search is done and nothing said
+          // so. A search whose location is unknown must degrade EXPLICITLY, not
+          // dead-end on a silent form (project invariant: degrade, and say so).
+          // With no trade there is nothing to report, so this stays null and the
+          // page is exactly the State 0 of 3.14a.
+          <div className="mt-8">
+            <StateCard title={`Vous cherchez : ${selectedTradeLabel ?? 'ce métier'}`}>
+              Indiquez où vous êtes pour voir les prestataires disponibles&nbsp;:
+              utilisez «&nbsp;Près de moi&nbsp;» ou saisissez une adresse ci-dessus.
+            </StateCard>
           </div>
         ) : null}
       </section>
