@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import type { components } from '@linkr/api-client';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import { tradesOfferedAtLaunch } from '@/lib/catalog/launch-scope';
 import { pickTranslation } from '@/lib/i18n/translations';
 import type {
   CategoryOption,
@@ -90,7 +91,15 @@ export default async function RecherchePage({
   } catch {
     categories = [];
   }
-  const categoryOptions = [...categories]
+  // ⚠️ TWO SETS OUT OF ONE FETCH, AND CONFLATING THEM IS THE BUG THIS GUARDS
+  // AGAINST. `categoryOptions` is what the selector OFFERS — narrowed to the
+  // launch scope (informal trades only, see `lib/catalog/launch-scope.ts`).
+  // `categories` below stays the FULL catalog because it is the LOOKUP set: a
+  // regulated `?categoryId=` arriving from a bookmark or a shared link must
+  // still resolve to its name and its regulation level. Narrowing this one too
+  // would strand that link on the « unknown trade » branch of `NoResults` and
+  // silently delete the honest regulated empty state chantier H shipped.
+  const categoryOptions = tradesOfferedAtLaunch(categories)
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((c) => ({ id: c.id, label: pickTranslation(c.nameTranslations) }));
 
@@ -102,11 +111,12 @@ export default async function RecherchePage({
   const lng = parseCoord(firstParam(sp.lng));
   const q = firstParam(sp.q)?.trim();
 
-  // The chosen trade, resolved against the catalog ALREADY fetched above — NO
-  // second request. It carries the two things the H states need: a name to show
-  // (never a UUID) and the regulation level, which is the ONLY signal able to
-  // explain a zero result — `discover` returns the same empty envelope whether
-  // nobody practises the trade or every practitioner is still PENDING.
+  // The chosen trade, resolved against the FULL catalog fetched above (never the
+  // offered subset — see the note there) — NO second request. It carries the two
+  // things the H states need: a name to show (never a UUID) and the regulation
+  // level, which is the ONLY signal able to explain a zero result — `discover`
+  // returns the same empty envelope whether nobody practises the trade or every
+  // practitioner is still PENDING.
   // Null when the id matches nothing, or when the catalog read failed above;
   // both degrade to trade-less copy rather than inventing a label.
   const selectedCategory =

@@ -41,12 +41,27 @@ import { LogoutButton } from './logout-button';
  * (« Trouver un / pro »), which measures as no overflow while quietly making
  * every link 64px tall instead of 44px. `shrink-0` keeps each label on one line
  * and `flex-wrap` then moves whole links to a second strip row when they no
- * longer fit — the provider set genuinely does not fit on one row at 375px
- * (~376px of links for ~343px of usable width), the client set does.
- * `overflow-x-auto` was tried here and REMOVED: it hides a link behind a silent
- * horizontal scroll, and because `overflow-x: auto` forces the used value of
- * `overflow-y` to `auto`, Chromium reserved a scrollbar gutter that added 20px
- * of header height for a scroll that should never happen.
+ * longer fit. `overflow-x-auto` was tried here and REMOVED: it hides a link
+ * behind a silent horizontal scroll, and because `overflow-x: auto` forces the
+ * used value of `overflow-y` to `auto`, Chromium reserved a scrollbar gutter
+ * that added 20px of header height for a scroll that should never happen.
+ *
+ * ⚠️ « Espace pro » IS A MEASUREMENT, NOT A PREFERENCE — do not lengthen it back.
+ * G-1 shipped this strip with « Mon tableau de bord » and recorded that the
+ * provider set did not fit on one row at 375px; that was the ONE label forcing a
+ * second strip row, and the regression was left in the queue as a copy decision.
+ * Re-measured here after the rename (strip content box vs. sum of link widths +
+ * column gaps, Chromium, provider session):
+ *
+ *   needed 314px (was ~376px) — 107 + 112 + 87 + 2x4px gap
+ *   @320 avail 272px → 2 rows, header 137px
+ *   @360 avail 312px → 2 rows, header 137px   (2px short — the wrap point)
+ *   @375 avail 327px → 1 row,  header  93px
+ *   @414 avail 366px → 1 row,  header  93px
+ *
+ * So the provider header drops 137px → 93px at >=375px, matching the client
+ * header exactly, and the wrap point moves from ~480px down to ~362px. A longer
+ * label pushes it back up and costs 44px of every phone viewport again.
  */
 export function Nav({ isProvider }: { isProvider: boolean }) {
   // Block-level padding is what makes the target tall enough; the negative margin
@@ -83,7 +98,7 @@ export function Nav({ isProvider }: { isProvider: boolean }) {
           </Link>
           {isProvider && (
             <Link href="/dashboard" className={linkClass}>
-              Mon tableau de bord
+              Espace pro
             </Link>
           )}
         </div>

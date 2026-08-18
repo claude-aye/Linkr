@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { getServerApiClient } from '@/lib/auth/session';
+import { tradesOfferedAtLaunch } from '@/lib/catalog/launch-scope';
 import { pickTranslation } from '@/lib/i18n/translations';
 import { getShellCapabilities } from '@/lib/nav/capabilities';
 import type { CategoryOption } from '@/lib/providers/discovery-types';
@@ -20,19 +21,27 @@ export const dynamic = 'force-dynamic';
  * taxonomy. H puts the trade first, on the page every session lands on.
  *
  * ⚠️ TILES, NOT A DROPDOWN — A MEASURED DECISION. SQL probe on the real stack:
- * the catalog holds exactly **7** active categories (3 REGULATED, 4 INFORMAL).
- * Seven trades fit on one screen as tappable tiles; seventy would not, and would
- * need a `<select>` or a search field. If the catalog ever outgrows a screen,
- * THAT is when to revisit this shape — re-run the count, do not guess.
+ * the catalog holds exactly **7** active categories (3 REGULATED, 4 INFORMAL), of
+ * which **4** are offered here (see below). A handful of trades fit on one screen
+ * as tappable tiles; seventy would not, and would need a `<select>` or a search
+ * field. If the catalog ever outgrows a screen, THAT is when to revisit this
+ * shape — re-run the count, do not guess.
  *
- * ⚠️ EVERY trade is shown and EVERY trade is clickable, INCLUDING the REGULATED
- * ones — deliberately the OPPOSITE of the dashboard's « Mes métiers » selector,
- * where regulated trades are presented but DISABLED. The two are not
- * inconsistent, they are different acts: DECLARING a regulated trade is a dead
- * end today (it files as PENDING and nothing can clear it), whereas SEARCHING one
- * is not — it lands on the honest empty state of `/recherche`, which explains the
- * verification rule. Hiding « Plomberie » from a client whose sink is leaking
- * would teach them Linkr does not do plumbing.
+ * ⚠️ ONLY THE TRADES OFFERED AT LAUNCH ARE TILED — the regulated ones are gone.
+ * This REVERSES the H-tranche-1 decision recorded here (« every trade is shown and
+ * every trade is clickable »), and the reversal is deliberate: that call assumed a
+ * regulated search merely lands on an honest empty state, which is true but
+ * incomplete. No provider can supply a regulated trade at all today — the
+ * dashboard selector hard-blocks the declaration and no upload screen exists — so
+ * those three tiles were three doors that could never open. The reason and the
+ * one line that reopens them live in `lib/catalog/launch-scope.ts`.
+ *
+ * The route is NOT closed, only the entry: `/recherche?categoryId=<regulated>`
+ * from a bookmark or a shared link still renders the honest empty state, which is
+ * why the filter is applied to the OFFERED list and never to the lookup set.
+ * There is deliberately NO « bientôt disponible » on the removed trades: a promise
+ * with no date and no way to follow up is a debt owed to the user (demand capture,
+ * H tranche 2, is the right home for it and does not exist yet).
  *
  * A tile carries ONLY `?categoryId=` — no coordinates. That is the existing URL
  * joint (`/recherche` STATE 0), so this reuses the 3.13/3.14 chain instead of
@@ -133,7 +142,7 @@ export default async function HubPage() {
               href="/dashboard"
               className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
             >
-              Accéder à mon tableau de bord prestataire →
+              Accéder à mon espace pro →
             </Link>
           </div>
         )}
@@ -143,10 +152,12 @@ export default async function HubPage() {
 }
 
 /**
- * The active trade catalog, ordered, with labels resolved in the reader's locale.
+ * The trades OFFERED at launch, ordered, with labels resolved in the reader's
+ * locale.
  *
  * Read SERVER-SIDE with the shared client — the same call `/recherche` already
- * makes, so the two trade surfaces can never show different lists.
+ * makes, and both surfaces narrow it through the SAME
+ * `tradesOfferedAtLaunch`, so the two trade lists can never show different sets.
  * `pickTranslation` keeps a UUID off the screen; a category with an empty map
  * resolves to `—` rather than throwing.
  *
@@ -163,8 +174,9 @@ async function loadTrades(): Promise<Array<{ id: string; label: string }>> {
     const { data, error, response } = await client.GET('/service-categories');
     if (error || !response.ok || !Array.isArray(data)) return [];
 
-    return (data as unknown as CategoryOption[])
-      .slice()
+    // Launch scope: informal trades only. The hub has no lookup duty (it only
+    // OFFERS), so unlike `/recherche` it can narrow the list right here.
+    return tradesOfferedAtLaunch(data as unknown as CategoryOption[])
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((category) => ({
         id: category.id,
