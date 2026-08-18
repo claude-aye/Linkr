@@ -57,3 +57,9 @@ test-doc.pdf
 /openapi.json
 menage_seeds.sql
 inventaire.txt
+
+# Artefacts de sondes PowerShell
+login.json
+resp.json
+schema.txt
+sonde-*.json
