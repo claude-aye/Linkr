@@ -1278,6 +1278,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/demand-signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an anonymous demand signal for a search that returned zero providers. The zero claim is re-verified server-side with discovery's own predicate; the coordinate is rounded to a coarse sector and the exact point is never stored. Stores NO caller identity. */
+        post: operations["DemandSignalsController_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2123,6 +2140,23 @@ export interface components {
         GeocodeResultDto: {
             /** @description Candidates for the query, best match first. Empty when none. */
             candidates: components["schemas"]["GeocodeCandidateDto"][];
+        };
+        RecordDemandSignalDto: {
+            /**
+             * Format: uuid
+             * @description Service category (Métier) that was searched for.
+             */
+            categoryId: string;
+            /**
+             * @description Latitude of the search that returned zero, -90..90. Used to re-verify the claim, then rounded to a coarse sector. NEVER stored as sent.
+             * @example 45.5017
+             */
+            lat: number;
+            /**
+             * @description Longitude of the search that returned zero, -180..180. Used to re-verify the claim, then rounded to a coarse sector. NEVER stored as sent.
+             * @example -73.5673
+             */
+            lng: number;
         };
     };
     responses: never;
@@ -4756,6 +4790,49 @@ export interface operations {
             };
             /** @description Upstream geocoding provider unavailable. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DemandSignalsController_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDemandSignalDto"];
+            };
+        };
+        responses: {
+            /** @description Signal recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown service category. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The search is not empty at this point for this trade — nothing recorded. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
