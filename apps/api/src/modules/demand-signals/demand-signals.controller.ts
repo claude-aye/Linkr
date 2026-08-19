@@ -4,9 +4,9 @@ import { DemandSignalsService } from './demand-signals.service';
 import { RecordDemandSignalDto } from './dto/record-demand-signal.dto';
 
 /**
- * The write surface of the demand map — and, for now, its only surface. Nothing
- * reads it back: exploiting the map (an admin table, an export) is a separate
- * piece of work, and a SQL probe is enough until then.
+ * The write surface of the demand map. The read surface is
+ * `AdminDemandSignalsController` (`GET /admin/demand-signals`, ADMIN-only,
+ * aggregated in SQL) — this route is still the map's ONLY writer.
  *
  * ⚠️ A POST, NEVER A GET, AND THAT IS THE WHOLE POINT. `/recherche` decides
  * `total === 0` while a Server Component renders, and writing from there would

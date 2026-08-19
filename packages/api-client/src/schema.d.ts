@@ -1295,6 +1295,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/demand-signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recruitment map: searches that returned zero providers, aggregated by trade and coarse sector. Aggregated in SQL — no individual row, no exact coordinate, and no timestamp finer than the day ever leaves the server. ADMIN only. */
+        get: operations["AdminDemandSignalsController_summarize"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2157,6 +2174,56 @@ export interface components {
              * @example -73.5673
              */
             lng: number;
+        };
+        DemandSignalSummaryItemDto: {
+            /** Format: uuid */
+            serviceCategoryId: string;
+            /**
+             * @description Trade name, i18n map (fr-CA / en-CA …).
+             * @example {
+             *       "fr-CA": "Esthétique",
+             *       "en-CA": "Esthetics"
+             *     }
+             */
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            };
+            /**
+             * @description Sector latitude — a ~1.1 km cell, NOT the searched point. Stored as numeric(4,2), so it cannot be finer.
+             * @example 48.45
+             */
+            sectorLat: number;
+            /**
+             * @description Sector longitude — a ~0.76 km cell at Quebec latitude, NOT the searched point. Stored as numeric(5,2).
+             * @example -68.53
+             */
+            sectorLng: number;
+            /**
+             * @description How many searches for this trade returned zero in this sector.
+             * @example 12
+             */
+            signalCount: number;
+            /**
+             * Format: date
+             * @description Day of the oldest signal in this cell, UTC, truncated to the day. Never a clock time — see the class comment.
+             * @example 2026-08-01
+             */
+            firstSeenDate: string;
+            /**
+             * Format: date
+             * @description Day of the most recent signal in this cell, UTC, truncated to the day.
+             * @example 2026-08-19
+             */
+            lastSeenDate: string;
+        };
+        DemandSignalSummaryListDto: {
+            items: components["schemas"]["DemandSignalSummaryItemDto"][];
+            /** @description Distinct (trade × sector) cells across the WHOLE map, before the cap. Counted with a window function, so the cap cannot make it lie. */
+            totalSectors: number;
+            /** @description Total recorded signals across the WHOLE map, before the cap. This is the number that says whether there is yet enough to decide anything. */
+            totalSignals: number;
+            /** @description The hard server cap applied to `items` (no cursor, no paging). */
+            limit: number;
         };
     };
     responses: never;
@@ -4837,6 +4904,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    AdminDemandSignalsController_summarize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemandSignalSummaryListDto"];
+                };
             };
         };
     };

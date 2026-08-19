@@ -3264,6 +3264,28 @@
           "demand-signals"
         ]
       }
+    },
+    "/admin/demand-signals": {
+      "get": {
+        "operationId": "AdminDemandSignalsController_summarize",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemandSignalSummaryListDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Recruitment map: searches that returned zero providers, aggregated by trade and coarse sector. Aggregated in SQL — no individual row, no exact coordinate, and no timestamp finer than the day ever leaves the server. ADMIN only.",
+        "tags": [
+          "demand-signals"
+        ]
+      }
     }
   },
   "info": {
@@ -5285,6 +5307,91 @@
           "categoryId",
           "lat",
           "lng"
+        ]
+      },
+      "DemandSignalSummaryItemDto": {
+        "type": "object",
+        "properties": {
+          "serviceCategoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Trade name, i18n map (fr-CA / en-CA …).",
+            "example": {
+              "fr-CA": "Esthétique",
+              "en-CA": "Esthetics"
+            }
+          },
+          "sectorLat": {
+            "type": "number",
+            "description": "Sector latitude — a ~1.1 km cell, NOT the searched point. Stored as numeric(4,2), so it cannot be finer.",
+            "example": 48.45
+          },
+          "sectorLng": {
+            "type": "number",
+            "description": "Sector longitude — a ~0.76 km cell at Quebec latitude, NOT the searched point. Stored as numeric(5,2).",
+            "example": -68.53
+          },
+          "signalCount": {
+            "type": "number",
+            "description": "How many searches for this trade returned zero in this sector.",
+            "example": 12
+          },
+          "firstSeenDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Day of the oldest signal in this cell, UTC, truncated to the day. Never a clock time — see the class comment.",
+            "example": "2026-08-01"
+          },
+          "lastSeenDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Day of the most recent signal in this cell, UTC, truncated to the day.",
+            "example": "2026-08-19"
+          }
+        },
+        "required": [
+          "serviceCategoryId",
+          "serviceCategoryNameTranslations",
+          "sectorLat",
+          "sectorLng",
+          "signalCount",
+          "firstSeenDate",
+          "lastSeenDate"
+        ]
+      },
+      "DemandSignalSummaryListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DemandSignalSummaryItemDto"
+            }
+          },
+          "totalSectors": {
+            "type": "number",
+            "description": "Distinct (trade × sector) cells across the WHOLE map, before the cap. Counted with a window function, so the cap cannot make it lie."
+          },
+          "totalSignals": {
+            "type": "number",
+            "description": "Total recorded signals across the WHOLE map, before the cap. This is the number that says whether there is yet enough to decide anything."
+          },
+          "limit": {
+            "type": "number",
+            "description": "The hard server cap applied to `items` (no cursor, no paging)."
+          }
+        },
+        "required": [
+          "items",
+          "totalSectors",
+          "totalSignals",
+          "limit"
         ]
       }
     }
