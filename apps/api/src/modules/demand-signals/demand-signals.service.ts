@@ -1,9 +1,23 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ServiceCategoryRepository } from '../services-catalog/repositories/service-category.repository';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
+import { DemandSignalSummaryItemDto } from './dto/demand-signal-summary-item.dto';
+import { DemandSignalSummaryListDto } from './dto/demand-signal-summary-list.dto';
 import { RecordDemandSignalDto } from './dto/record-demand-signal.dto';
 import { DemandSignalsRepository } from './repositories/demand-signals.repository';
 import { toSector } from './sector';
+
+/**
+ * Hard cap on the number of (trade × sector) cells returned by the admin read.
+ *
+ * A server constant, not a query parameter: there is no pagination here and no
+ * cursor, on purpose — a sorted table is the whole deliverable. The envelope's
+ * `totalSectors` is what tells the reader the cap bit. 200 is generous against
+ * the shape of the data (cells are far fewer than signals, and a cell only
+ * exists where a search actually came back empty) while still bounding the
+ * response.
+ */
+export const DEMAND_SIGNAL_SUMMARY_LIMIT = 200;
 
 @Injectable()
 export class DemandSignalsService {
@@ -69,5 +83,30 @@ export class DemandSignalsService {
       sectorLat: toSector(dto.lat),
       sectorLng: toSector(dto.lng),
     });
+  }
+
+  /**
+   * The recruitment map, for an ADMIN: which trade, in which sector, how many
+   * times a search came back empty.
+   *
+   * ⚠️ THIS METHOD NEVER SEES AN INDIVIDUAL SIGNAL, AND THAT IS THE DESIGN. The
+   * grouping happens in SQL (see {@link DemandSignalsRepository.findSectorSummary});
+   * pulling rows here to group them in TypeScript would mean the raw table —
+   * microsecond timestamps included — had already crossed the process boundary.
+   * The same reasoning forbids doing it in the browser.
+   *
+   * No filters, no window parameter, no export: a sorted table is the whole
+   * deliverable, and every one of those is a separate responsibility.
+   */
+  async summarize(): Promise<DemandSignalSummaryListDto> {
+    const { items, totalSectors, totalSignals } =
+      await this.signalsRepo.findSectorSummary(DEMAND_SIGNAL_SUMMARY_LIMIT);
+
+    const dto = new DemandSignalSummaryListDto();
+    dto.items = items.map((record) => DemandSignalSummaryItemDto.from(record));
+    dto.totalSectors = totalSectors;
+    dto.totalSignals = totalSignals;
+    dto.limit = DEMAND_SIGNAL_SUMMARY_LIMIT;
+    return dto;
   }
 }
