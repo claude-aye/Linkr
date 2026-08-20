@@ -1312,6 +1312,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write the client's review of a COMPLETED request. The reviewed provider and the author are resolved server-side from the request — neither is accepted from the body — which is what makes a review unfalsifiable (D-1). */
+        post: operations["ReviewsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviews/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Retract one's own review (soft delete). Takes the provider's reply with it, and frees the request's review slot (D-3). */
+        delete: operations["ReviewsController_remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/{providerId}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a provider's reviews with their aggregate (public). Soft-deleted reviews are excluded inside the aggregate itself, and `averageRating` is null below 3 live reviews (D-4) — gated server-side, never left to the front to hide. */
+        get: operations["ProviderReviewsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2223,6 +2274,73 @@ export interface components {
             /** @description Total recorded signals across the WHOLE map, before the cap. This is the number that says whether there is yet enough to decide anything. */
             totalSignals: number;
             /** @description The hard server cap applied to `items` (no cursor, no paging). */
+            limit: number;
+        };
+        CreateReviewDto: {
+            /**
+             * Format: uuid
+             * @description The COMPLETED service request being reviewed. The provider and the author are derived from it server-side and are NOT accepted here.
+             */
+            serviceRequestId: string;
+            /**
+             * @description Whole-star rating, 1 to 5. Never fractional (D-5).
+             * @example 5
+             */
+            rating: number;
+            /** @description Free-text comment, 1 to 2000 characters after trimming. Optional — omit it rather than sending an empty string. */
+            comment?: string;
+        };
+        ReviewResponseDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            serviceRequestId: string;
+            /**
+             * Format: uuid
+             * @description The provider this review is about, resolved server-side.
+             */
+            serviceProviderId: string;
+            /** @example 5 */
+            rating: number;
+            /** @example Travail impeccable. */
+            comment: string | null;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            updatedAtUtc: string;
+        };
+        ProviderReviewItemDto: {
+            /** Format: uuid */
+            id: string;
+            /** @example 5 */
+            rating: number;
+            /** @example Travail impeccable. */
+            comment: string | null;
+            /**
+             * @description Author's first name plus last initial (« Carol R. »), or « — » if the account was deleted. Never the full name, never display_name.
+             * @example Carol R.
+             */
+            authorDisplayName: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
+        ProviderReviewListDto: {
+            items: components["schemas"]["ProviderReviewItemDto"][];
+            /**
+             * @description Live reviews for this provider — the whole set, not the page. Soft-deleted reviews are excluded inside the aggregate itself.
+             * @example 4
+             */
+            reviewCount: number;
+            /**
+             * Format: float
+             * @description Mean rating rounded to 2 decimals, or null when there are fewer than 3 live reviews (D-4). Gated server-side — the front is never asked to hide it.
+             * @example 4.67
+             */
+            averageRating: number | null;
+            /**
+             * @description Server-side hard cap on `items`. There is no pagination.
+             * @example 50
+             */
             limit: number;
         };
     };
@@ -4929,6 +5047,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DemandSignalSummaryListDto"];
+                };
+            };
+        };
+    };
+    ReviewsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReviewDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResponseDto"];
+                };
+            };
+            /** @description Malformed body, or a fractional rating. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The caller is not the client of this request. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown service request. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not COMPLETED, or it already carries a live review. The second case is a door, not a wall: delete the existing review and write a new one (D-3). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The caller spent its budget for the current window. Carries `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReviewsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review retracted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown, already retracted, or not the caller's review — deliberately one answer, so a 403 cannot confirm that an id belongs to someone else. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProviderReviewsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderReviewListDto"];
                 };
             };
         };
