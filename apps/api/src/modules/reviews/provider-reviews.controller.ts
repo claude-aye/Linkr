@@ -1,6 +1,5 @@
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Public } from '../auth/decorators/public.decorator';
 import { ProviderReviewListDto } from './dto/provider-review-list.dto';
 import { ReviewsService } from './reviews.service';
 
@@ -17,12 +16,20 @@ import { ReviewsService } from './reviews.service';
  * `ProviderServiceRequestsController`, which lives in the service-requests
  * module for the same reason (3.12a-back).
  *
- * ⚠️ `@Public()`, LIKE ITS TWO SIBLINGS on the same profile
- * (`GET /service-providers/:id` and `.../services`) — and that is a genuinely
- * new exposure, decided rather than inherited. The mitigation is in the DTO: the
- * author is « Carol R. », never a full name, never `display_name`, and the
- * review carries no user id, no request id, no address and no amount. The
- * decision was taken knowing the profile page is built to be shared.
+ * ⚠️ AUTHENTICATED — NO `@Public()`, UNLIKE ITS TWO SIBLINGS on the same profile
+ * (`GET /service-providers/:id` and `.../services`). Decided deliberately: the
+ * page that consumes it lives under `(app)` and is private, so a public route
+ * here would have NO CALLER TODAY — and a public surface with no caller is a
+ * surface nobody remembers to watch. Opening it belongs to the « public
+ * discover » chantier, which will take it together with the rate limiter and
+ * `trust proxy`; opening one route ahead of that is deciding at the wrong moment
+ * and without the others.
+ *
+ * ⚠️ THE MASKING STAYS, AND NOT AS A CONSEQUENCE OF THE ABOVE. « Carol R. » is
+ * not a mitigation of anonymous access — it is the right design for an
+ * AUTHENTICATED reader too: a client's full identity has no business being
+ * republished to another logged-in stranger either. Do not relax it if this
+ * route later becomes public, and do not relax it because it is not public now.
  *
  * No provider-existence check, matching `.../services`: an unknown id gets an
  * empty list, a count of zero and no average.
@@ -32,7 +39,6 @@ import { ReviewsService } from './reviews.service';
 export class ProviderReviewsController {
   constructor(private readonly service: ReviewsService) {}
 
-  @Public()
   @Get()
   @ApiOperation({
     summary:
