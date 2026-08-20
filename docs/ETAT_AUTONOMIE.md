@@ -1,27 +1,33 @@
 # ÉTAT — Travail autonome CC
 
-**Dernière session :** 2026-08-20 (session 9) · `main` @ `40fb65a` · migration `1780510000000` (inchangée)
+**Dernière session :** 2026-08-20 (session 10) · `main` @ `f06e196` · migration `1780510000000`
+**⚠️ La tête de migration NE BOUGE PAS tant que #80 n'est pas mergée.** `1780520000000` vit sur la
+branche, pas sur `main`.
 
 ## Chantier en cours
 
-**D — avis et évaluations.** Le terrain est prêt : **`COMPLETED` est atteignable** depuis la PR #79.
-Les **cinq décisions** du chantier sont arrêtées (plus bas) et **ne se relitigent pas**.
+**D — avis et évaluations.** Tranche **1a préparée et prouvée** : **PR #80, À PORTE HUMAINE, NON
+MERGÉE** (elle porte une migration — mandat §7). Les cinq décisions D-1 à D-5 restent arrêtées.
 
 ## Découpage retenu
 
-- [x] **Session 9 — atteindre `COMPLETED` (PR #79, mergée)** — hors file, brief humain
-- [ ] **D tranche 1 — la table `avis` + l'écriture** ← **PROCHAINE**, première vraie migration sous autonomie
-- [ ] D tranche 2 — lecture, moyenne au seuil de 3, réponse du prestataire
+- [x] Session 9 — atteindre `COMPLETED` (PR #79, mergée) — hors file, brief humain
+- [~] **D tranche 1a — la table `reviews` : écriture, suppression douce, lecture agrégée**
+      (**PR #80, en attente de merge humain**)
+- [ ] **D tranche 1b — l'interface client : écrire, voir, supprimer** ← **PROCHAINE** (autonome),
+      **une fois #80 mergée**
+- [ ] D tranche 2 — la réponse du prestataire (la **colonne existe déjà** ; il manque l'endpoint et
+      l'écran)
+- [ ] D tranche 3 — intégration à `discover` (tri, affichage en liste)
 - [ ] H tranche 2b — « Prévenez-moi » — **TOUJOURS BLOQUÉE** tant que le chantier courriels du
       collaborateur est en bac à sable. **Rien n'est amorcé, délibérément.**
 
 **G-2 (cibles tactiles dans les pages) reste DÉPRIORITISÉ** — opportuniste, dans la PR qui touche la
-page. **Mesuré en session 9 sur une carte réellement rendue** : « Voir le détail → » = **16 px**,
-3 cibles sous le plancher 24 px de WCAG 2.5.8, sur les cartes de jobs du tableau de bord.
+page. Mesuré en session 9 : « Voir le détail → » = **16 px**, sous le plancher 24 px de WCAG 2.5.8.
 
-Bande d'horodatage : `1780510000000` → `1780599999999` (**`…510000000` pris par #76** ; **la prochaine
-migration prend `…520000000`** — ce sera celle de D. La bande du collaborateur `…480/490` reste
-intouchable).
+Bande d'horodatage : `1780510000000` → `1780599999999`. **`…510000000` pris par #76, `…520000000`
+pris par #80 (sur la branche)** ; la prochaine migration prend **`…530000000`**. La bande du
+collaborateur `…480/490` reste intouchable.
 
 ## Décisions D — arrêtées avant le chantier
 
@@ -61,85 +67,105 @@ flottant.** Ce qui ne peut pas être représenté ne peut pas arriver.
 
 ## Ce que la prochaine session doit savoir
 
-1. **⚠️ `COMPLETED` EST ATTEIGNABLE — joue la fixture, ne refais pas l'enquête.**
-   `npx ts-node -r tsconfig-paths/register src/database/seeders/completed-service-request.seed.ts`
-   (idempotent, clés naturelles, refuse `NODE_ENV=production`). Elle laisse **trois** demandes,
-   **une par état** : `ASSIGNED` / `IN_PROGRESS` / `COMPLETED`. Prestataire `bob@linkr.test`,
-   client `carol@linkr.test`, métier `coiffure` — tout surchargeable par `FIXTURE_*`.
-2. **⚠️ L'ÉTAT ET L'ARGENT SONT SÉPARÉS PAR UN `commit`, ET C'EST LA CLÉ DE TOUT.**
-   `assertPayable` est une vérification de **données pures** (aucun réseau) : elle veut
-   `stripe_connect_accounts.charges_enabled` **ET** un moyen de paiement par défaut côté client —
-   **deux** gardes, **deux** messages 409 différents. Mais `captureDeposit` part **APRÈS**
-   `commitTransaction()` et fait un **vrai appel synchrone** à `api.stripe.com`. Donc le
-   `POST /accept` peut répondre **502** alors que la demande **EST `ASSIGNED`**.
-3. **⚠️ LE DÉPÔT EST `FAILED` PAR CONCEPTION, DANS TOUT ENVIRONNEMENT — ne pas partir en chasse.**
-   Avec les identifiants fabriqués (le défaut), Stripe les rejette **aussi** avec de vraies clés de
-   test. Un dépôt `SUCCEEDED` exige trois objets Stripe test réels que **seul l'onboarding Connect
-   réel produit** (chantier distinct, non planifié). Couture prévue : `FIXTURE_STRIPE_ACCOUNT_ID` /
-   `_CUSTOMER_ID` / `_PAYMENT_METHOD_ID`.
-4. **`COMPLETED → PAID` reste INATTEIGNABLE**, et **D n'en a pas besoin** (il se greffe sur
-   `COMPLETED`). Aucun `PAID` n'existe toujours dans l'histoire de la base.
-5. **⚠️ `ASSIGNED → IN_PROGRESS → COMPLETED` est financièrement INERTE** — `startRequest` et
-   `completeRequest` n'appellent **aucun** `paymentsService`. Seul `confirmCompletion` capture le
-   solde. Mesuré, pas déduit.
-6. **Dette relevée en #79, NON corrigée, arbitrage humain** : un 502 de capture laisse la demande
-   `ASSIGNED` **sans dépôt** — en production, une panne Stripe ferait voir au prestataire « Service
-   momentanément indisponible » alors que **le job lui est assigné**, avec un `DEPOSIT` `FAILED` que
-   rien ne reprend. **Toute correction touche la logique de capture ⇒ arrêt dur.**
-7. **⚠️ MON `main` LOCAL ÉTAIT PÉRIMÉ ET LE DIFF MENTAIT — le piège du mandat §4 a mordu pour de
-   vrai.** `git diff main` montrait 14 fichiers (le contenu de #78) parce que la réf locale traînait
-   à `966bcd2`. **Toujours `git fetch origin --prune` puis differ contre `origin/main`**, jamais
-   contre `main`.
-8. **⚠️ `pkill -f <motif>` A TUÉ MON PROPRE SHELL** (le motif matchait ma ligne de commande) — même
-   famille que le piège `grep` sur `ps` déjà noté deux fois. **Écrire le PID au lancement et tuer par
-   ce PID.** Idem : `C="curl --noproxy *"` se fait **globber** par le shell — utiliser une fonction.
-9. **Montage de la stack** : Docker **absent**, et le bac à sable **N'A PAS persisté** cette fois
-   (contrairement aux sessions 7→8 — **sonder, ne jamais présumer**). Recette : `apt-get update`,
-   `postgresql-16-postgis-3`, rôle `linkr` SUPERUSER, `CREATE EXTENSION postgis`, `pnpm install`,
-   `.env` depuis `.env.example` (**`PORT=5000`**), `migration:run`, seed Québec. Migrations =
-   `typeorm_migrations`. Chromium : `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` (**pas**
-   `/opt/pw-browsers/chromium/…`), `--no-sandbox`.
-10. **Salle blanche = créer une SECONDE base** (`CREATE DATABASE linkr_clean`, additif, jamais un
-    `DROP`) **et redémarrer l'API dessus** — sinon la fixture parle en HTTP à une base et en SQL à
-    une autre. Le piège est silencieux.
-11. **`common/rate-limit/` attend toujours son deuxième usager.** `@RateLimit({ limit, windowSeconds })`
-    au site d'appel + garde en **provider local du module**. Une route non décorée est **inerte**.
-    **⚠️ Le jour du `discover` public** : `main.ts` ne pose **aucun `trust proxy`** ⇒ tous les
-    anonymes partageraient un budget derrière un répartiteur.
-12. **Le contrat propre en amont paie immédiatement** : `@ApiProperty` à **type concret** +
-    `additionalProperties` sur les maps i18n ⇒ **zéro `Record<string, never>`**, donc zéro miroir et
-    zéro cast côté front. **À appliquer d'emblée aux DTO d'avis.**
-13. **L'amendement §3.9 est actif** : tu peux **AJOUTER** une entrée `CLAUDE.md` §13.1 quand la
-    décision humaine est écrite **mot pour mot** dans ce fichier. **Modifier ou supprimer** une
-    entrée existante reste un arrêt dur. *(Aucune entrée ajoutée en session 9.)*
-14. **Ma base n'est pas celle de l'humain.** La mienne est repartie de zéro cette session ; celle de
-    l'humain porte les ~40 demandes, les notifications et les lignes `SONDE-*`/`SMOKE-*` verrouillées
-    en `ON DELETE RESTRICT`. **Aucun de mes comptes n'affirme quoi que ce soit sur la sienne.**
+1. **⛔ NE RIEN EMPILER SUR #80 TANT QU'ELLE N'EST PAS MERGÉE.** Elle porte la migration
+   `1780520000000`. Si elle est mergée : `git fetch origin --prune`, `migration:run`, et 1b part de
+   là. Si elle ne l'est pas encore, **le chantier D est en attente** — prendre autre chose plutôt
+   que de brancher une 1b sur une table qui n'existe pas sur `main`.
+2. **La ligne de `JOURNAL_AUTONOMIE.md` pour #80 est DUE AU MERGE, pas avant** (le journal
+   n'enregistre que des PR mergées). À écrire dans la première session qui suit le merge.
+3. **⚠️ LE CONTRAT EST PROPRE, DONC 1b N'A NI MIROIR NI CAST À ÉCRIRE.** `ReviewResponseDto`,
+   `ProviderReviewItemDto` et `ProviderReviewListDto` sont générés **sans un seul
+   `Record<string, never>`** (compté dans le généré) : `comment: string | null`,
+   `averageRating: number | null`, enveloppe typée nativement. Consommer
+   `components['schemas'][…]` directement. C'est la 3ᵉ fois que l'annotation soignée en amont
+   paie tout de suite.
+4. **⚠️ LE SEUIL DE TROIS EST DÉJÀ APPLIQUÉ EN SQL — le front n'a RIEN à masquer.**
+   `averageRating` vaut `null` **sur le fil** sous 3 avis vivants. Ne pas recalculer une moyenne
+   depuis `items` côté front : la liste est plafonnée à 50, un calcul dérivé mentirait dès que le
+   plafond mord (même piège que `unreadCount` des notifications).
+5. **⚠️ POUR 1b : la suppression est le livrable, pas un bonus.** Écrit comme **contrainte de
+   lancement** — *pas d'avis en production avant que le retrait soit atteignable par son auteur*.
+   Aujourd'hui `DELETE /reviews/:id` n'existe qu'au `curl`. Tant que 1b n'est pas livrée, toute
+   demande de retrait se traite à la main.
+6. **⚠️ `POST /reviews` EST LIMITÉ À 10 / heure PAR APPELANT, ET LA GARDE COMPTE LES TENTATIVES.**
+   Vérifié en me faisant couper au milieu d'un smoke par mes propres 400/403/409. Le compteur est
+   **en mémoire par processus** : redémarrer l'API le remet à zéro. À savoir avant de conclure à un
+   bogue pendant un smoke de 1b.
+7. **⚠️ `3.5` N'EST PAS REJETÉ PAR LA BASE — PostgreSQL l'arrondit à `4` avant le `CHECK`**
+   (mesuré par `INSERT` brut). Seul `@IsInt()` du DTO le rejette (400). Ne jamais relâcher ce
+   validateur.
+8. **Le patron d'autorisation « l'appelant est le client de cette demande » est celui de
+   `confirmCompletion`, PAS `ServiceRequestsService.getById`** — ce dernier porte un contournement
+   ADMIN qui laisserait un administrateur publier un avis sous son propre nom sur la transaction
+   d'un tiers. `ServiceRequestsModule` exporte désormais `ServiceRequestRepository` pour ça.
+9. **Points 1 à 6 de la session 9 restent vrais** : la fixture `completed-service-request.seed.ts`
+   est idempotente et donne **trois** demandes (`ASSIGNED` / `IN_PROGRESS` / `COMPLETED`) ·
+   `assertPayable` est une vérification de données pures mais `captureDeposit` part **après** le
+   commit (502 possible sur une demande pourtant `ASSIGNED`) · le dépôt est `FAILED` **par
+   conception** · `COMPLETED → PAID` reste inatteignable · `ASSIGNED → IN_PROGRESS → COMPLETED` est
+   financièrement inerte · le 502-laisse-`ASSIGNED` reste un arbitrage humain.
+10. **Montage de la stack** : Docker **absent**, et le bac à sable **n'avait ENCORE PAS persisté**
+    (3ᵉ session de suite où il faut sonder plutôt que présumer). Recette confirmée : `apt-get
+    update`, `postgresql-16-postgis-3`, rôle `linkr` SUPERUSER, `CREATE EXTENSION postgis` **et**
+    `pgcrypto`, `pnpm install --frozen-lockfile`, `.env` depuis `.env.example` (**`PORT=5000`**,
+    `DATABASE_URL`, `REDIS_URL`), `redis-server --daemonize yes`, `migration:run`, seed Québec.
+11. **⚠️ `estimatedAmount` est un NOMBRE, pas une chaîne** dans `POST /service-requests` — un
+    `"150.00"` fait 400 (« must be a number conforming to the specified constraints »). Une minute
+    perdue à chaque session qui sème une demande à la main.
+12. **⚠️ Écrire un avis ne notifie PERSONNE.** Le prestataire n'apprend pas qu'il a été évalué.
+    `notifications` est le chantier du collaborateur : **non touché, délibérément**. À arbitrer
+    avec lui, pas à trancher seul.
+13. **L'amendement §3.9 a servi** : `CLAUDE.md` §13.1 gagne une **entrée 10** portant les textes
+    **verbatim** de D-3, D-4 et D-5, avec trois notes de portage signalées hors texte. Modifier ou
+    supprimer une entrée existante reste un arrêt dur.
+14. **Ma base n'est pas celle de l'humain.** La mienne est repartie de zéro (2 users, 1 prestataire,
+    7 demandes) ; la sienne porte 43 demandes, les notifications et les lignes `SONDE-*`/`SMOKE-*`
+    verrouillées en `ON DELETE RESTRICT`. **Aucun de mes comptes n'affirme quoi que ce soit sur la
+    sienne.**
 15. **Rappels toujours valables** : écrire `ETAT`/`JOURNAL` sur `main` **via l'API GitHub** · ne
     jamais lancer Prettier sur `apps/web` · `MANDAT_01_fixtures.md` toujours pas entamé
-    (`dev-fixtures.seed.ts` et `seed:*` **assignés au collaborateur** — nom délibérément non pris
-    en #79).
+    (`dev-fixtures.seed.ts` et `seed:*` **assignés au collaborateur**) · lire le nom de branche
+    **depuis la PR**, jamais le supposer.
 
 ## ⛔ En attente de décision humaine
 
-**AUCUNE.** Les cinq décisions D sont arrêtées et portées ci-dessus.
+**UNE — et elle est dans le corps de #80, à trancher avant le merge.**
 
-**Relevé, non bloquant** : le 502-laisse-`ASSIGNED` (point 6) est un arbitrage produit **et** un arrêt
-dur technique — à trancher quand l'humain le voudra, jamais par moi.
+**`GET /service-providers/:providerId/reviews` est-il `@Public()` ?** Je l'ai livré **public**, comme
+ses deux sœurs du même profil (`GET /service-providers/:id` et `.../services`), parce que le brief §6
+tranche le masquage en raisonnant explicitement sur *« une page conçue pour être partagée »* — donc
+sur des lecteurs anonymes. **Mais le brief ne dit pas littéralement « rends l'endpoint public »**, et
+mandat §3.10 fait de tout élargissement d'un DTO public un arrêt dur.
+
+**Mon option recommandée : garder `@Public()`**, parce que la mitigation est déjà en place et
+structurelle (prénom + initiale **au mapper** ; `display_name` délibérément inutilisé même quand
+l'utilisateur en a un ; auteur supprimé → `—` ; ni `authorUserId`, ni `serviceRequestId`, ni adresse,
+ni montant dans l'item).
+
+**La bascule coûte une ligne** (retirer `@Public()`) et **ne coûte rien aujourd'hui** : la page
+`/providers/[id]` est privée sous `(app)`, donc un lien partagé passe déjà par `/login`. Dis-le avant
+de merger et je le change.
+
+**Relevé, non bloquant** : le 502-laisse-`ASSIGNED` (session 9, point 6) reste un arbitrage produit
+**et** un arrêt dur technique.
 
 ## Dettes créées par la dernière PR
 
-**Aucune dette de code.** #79 en **solde une** (« `JobCard` jamais smoké », ouverte depuis la phase F —
-le composant est désormais rendu, mesuré et capturé) et n'ajoute aucun fichier de production.
+1. **⚠️ CONTRAINTE DE LANCEMENT — pas d'avis en production avant la tranche 1b.** Le schéma permet
+   à un client de retirer son avis, **l'interface non**. Acceptable en développement ; **plus du
+   tout avec de vrais utilisateurs**.
+2. **Écrire un avis ne notifie personne** (point 12 ci-dessus).
+3. **Pas de pagination** au-delà du plafond de 50 avis — dette commune au tableau de bord,
+   `/requests`, `/recherche` et la carte de la demande.
+4. `updateReturningRows()` recopié localement pour la **sixième** fois (payment / refund / quote /
+   stripe-connect / notifications / reviews) — le helper partagé reste un chore distinct.
 
-**Conséquences assumées et écrites** (des propriétés connues, pas des dettes) : les dépôts de fixture
-sont `FAILED` **par conception** · le cron de libération horaire balaiera la demande `COMPLETED` et
-échouera sur `DepositNotSettledException` après 72 h (journalisé, jamais bloquant, mais bruyant en
-développement) · `COMPLETED → PAID` reste inatteignable.
+**Conséquence assumée, pas une dette** : les FK de `reviews` sont `ON DELETE RESTRICT`, donc une
+demande `COMPLETED` portant un avis — et le prestataire qu'il nomme — ne pourront plus jamais être
+supprimés en dur. Cohérent avec la suppression douce partout (§13).
 
-**Relevées, inchangées** : le 502-laisse-`ASSIGNED` (nouveau, point 6) · cibles tactiles **dans les
-pages** (G-2 — « Voir le détail → » à 16 px, désormais **mesuré**) · aucun index des consoles admin ·
-`locality` au géocodage · le foyer *feature toggling* · les 5 occurrences restantes de « tableau de
-bord » · `globals.css` écrase les polices Geist · aucune vérification en **mode sombre** ·
-notifications prestataire ORGANIZATION illisibles · `docker/data/` tracké par git · verrou du refus
-`REJECTED` (différé au chantier réglementé).
+**Relevées, inchangées** : cibles tactiles **dans les pages** (G-2) · aucun index des consoles
+admin · `locality` au géocodage · le foyer *feature toggling* · les 5 occurrences restantes de
+« tableau de bord » · `globals.css` écrase les polices Geist · aucune vérification en **mode
+sombre** · notifications prestataire ORGANIZATION illisibles · `docker/data/` tracké par git ·
+verrou du refus `REJECTED` (différé au chantier réglementé) · `trust proxy` absent de `main.ts`.
