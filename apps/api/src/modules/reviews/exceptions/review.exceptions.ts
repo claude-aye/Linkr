@@ -1,15 +1,20 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 
 /**
- * 409 — the request has not reached COMPLETED, so there is nothing to review yet.
+ * 409 — the request never reached COMPLETED, so there is nothing to review yet.
  *
  * The gate is D-1 and it is what makes a review unfalsifiable: reaching
  * COMPLETED takes an assignment, a provider marking the job done, and a state
  * machine that refuses shortcuts.
+ *
+ * ⚠️ « HAS REACHED », NOT « IS CURRENTLY ». The service tests
+ * `completedAtUtc !== null`, never `status === COMPLETED` — a request moves on
+ * to PAID once the balance is captured, and gating on the current status would
+ * quietly expire the right to review 72 hours after the job.
  */
 export class ReviewRequiresCompletedRequestException extends HttpException {
   constructor(
-    message = 'A review can only be written once the request is COMPLETED',
+    message = 'A review can only be written once the request has reached COMPLETED',
   ) {
     super(message, HttpStatus.CONFLICT);
   }

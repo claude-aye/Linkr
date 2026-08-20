@@ -3337,6 +3337,28 @@
         ]
       }
     },
+    "/reviews/mine": {
+      "get": {
+        "operationId": "ReviewsController_listMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewListDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The caller's own live reviews. Exists so that « see » and « retract » survive a page reload: the public item carries neither the request id nor an author id, so nothing else lets a client recognise their own review.",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
     "/reviews/{id}": {
       "delete": {
         "operationId": "ReviewsController_remove",
@@ -5572,6 +5594,67 @@
           "comment",
           "createdAtUtc",
           "updatedAtUtc"
+        ]
+      },
+      "MyReviewItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceRequestId": {
+            "type": "string",
+            "description": "The request this review is about — the key the caller joins on.",
+            "format": "uuid"
+          },
+          "serviceProviderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "example": 5
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true,
+            "example": "Travail impeccable."
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "serviceRequestId",
+          "serviceProviderId",
+          "rating",
+          "comment",
+          "createdAtUtc"
+        ]
+      },
+      "MyReviewListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyReviewItemDto"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Server-side hard cap on `items`. There is no pagination.",
+            "example": 100
+          }
+        },
+        "required": [
+          "items",
+          "limit"
         ]
       },
       "ProviderReviewItemDto": {

@@ -1329,6 +1329,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reviews/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own live reviews. Exists so that « see » and « retract » survive a page reload: the public item carries neither the request id nor an author id, so nothing else lets a client recognise their own review. */
+        get: operations["ReviewsController_listMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reviews/{id}": {
         parameters: {
             query?: never;
@@ -2308,6 +2325,31 @@ export interface components {
             createdAtUtc: string;
             /** Format: date-time */
             updatedAtUtc: string;
+        };
+        MyReviewItemDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The request this review is about — the key the caller joins on.
+             */
+            serviceRequestId: string;
+            /** Format: uuid */
+            serviceProviderId: string;
+            /** @example 5 */
+            rating: number;
+            /** @example Travail impeccable. */
+            comment: string | null;
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
+        MyReviewListDto: {
+            items: components["schemas"]["MyReviewItemDto"][];
+            /**
+             * @description Server-side hard cap on `items`. There is no pagination.
+             * @example 100
+             */
+            limit: number;
         };
         ProviderReviewItemDto: {
             /** Format: uuid */
@@ -5106,6 +5148,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ReviewsController_listMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewListDto"];
+                };
             };
         };
     };

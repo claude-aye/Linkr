@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import type { ProviderReviewList } from '@/lib/reviews/types';
+
+import { ReviewsBlock } from './_components/reviews-block';
 import { pickTranslation } from '@/lib/i18n/translations';
 import type { ProviderCatalogItem, ProviderProfile } from '@/lib/providers/types';
 
@@ -228,6 +231,31 @@ export default async function ProviderProfilePage({
     // Leave `services` null → sober « catalogue unavailable » notice below.
   }
 
+  /**
+   * Reviews + aggregate (degrades on its own, like the catalogue above — the
+   * identity must stay readable whatever else fails).
+   *
+   * Typed NATIVELY, envelope AND items: `ProviderReviewListDto` annotates every
+   * property with a concrete type, so nothing here degrades to
+   * `Record<string, never>` and this page needs no mirror and no cast for it —
+   * unlike the catalogue two calls up.
+   *
+   * ⚠️ `averageRating` ARRIVES ALREADY GATED at three reviews (D-4). Do not
+   * recompute it from `items`.
+   */
+  let reviews: ProviderReviewList | null = null;
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-providers/{providerId}/reviews',
+      { params: { path: { providerId: id } } },
+    );
+    if (!error && response.ok && data) {
+      reviews = data;
+    }
+  } catch {
+    // Leave `reviews` null → sober « could not load » notice in the block.
+  }
+
   // `businessName` is nullable and the DTO carries no first/last-name fallback,
   // so degrade to a sober placeholder (no invented field, no extra API call).
   const providerName = provider.businessName ?? 'Prestataire';
@@ -274,6 +302,8 @@ export default async function ProviderProfilePage({
             </ul>
           )}
         </section>
+
+        <ReviewsBlock reviews={reviews} />
       </section>
     </main>
   );
