@@ -1,16 +1,15 @@
 # ÉTAT — Travail autonome CC
 
-**Dernière session :** 2026-08-20 (session 10) · `main` @ `8564a9d` · migration `1780520000000`
+**Dernière session :** 2026-08-20 (session 11) · `main` @ `8338cce` · migration `1780520000000`
 
 ## Chantier en cours
 
-**D — avis et évaluations.** **Trois tranches mergées dans la session** : 1a (#80), 1b (#81), 2 (#82).
-Le chantier est **utilisable de bout en bout** : un client évalue une transaction terminée, voit et
-retire son avis ; un prestataire répond une fois ; le profil affiche la note au seuil de trois.
+**D — avis et évaluations : TERMINÉ.** La tranche 3 (#83) referme le chantier. Un client évalue une
+transaction terminée, la retire, la réécrit ; un prestataire répond une fois ; le profil **et
+maintenant la liste de résultats** affichent la note au seuil de trois.
 
-⚠️ **Session très longue, assumée** : **trois** PR dans une session, à la demande explicite de
-l'humain. Déroge à mandat §4, signalé sur le moment à chaque fois. **La prochaine session repart
-normalement : une PR, puis fin.**
+**Session normale : une PR, puis fin.** (La session 10 en avait fait trois, à la demande explicite
+de l'humain ; le régime de §4 est rétabli.)
 
 ## Découpage retenu
 
@@ -18,168 +17,151 @@ normalement : une PR, puis fin.**
 - [x] **D tranche 1a — table `reviews`, écriture, retrait, lecture agrégée** (PR #80)
 - [x] **D tranche 1b — l'interface cliente + le seuil à l'écran** (PR #81)
 - [x] **D tranche 2 — la réponse du prestataire** (PR #82)
-- [ ] **D tranche 3 — intégration à `discover`** ← **PROCHAINE**. Tri et/ou affichage de la note
-      dans la liste de résultats. ⚠️ **C'est là que vit l'avertissement N+1** : **une requête
-      groupée pour toute la page, jamais une par prestataire.** L'agrégat existe déjà
-      (`findByProviderWithAggregate`) mais il est **par prestataire** — le réutiliser tel quel dans
-      une boucle serait exactement le défaut à éviter. Prévoir une méthode qui agrège **pour un
-      ensemble d'ids**, et **rappeler que la moyenne reste gatée à trois** (D-4) : une carte de
-      résultat ne doit pas afficher une note que le profil refuse d'afficher.
+- [x] **D tranche 3 — les avis dans `discover`** (PR #83)
+- [ ] **E — messagerie client ↔ prestataire** ← **PROCHAINE** (mandat §8, chantier 4). Lourd :
+      **à découper et à écrire ici AVANT d'ouvrir la première tranche.** Sans canal, les gens
+      contournent par téléphone et la transaction sort de la plateforme avec la commission.
 - [ ] H tranche 2b — « Prévenez-moi » — **TOUJOURS BLOQUÉE** (chantier courriels du collaborateur).
 
 **G-2 (cibles tactiles dans les pages) reste DÉPRIORITISÉ**, opportuniste. « Voir le détail → » =
-16 px sur le tableau de bord (mesuré session 9), **non corrigé**. Toutes les cibles introduites par
-les trois PR de cette session sont à **44 px**, mesurées.
+16 px sur le tableau de bord, **non corrigé**. Les cartes de résultat de `/recherche` mesurent
+**98 px** (mesuré session 11).
 
 Bande d'horodatage : `1780510000000` → `1780599999999`. `…510000000` (#76) et `…520000000` (#80)
 pris. **La prochaine migration prend `…530000000`.** Bande du collaborateur `…480/490` : intouchable.
 
+## Chantier différé, avec sa condition de déclenchement
+
+**Sélecteur de tri client (proximité / avis) — différé, avec condition chiffrée.**
+Demandé et arbitré : l'idée est bonne, le moment ne l'est pas. Aujourd'hui l'immense
+majorité des prestataires afficherait « aucun avis » : un tri par note produirait une liste
+dont les premiers sont ceux réservés tôt et dont le reste est dans un ordre arbitraire — le
+client clique, la liste n'a pas l'air triée, et le contrôle lui-même perd sa crédibilité.
+S'y ajoute un départage sans bonne réponse : mettre les non-notés en bas reproduit l'effet
+cumulatif en pire (choisi par le client, donc dédouané par la plateforme) ; en haut n'a
+aucun sens ; mêlés rend le tri illisible.
+**Condition de réouverture, mesurable en base** : une part significative des prestataires
+**actifs** franchit le seuil de trois avis. À vérifier par sonde, pas à l'intuition.
+Même discipline que le silence sur `GEOCODED`, le « pas encore assez pour décider » de la
+carte de la demande, et le seuil de trois : **la plateforme n'offre pas un outil qui
+prétend trier quand elle n'a rien pour trier.**
+
 ## Décisions D — arrêtées, ne se relitigent pas
 
-**D-1 — L'avis est lié à une transaction terminée.** Seul le client d'une demande passée en
-`COMPLETED` peut évaluer, et seulement le prestataire de cette demande. Infalsifiable par
-construction : un faux avis ne peut pas exister, donc aucune modération n'est à inventer
-pour l'écarter.
+Les six décisions **D-1 à D-6** sont portées en `CLAUDE.md` §13.1 (**entrées 10 et 11**) et dans
+les entrées §11 des PR #80/#81/#82. Elles ne sont pas recopiées ici : §13.1 fait autorité.
 
-**D-2 — Le prestataire peut répondre, une seule fois, et le client ne contre-répond pas.**
-L'asymétrie est le cœur du problème : un client mécontent coûte des semaines de revenus à
-un artisan en trente secondes. Une réponse unique rétablit l'équilibre sans ouvrir un fil
-qui dégénère. **La réponse est une colonne sur la ligne d'avis, jamais une seconde entité :**
-« une seule réponse » devient une propriété du schéma plutôt qu'une règle applicative à
-faire respecter.
+**Décision d'accès (#80)** : `GET /service-providers/:providerId/reviews` est **AUTHENTIFIÉE**, pas
+`@Public()`. L'ouverture appartient au chantier « `discover` public », **avec** le limiteur de débit
+et le `trust proxy`. ⚠️ Le masquage « Carol R. » n'est **PAS** une conséquence de ce choix : c'est la
+bonne conception **même pour un lecteur authentifié**. Ne pas le relâcher le jour où la route s'ouvre.
 
-**D-3 — Pas de modification, suppression possible par l'auteur.** Modifier après une
-réponse déjà publiée accolerait cette réponse à un texte qu'elle ne commentait pas — un
-mécanisme de piégeage, sans usage légitime qu'une suppression suivie d'un nouvel avis ne
-couvre. La suppression, elle, doit exister (droit de retrait). **Elle est DOUCE, elle
-emporte la réponse du prestataire** (une réponse orpheline commente un texte illisible),
-**et la note agrégée EXCLUT les avis supprimés.** Ne pas grossir la dette « suppression
-douce en cascade sur 2 tables sur 20 » : celle-ci se traite correctement dès le départ.
-
-**D-4 — Aucune moyenne affichée en dessous de TROIS avis.** Le compte et les avis
-s'affichent ; la moyenne, non. Une moyenne sur un avis n'est pas une statistique, c'est une
-opinion déguisée — et elle condamne ou survend un artisan sur un échantillon d'un. Troisième
-application du même principe produit : le silence sur `GEOCODED`, le « pas encore assez pour
-décider » de la carte de la demande, et ceci. **La plateforme ne prétend jamais savoir ce
-qu'elle ne sait pas.**
-
-**D-5 — Note obligatoire de 1 à 5, commentaire facultatif, aucune sous-note.** La note
-s'agrège, donc elle est requise. Le commentaire obligatoire ferait chuter le volume, et
-c'est le volume qui rend le seuil de trois atteignable. Pas de sous-notes par critère :
-trois fois la friction, trois fois les colonnes, et elles corrèlent trop pour dire grand
-chose de plus. **La note est un entier contraint en base — `CHECK` entre 1 et 5, jamais un
-flottant.** Ce qui ne peut pas être représenté ne peut pas arriver.
-
-**D-6 — Une demande `REFUNDED` après complétion reste évaluable** (décision rendue sur #81) :
-
-> REFUNDED reste évaluable — décision retenue, ne pas ajouter d'exclusion. Le service a eu lieu,
-> `completedAtUtc` en atteste, et exclure un client remboursé biaiserait la moyenne à la hausse en
-> retirant la parole à celui qui a le plus à dire. Le contrepoids est D-2, le droit de réponse du
-> prestataire.
->
-> L'invariant : **le droit d'évaluer se teste sur `completedAtUtc`, jamais sur le statut courant** —
-> un statut est transitoire, un horodatage de complétion ne l'est pas. C'est ce qui a failli faire
-> mourir le droit d'évaluer 72 h après le travail.
-
-Portée en `CLAUDE.md` §13.1 (**entrée 11**) sous l'amendement §3.9.
-
-**Décision d'accès (rendue sur #80)** : `GET /service-providers/:providerId/reviews` est
-**AUTHENTIFIÉE**, pas `@Public()`. Son consommateur vit sous `(app)` et est privé, donc une route
-publique n'aurait **aucun appelant** — et une surface publique sans appelant est une surface qu'on
-oublie de surveiller. **L'ouverture appartient au chantier « `discover` public »**, qui la prendra
-**avec** le limiteur de débit et le `trust proxy`. ⚠️ **Le masquage « Carol R. » n'est PAS une
-conséquence de ce choix** : c'est la bonne conception **même pour un lecteur authentifié**. Ne pas
-le relâcher, ni maintenant, ni le jour où la route s'ouvrira.
+**Décision de tri (#83)** : la **proximité reste le tri unique** de `discover`. La note est
+**affichée, jamais classante** — le cahier des charges pose l'affichage comme un filtre de proximité
+**absolu**, et trier par réputation **compose** (qui a des avis est vu, donc réservé, donc accumule
+des avis), ce qui condamne chaque nouvelle recrue à l'invisibilité. **Coût assumé** : deux
+prestataires également proches, l'un noté l'autre non, ne se départagent pas.
 
 ## Ce que la prochaine session doit savoir
 
-1. **⚠️ LE DÉFAUT LE PLUS IMPORTANT DE LA SESSION, ET IL EST GÉNÉRALISABLE : une garde sur un
-   STATUT COURANT expire quand le statut avance.** #80 exigeait `status === 'COMPLETED'` ; le cron
-   d'auto-libération fait passer en `PAID` après 72 h, donc le droit d'évaluer mourait
-   silencieusement trois jours après le travail. **Invisible au smoke parce que `COMPLETED → PAID`
-   est inatteignable sans Stripe réel.** #81 corrige avec `completedAtUtc !== null`. **Chercher ce
-   motif ailleurs dans le dépôt** — c'est écrit en §13.1 entrée 11.
-2. **⚠️ TRANCHE 3 = LE PIÈGE N+1.** L'agrégat existant est **par prestataire**
-   (`findByProviderWithAggregate`) : l'appeler dans une boucle sur les résultats de `discover` est
-   exactement ce qu'il ne faut pas faire. Écrire une méthode qui agrège **pour un ensemble d'ids**,
-   en une requête. Et **la moyenne reste gatée à trois** — une carte de résultat ne doit pas
-   afficher une note que le profil refuse d'afficher.
-3. **⚠️ LE MUR ET LA PORTE — deux 409 qui se ressemblent et ne se comportent pas pareil.** Client :
-   « cette demande a déjà un avis » est une **porte** (retirer puis réécrire, l'index partiel libère
-   le créneau). Prestataire : « cet avis a déjà une réponse » est un **mur** (écrite une fois,
-   jamais modifiée, jamais retirée ; seul le retrait de l'avis la fait disparaître). Ne pas
-   « harmoniser » les deux.
-4. **⚠️ 403 vs 404 — la divergence est raisonnée, pas une incohérence.** `DELETE /reviews/:id` → 404
-   sur ce qui n'est pas à l'appelant (les avis d'un client ne sont énumérables par personne).
-   `POST /reviews/:id/response` → 403 (les ids **sont** énumérables via la liste d'un prestataire,
-   donc un 403 ne divulgue rien).
-5. **La colonne `provider_response` est désormais ÉCRITE et EXPOSÉE** (#82). La paire
-   `provider_response` / `provider_responded_at_utc` est gardée par `chk_reviews_response_paired` :
-   **les deux, ou aucune**, dans la même instruction.
-6. **⚠️ `POST /reviews` ET `POST /reviews/:id/response` SONT LIMITÉS À 10/h PAR APPELANT, ET LA
-   GARDE COMPTE LES TENTATIVES.** Vérifié en me faisant couper au milieu d'un smoke par mes propres
-   400/403/409. Compteur **en mémoire par processus** : redémarrer l'API le remet à zéro.
-7. **⚠️ `3.5` N'EST PAS REJETÉ PAR LA BASE** — PostgreSQL l'arrondit à `4` avant le `CHECK` (mesuré
-   par `INSERT` brut). Seul `@IsInt()` du DTO le rejette (400). Ne jamais relâcher ce validateur.
-8. **Plafonds solidaires** : 50 avis par profil (et par tableau de bord) ↔ 100 avis propres ↔ 100
+1. **⚠️ LE SEUIL DE TROIS A UNE SEULE SOURCE, ET ELLE EST FRAGILE À LA DUPLICATION.**
+   `ratingAggregateSql(over: '' | ' OVER ()')` dans `reviews.repository.ts` porte le cast du compte,
+   le `CASE`, le seuil et l'arrondi. Les deux lecteurs (profil en fenêtre `OVER ()`, `discover` en
+   `GROUP BY`) le partagent : **le suffixe est le paramètre, la règle non.** Une troisième surface
+   qui recopierait le `CASE` pourrait gater à un autre nombre **sans qu'aucun test n'échoue** — le
+   symptôme serait une carte affichant une moyenne que le profil refuse d'afficher.
+2. **⚠️ LE PIÈGE N+1 EST INVISIBLE SUR UNE FIXTURE, ET C'EST GÉNÉRALISABLE.** Avec deux
+   prestataires, une requête par carte et une requête pour la page sont indiscernables — même
+   réponse, même écran, même temps. La propriété à tester n'est jamais « la valeur est juste », c'est
+   « **le compte de requêtes ne dépend pas du nombre de résultats** ». Mesuré au journal Postgres
+   (`log_statement='all'`, compter les `execute <unnamed>`) : **3 énoncés pour 1 résultat, 3 pour 3**.
+   Verrouillé aussi par test unitaire. **Chercher ce motif ailleurs** quand une liste s'enrichit.
+3. **⚠️ `origin/main` ÉTAIT PÉRIMÉ DANS LE CONTENEUR** (`966bcd2` au lieu de `b78fdde`) : le premier
+   `git diff origin/main` affichait **toute la session 10** comme nouvelle. Exactement le symptôme
+   silencieux du mandat §4. **`git fetch origin --prune` AVANT de conclure quoi que ce soit d'un
+   diff** — l'élagage du rituel d'ouverture n'est pas décoratif.
+4. **`ReviewsDataModule` existe et ne doit pas être « simplifié ».** Module **feuille** (TypeORM
+   seul) qui fournit et exporte `ReviewsRepository`, importé par `ReviewsModule` **et**
+   `ServiceProvidersModule`. Il casse un cycle **réel** (`ReviewsModule → ServiceProvidersModule`
+   existe déjà). **Ne pas** le remplacer par un enregistrement en provider local des deux côtés à la
+   manière des gardes : c'est le seul endroit où D-3 et D-4 sont appliqués, et deux enregistrements
+   casseraient au boot le jour où le dépôt gagne une dépendance de constructeur.
+5. **La dégradation de `discover` est par section, comme partout ailleurs** : la lecture de note est
+   dans son propre `try/catch`, un échec rend `reviewCount=0 / averageRating=null` et **jamais** une
+   erreur de recherche. **Conséquence assumée** : après un échec, une carte est indiscernable d'un
+   prestataire jamais évalué — les deux se taisent.
+6. **Il n'y a QU'UNE surface de liste de prestataires** (`/recherche`) — vérifié : les 4 autres
+   appels `/service-providers/*` du front lisent **un seul** prestataire. Pas de risque de divergence
+   entre deux listes (contrairement au piège « offert ≠ résolvable », §13.1 entrée 8).
+7. **⚠️ POUR SMOKER LES AVIS IL FAUT ≥ 3 AVIS VIVANTS SUR UN MÊME PRESTATAIRE**, donc ≥ 3 demandes
+   `COMPLETED` (l'index unique n'en autorise qu'un par demande). Le seeder de la session 9 en produit
+   **une**. J'ai utilisé un script **jetable, non commité** pilotant l'API réelle (2 prestataires de
+   plus, 5 demandes jusqu'à `COMPLETED`, puis les avis). **Une fixture « prestataire noté »
+   réutilisable manque toujours** — elle appartient à `dev-fixtures.seed.ts`, livrable du
+   collaborateur, **non préempté**.
+8. **⚠️ `POST /reviews` ET `POST /reviews/:id/response` SONT LIMITÉS À 10/h PAR APPELANT, ET LA
+   GARDE COMPTE LES TENTATIVES** (400/403/409 compris). Compteur **en mémoire par processus** :
+   redémarrer l'API le remet à zéro.
+9. **Plafonds solidaires** : 50 avis par profil (et par tableau de bord) ↔ 100 avis propres ↔ 100
    demandes de `/requests`. Si l'un bouge, bouger les autres.
-9. **⚠️ L'API GitHub `create_or_update_file` NE FAIT AUCUNE SUBSTITUTION SHELL** — j'ai passé
-   `$(cat)` et **écrasé `JOURNAL_AUTONOMIE.md` par 6 octets** (restauré au commit suivant, rien
-   perdu). **Toujours passer le contenu littéral, et RELIRE le fichier distant après écriture.**
-   Elle a aussi **échoué deux fois en transport** (`connection timeout`) sans rien écrire : **vérifier
-   le SHA distant avant de conclure**, puis réessayer — c'est idempotent tant que le SHA n'a pas bougé.
-10. **Montage de la stack** : Docker **absent**, bac à sable **non persisté**, et **Postgres est
-    retombé en cours de session** (le relancer sans hésiter). Recette : `apt-get update`,
-    `postgresql-16-postgis-3`, rôle `linkr` SUPERUSER, `CREATE EXTENSION postgis` **et** `pgcrypto`,
-    `pnpm install --frozen-lockfile`, `.env` depuis `.env.example` (**`PORT=5000`**),
-    `redis-server --daemonize yes`, `migration:run`, seed Québec, puis
-    `completed-service-request.seed.ts`.
-11. **⚠️ PLAYWRIGHT N'EST PAS RÉSOLVABLE DEPUIS LE DÉPÔT** — importer par **chemin absolu**
-    (`from '/opt/node22/lib/node_modules/playwright/index.mjs'`) ; `NODE_PATH` ne suffit pas en ESM.
-    Chromium : `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, `--no-sandbox`.
-12. **⚠️ INJECTION DE FAUTE SANS PROXY, ET C'EST BIEN PLUS SIMPLE** : `ALTER TABLE x RENAME TO
-    x_hidden`, tester, puis renommer en sens inverse. Une seule route casse, les données sont
-    intactes, et ça prouve une dégradation par section pour de vrai. Utilisé en #82.
-13. **⚠️ `estimatedAmount` est un NOMBRE, pas une chaîne** dans `POST /service-requests` — un
-    `"150.00"` fait 400.
-14. **Ni écrire un avis, ni y répondre ne notifie qui que ce soit.** `notifications` est le chantier
-    du collaborateur : **non touché, délibérément**. À arbitrer avec lui, pas à trancher seul.
-15. **§13.1 a gagné DEUX entrées cette session** — **10** (D-3/D-4/D-5 verbatim) et **11** (D-6 +
-    l'invariant `completedAtUtc`), sous l'amendement §3.9. **Modifier ou supprimer** une entrée
-    existante reste un arrêt dur.
-16. **Ma base n'est pas celle de l'humain.** La mienne est repartie de zéro ; la sienne porte les
+10. **⚠️ L'API GitHub `create_or_update_file` NE FAIT AUCUNE SUBSTITUTION SHELL** — passer le contenu
+    **littéral**, et **RELIRE le fichier distant après écriture**. Elle peut échouer en transport
+    sans rien écrire : vérifier le SHA distant avant de conclure, puis réessayer (idempotent tant que
+    le SHA n'a pas bougé).
+11. **Montage de la stack** : Docker **absent**, bac à sable **non persisté**, et **Postgres est
+    retombé en cours de session** (le relancer sans hésiter — un script `stack.sh` idempotent au
+    scratchpad paie tout de suite). Recette : `apt-get update`, `postgresql-16-postgis-3`, rôle
+    `linkr` SUPERUSER, `CREATE EXTENSION postgis` **et** `pgcrypto`, `pnpm install --frozen-lockfile`,
+    `.env` depuis `.env.example` (**`PORT=5000`**), `redis-server --daemonize yes`, `migration:run`,
+    seed Québec, puis `completed-service-request.seed.ts`.
+    ⚠️ **Ne pas `pkill -f "pnpm start"` ni un motif qui matche son propre shell** : ça tue la session
+    bash (exit 144). Lancer les serveurs avec `nohup … &`.
+12. **⚠️ PLAYWRIGHT N'EST PAS RÉSOLVABLE DEPUIS LE DÉPÔT** — importer par **chemin absolu**
+    (`from '/opt/node22/lib/node_modules/playwright/index.mjs'`). Chromium :
+    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, `--no-sandbox`.
+13. **⚠️ INJECTION DE FAUTE SANS PROXY** : `ALTER TABLE x RENAME TO x_hidden`, tester, renommer en
+    sens inverse. **Et poser un CONTRÔLE** : en session 11, le 500 du profil (qui n'a pas de repli)
+    au même instant est ce qui prouve que le 200 de `discover` n'était pas un faux négatif.
+14. **Ni écrire un avis, ni y répondre, ni en afficher un ne notifie qui que ce soit.**
+    `notifications` est le chantier du collaborateur : **non touché, délibérément**.
+15. **Ma base n'est pas celle de l'humain.** La mienne est repartie de zéro ; la sienne porte les
     ~43 demandes et les lignes `SONDE-*`/`SMOKE-*` verrouillées en `ON DELETE RESTRICT`.
-17. **Rappels** : écrire `ETAT`/`JOURNAL` sur `main` **via l'API GitHub** · ne jamais lancer
-    Prettier sur `apps/web` · lire le nom de branche **depuis la PR** · `MANDAT_01_fixtures.md`
-    toujours pas entamé (assigné au collaborateur).
+16. **Rappels** : écrire `ETAT`/`JOURNAL` sur `main` **via l'API GitHub** · ne jamais lancer Prettier
+    sur `apps/web` · lire le nom de branche **depuis la PR** · `MANDAT_01_fixtures.md` toujours pas
+    entamé (assigné au collaborateur).
 
 ## ⛔ En attente de décision humaine
 
-**AUCUNE.** Les six décisions D sont arrêtées et portées ; la question d'accès de #80 et la question
-`REFUNDED` de #81 sont tranchées.
+**AUCUNE.** Les six décisions D sont arrêtées et portées ; le tri de `discover` est tranché
+(proximité seule) et le sélecteur de tri est enregistré ci-dessus comme chantier différé avec sa
+condition de réouverture.
 
-**Relevé, non bloquant** : le 502-laisse-`ASSIGNED` (session 9) reste un arbitrage produit **et** un
-arrêt dur technique — à trancher quand l'humain le voudra, jamais par moi.
+**Relevés, non bloquants — deux arbitrages produit qui attendent l'humain, jamais moi :**
 
-## Dettes créées par la session
+1. **Le 502-laisse-`ASSIGNED`** (session 9) : une panne Stripe laisse la demande assignée **sans
+   dépôt**, avec un `DEPOSIT` `FAILED` que rien ne reprend. Toute correction touche la capture ⇒
+   **arrêt dur §3**.
+2. **« Deux causes, un 409 » sur l'écran client des avis** : « cette demande a déjà un avis » **ou**
+   « le travail n'est pas terminé » se mappent au même code, et le verrou 3.12b impose le mappage par
+   **code HTTP seul**. La sortie honnête est de **distinguer les codes côté API**, jamais de parser
+   le corps côté front. **Décision d'architecture**, hors périmètre de la tranche 3.
 
-1. **Ni l'écriture d'un avis ni la réponse ne notifient** — `notifications` est le chantier du
-   collaborateur, non touché.
-2. **Pas de pagination** : 50 avis par profil et par tableau de bord, 100 avis propres, 100
-   demandes — **solidaires** (point 8).
-3. `updateReturningRows()` recopié une **6ᵉ** fois (payment / refund / quote / stripe-connect /
-   notifications / reviews) — le helper partagé reste un chore distinct.
-4. La dette « helper de statut partagé » entre tableau de bord et `/requests` : **inchangée**.
+## Dettes créées par la dernière PR
 
-**Soldée** : la contrainte de lancement de #80 (« pas d'avis en production avant que le retrait soit
-atteignable par son auteur ») — levée par #81.
+1. **`ratingFmt` mirroité** dans `provider-card.tsx` depuis `reviews-block.tsx` (const local non
+   exporté des deux côtés) — même forme que la dette « helper de statut partagé », **ni élargie ni
+   payée**.
+2. **Pas de fixture « prestataire noté » réutilisable** (point 7 ci-dessus) — relevée, non prise.
+
+**Inchangées** : dette de contrat `discover` (**annotation « tableau nu » mensongère** vs enveloppe
+au runtime → miroir + cast front ; le correctif est un DTO d'enveloppe dédié, patron 3.12a-back-fix)
+· écrire un avis **ne notifie personne** · pas de pagination (plafonds solidaires, point 9) ·
+`updateReturningRows()` recopié **6×** · repli 502 des BFF **tutoyant** · cibles tactiles **dans les
+pages** (G-2) · aucun index des consoles admin · `locality` au géocodage · le foyer *feature
+toggling* · les 5 occurrences restantes de « tableau de bord » · `globals.css` écrase les polices
+Geist · aucune vérification en **mode sombre** · notifications prestataire ORGANIZATION illisibles ·
+`docker/data/` tracké par git · verrou du refus `REJECTED` · `trust proxy` absent de `main.ts`.
 
 **Conséquence assumée, pas une dette** : les FK de `reviews` sont `ON DELETE RESTRICT`, donc une
 demande `COMPLETED` portant un avis — et le prestataire qu'il nomme — ne peuvent plus jamais être
 supprimés en dur. Cohérent avec la suppression douce partout (§13).
-
-**Relevées, inchangées** : cibles tactiles **dans les pages** (G-2) · aucun index des consoles
-admin · `locality` au géocodage · le foyer *feature toggling* · les 5 occurrences restantes de
-« tableau de bord » · `globals.css` écrase les polices Geist · aucune vérification en **mode
-sombre** · notifications prestataire ORGANIZATION illisibles · `docker/data/` tracké par git ·
-verrou du refus `REJECTED` · `trust proxy` absent de `main.ts` · repli 502 des BFF **tutoyant**.
