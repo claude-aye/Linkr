@@ -1269,6 +1269,33 @@ ne le corrige pas.
     d'avis (D-2), donc la suppression douce de la ligne l'emporte. L'absence de balayage est le
     respect de la décision, pas son oubli.
 
+11. **Le droit d'évaluer se teste sur `completedAtUtc`, JAMAIS sur le statut courant — et une
+    demande `REFUNDED` après complétion reste évaluable.** Ça ressemblera deux fois à un
+    oubli : la garde de `POST /reviews` ne mentionne nulle part `ServiceRequestStatus`, et
+    rien n'exclut une demande remboursée. Les deux sont la décision. Texte de la décision
+    humaine (`docs/ETAT_AUTONOMIE.md`, D-6, portée telle quelle) :
+
+    > REFUNDED reste évaluable — décision retenue, ne pas ajouter d'exclusion. Le service a eu
+    > lieu, `completedAtUtc` en atteste, et exclure un client remboursé biaiserait la moyenne à
+    > la hausse en retirant la parole à celui qui a le plus à dire. Le contrepoids est D-2, le
+    > droit de réponse du prestataire.
+    >
+    > L'invariant : **le droit d'évaluer se teste sur `completedAtUtc`, jamais sur le statut
+    > courant** — un statut est transitoire, un horodatage de complétion ne l'est pas. C'est ce
+    > qui a failli faire mourir le droit d'évaluer 72 h après le travail.
+
+    *Deux notes de portage, hors texte de la décision.* **(i)** Le « ce qui a failli » est
+    mesuré, pas rhétorique : la tranche 1a gardait sur `status === 'COMPLETED'`, or le cron
+    horaire d'auto-libération capture le solde après `PLATFORM_AUTO_RELEASE_HOURS` (**72 h**) et
+    le webhook fait passer la demande en `PAID`. Le client qui attendait trois jours recevait un
+    **409 définitif** — dans la fenêtre exacte où les gens écrivent un avis. Le défaut était
+    invisible au smoke parce que `COMPLETED → PAID` est inatteignable sans objets Stripe réels.
+    **(ii)** L'invariant se généralise et vaut d'être cherché ailleurs : **toute garde écrite
+    `status === X` sur un état TRAVERSÉ plutôt que TERMINAL expire en silence.** Quand un
+    horodatage d'audit existe pour le même fait — posé une fois, jamais effacé — c'est lui qui
+    porte la règle. Le front miroite la même garde, pour la même raison : la keyer sur le statut
+    ferait disparaître le formulaire sous un client qui a attendu.
+
 ---
 
 ## 14. Out-of-Scope (For Reference)
