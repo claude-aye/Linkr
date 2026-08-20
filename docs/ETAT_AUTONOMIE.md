@@ -6,7 +6,7 @@
 
 **D — avis et évaluations.**
 - **Tranche 1a : MERGÉE** (PR #80, `91dc411`) — table `reviews`, écriture, suppression douce, lecture agrégée.
-- **Tranche 1b : PR #81 OUVERTE, NON MERGÉE** — l'interface cliente. **Une seule question bloque**, ci-dessous.
+- **Tranche 1b : PR #81** — l'interface cliente. **Décision D-6 rendue** ; merge en cours.
 
 ⚠️ **Session longue assumée** : deux PR dans une session, à la demande explicite de l'humain. Déroge à
 mandat §4. Signalé sur le moment, pas découvert après coup.
@@ -15,7 +15,7 @@ mandat §4. Signalé sur le moment, pas découvert après coup.
 
 - [x] Session 9 — atteindre `COMPLETED` (PR #79)
 - [x] **D tranche 1a — la table `reviews` (PR #80, mergée)**
-- [~] **D tranche 1b — écrire / voir / retirer + seuil à l'écran (PR #81, ouverte)** ← **1 décision**
+- [~] **D tranche 1b — écrire / voir / retirer + seuil à l'écran (PR #81)** — décision D-6 rendue
 - [ ] **D tranche 2 — la réponse du prestataire** ← **PROCHAINE** une fois #81 mergée. La **colonne
       existe déjà** (`provider_response` + `provider_responded_at_utc`, posées par #80, jamais écrites,
       absentes des DTO). Il manque : l'endpoint, l'écran prestataire, et l'exposition en lecture.
@@ -74,10 +74,23 @@ oublie de surveiller. **L'ouverture appartient au chantier « `discover` public 
 conséquence de ce choix** : c'est la bonne conception **même pour un lecteur authentifié**. Ne pas
 le relâcher, ni maintenant, ni le jour où la route s'ouvrira.
 
+**D-6 — Une demande `REFUNDED` après complétion reste évaluable** (décision rendue sur #81) :
+
+> REFUNDED reste évaluable — décision retenue, ne pas ajouter d'exclusion. Le service a eu lieu,
+> `completedAtUtc` en atteste, et exclure un client remboursé biaiserait la moyenne à la hausse en
+> retirant la parole à celui qui a le plus à dire. Le contrepoids est D-2, le droit de réponse du
+> prestataire.
+>
+> L'invariant : **le droit d'évaluer se teste sur `completedAtUtc`, jamais sur le statut courant** —
+> un statut est transitoire, un horodatage de complétion ne l'est pas. C'est ce qui a failli faire
+> mourir le droit d'évaluer 72 h après le travail.
+
+Porté en `CLAUDE.md` §13.1 (entrée 11) sous l'amendement §3.9.
+
 ## Ce que la prochaine session doit savoir
 
-1. **⛔ #81 EST OUVERTE ET ATTEND UNE DÉCISION** (plus bas). Si elle est mergée : `git fetch origin
-   --prune`, puis la tranche 2 part de là. **Ne rien empiler dessus avant.**
+1. **#81 porte la décision D-6 et part au merge.** Après merge : `git fetch origin --prune`, puis
+   la tranche 2 part de là. **Ne rien empiler dessus avant.**
 2. **⚠️ LE DÉFAUT LE PLUS IMPORTANT DE LA SESSION, ET IL EST GÉNÉRALISABLE : une garde sur un
    STATUT COURANT expire quand le statut avance.** #80 exigeait `status === 'COMPLETED'` ; le cron
    d'auto-libération fait passer en `PAID` après 72 h, donc le droit d'évaluer mourait
@@ -133,22 +146,8 @@ le relâcher, ni maintenant, ni le jour où la route s'ouvrira.
 
 ## ⛔ En attente de décision humaine
 
-**UNE, dans le corps de #81.**
-
-**Une demande `REFUNDED` après complétion doit-elle rester évaluable ?**
-
-Le correctif du défaut décrit au point 2 remplace `status === 'COMPLETED'` par
-`completedAtUtc !== null`. Ça rouvre la fenêtre pour `PAID` — **c'est le but, et ce n'est pas
-discutable** : sans ça le droit d'évaluer meurt après 72 h. Mais le même horodatage rend aussi
-évaluable une demande **remboursée après complétion**.
-
-**Mon option recommandée : la laisser évaluable.** Le service a bel et bien eu lieu, et un client
-remboursé a souvent le plus à dire — l'exclure retirerait la parole précisément à celui que ça a
-mal servi. Un remboursement est d'ailleurs **forcé par un admin** dans ce MVP, donc l'exclusion
-reviendrait à laisser l'administration éteindre un avis.
-
-**La bascule coûte une ligne** (`completedAtUtc !== null && status !== 'REFUNDED'`). Dis-le avant de
-merger #81 et je le change.
+**AUCUNE.** La question ouverte sur #81 (`REFUNDED` évaluable) est **tranchée** — voir **D-6**
+ci-dessus, portée en §13.1.
 
 **Relevé, non bloquant** : le 502-laisse-`ASSIGNED` (session 9) reste un arbitrage produit **et** un
 arrêt dur technique.
