@@ -4905,6 +4905,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description The caller spent its budget for the current window. Carries `Retry-After`. Bounds how fast the map can be padded; it does NOT deduplicate people, which is impossible without an identity. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     AdminDemandSignalsController_summarize: {

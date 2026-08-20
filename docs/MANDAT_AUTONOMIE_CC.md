@@ -54,6 +54,9 @@ avant qu'il n'atterrisse sur `main`.
 
 - **`CLAUDE.md` §13.1 — Décisions verrouillées.** Tu ne les modifies pas. Si un chantier
   semble en exiger la modification, c'est un cas de §3 : tu t'arrêtes et tu demandes.
+  **Y AJOUTER** une entrée est permis depuis l'amendement du 19 août 2026, et à une seule
+  condition — que la décision soit déjà écrite mot pour mot dans `docs/ETAT_AUTONOMIE.md`.
+  Voir §3.9.
 - **Le submit n'est jamais bloqué.** L'invariant vit exclusivement dans `submitAnyway`
   (`create-request-form.tsx`, PR #52). Aucune dégradation de localisation ne bloque
   l'envoi. Verrouillé.
@@ -101,7 +104,16 @@ Un arrêt coûte une journée ; un contournement coûte le projet.
    `tax_*`. Chantier B, hors périmètre absolu.
 
 **Conformité et invariants**
-9. Toute modification de `CLAUDE.md` §13.1.
+9. Toute **modification** ou **suppression** d'une entrée existante de `CLAUDE.md` §13.1.
+
+   **Amendement du 19 août 2026 (session 8) — tu peux désormais AJOUTER une entrée.** La condition
+   est stricte et unique : la décision humaine doit être **écrite mot pour mot dans
+   `docs/ETAT_AUTONOMIE.md`**. Tu portes ce texte, tu ne le reformules pas, et tu n'ajoutes rien
+   qu'il ne dise. Toute annotation de portage que tu juges nécessaire (une référence croisée à
+   résoudre, le résultat d'une vérification que le texte demandait) est **signalée comme telle**,
+   hors du texte porté. Ajouter une entrée sur ta seule initiative reste un arrêt dur : la section
+   n'enregistre que des décisions déjà prises.
+
 10. Tout élargissement de ce qui est exposé dans un DTO destiné au prestataire ou au
     public (test Loi 25).
 11. Toute modification de `submitAnyway` ou de la chaîne de dégradation de localisation.

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminGuard } from '../../common/guards/admin.guard';
+import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { ServicesCatalogModule } from '../services-catalog/services-catalog.module';
 import { UsersModule } from '../users/users.module';
@@ -21,6 +22,11 @@ import { DemandSignalsRepository } from './repositories/demand-signals.repositor
  * quotes, services-catalog), and the guard is registered as a module-local
  * provider here for the same reason.
  *
+ * `RateLimitGuard` is registered here as a module-local provider, the same way
+ * `AdminGuard` is — no `RateLimitModule`, because the codebase's convention for
+ * a guard is a provider at each consuming module, and inventing a module for it
+ * would be a second pattern for the same job.
+ *
  * Nothing is exported: the demand map has one writer and one reader, and both
  * are this module's own controllers.
  */
@@ -32,6 +38,11 @@ import { DemandSignalsRepository } from './repositories/demand-signals.repositor
     UsersModule,
   ],
   controllers: [DemandSignalsController, AdminDemandSignalsController],
-  providers: [DemandSignalsRepository, DemandSignalsService, AdminGuard],
+  providers: [
+    DemandSignalsRepository,
+    DemandSignalsService,
+    AdminGuard,
+    RateLimitGuard,
+  ],
 })
 export class DemandSignalsModule {}

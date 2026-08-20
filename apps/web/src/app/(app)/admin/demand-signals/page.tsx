@@ -36,9 +36,9 @@ type DemandSummary = components['schemas']['DemandSignalSummaryListDto'];
  * ⚠️ A DISPLAY THRESHOLD, AND NOTHING DEPENDS ON IT. The table is rendered
  * either way — the number is never hidden, only qualified. The figure itself is
  * a deliberately conservative guess, not a measurement: a single search in a
- * sector is one person on one day and cannot be told apart from a typo, so a map
- * this thin cannot carry a recruitment decision. Change it in one place when
- * real volume says otherwise.
+ * sector is one search on one day — possibly one curious person, possibly a
+ * typo, and there is no way to tell — so a map this thin cannot carry a
+ * recruitment decision. Change it in one place when real volume says otherwise.
  */
 const ENOUGH_TO_DECIDE = 10;
 
@@ -259,7 +259,23 @@ export default async function AdminDemandSignalsPage() {
               </p>
             )}
 
+            {/*
+              ⚠️ THE COUNTING COROLLARY IS SCREEN COPY, NOT A CODE COMMENT, AND THAT IS
+              DELIBERATE. Every figure above is labelled « recherches » — an audit of this
+              file found no count presented as a number of people. But the privacy line
+              alone ("not attached to a person") can be read as implying one line ≈ one
+              person, which is exactly the inference that would turn this map into a
+              headcount. Without an identity, one person searching ten times and ten people
+              searching once are the same rows, and no rate limiter can separate them.
+              Whoever reads this screen to decide where to recruit has to know that.
+            */}
             <p className="mt-6 text-xs text-zinc-400 dark:text-zinc-500">
+              Ces chiffres comptent des <strong className="font-medium">recherches</strong>,
+              jamais des personnes : une même personne qui cherche dix fois est
+              indiscernable de dix personnes. Lisez-les comme une direction, pas comme une
+              mesure d’audience.
+            </p>
+            <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
               Les coordonnées désignent un secteur d’environ 1 km, jamais le lieu recherché, et
               les dates sont arrondies au jour. Aucune de ces lignes n’est rattachée à une
               personne.
