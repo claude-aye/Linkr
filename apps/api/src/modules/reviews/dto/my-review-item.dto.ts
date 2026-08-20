@@ -35,6 +35,18 @@ export class MyReviewItemDto {
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAtUtc!: Date;
 
+  @ApiProperty({
+    description:
+      "The provider's single reply (D-2), or null. Written once and never edited; a retraction of the review takes it with it (D-3).",
+    type: 'string',
+    nullable: true,
+    example: 'Merci beaucoup, ce fut un plaisir.',
+  })
+  providerResponse!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
+  providerRespondedAtUtc!: Date | null;
+
   static from(record: MyReviewRecord): MyReviewItemDto {
     const dto = new MyReviewItemDto();
     dto.id = record.id;
@@ -43,6 +55,8 @@ export class MyReviewItemDto {
     dto.rating = record.rating;
     dto.comment = record.comment;
     dto.createdAtUtc = record.createdAtUtc;
+    dto.providerResponse = record.providerResponse;
+    dto.providerRespondedAtUtc = record.providerRespondedAtUtc;
     return dto;
   }
 }

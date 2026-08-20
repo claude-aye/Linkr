@@ -3359,6 +3359,55 @@
         ]
       }
     },
+    "/reviews/{id}/response": {
+      "post": {
+        "operationId": "ReviewsController_respond",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondToReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Reply published."
+          },
+          "400": {
+            "description": "Missing or blank reply."
+          },
+          "403": {
+            "description": "The caller does not manage the provider this review is about."
+          },
+          "404": {
+            "description": "Unknown or retracted review."
+          },
+          "409": {
+            "description": "This review already carries a reply. Unlike the client's 409 this is final — a reply is written once and never changed."
+          },
+          "429": {
+            "description": "The caller spent its budget for the current window. Carries `Retry-After`."
+          }
+        },
+        "summary": "Answer a review of one's own provider profile — once (D-2). The reply is published where the review is read; it cannot be edited or removed, and the client does not answer back.",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
     "/reviews/{id}": {
       "delete": {
         "operationId": "ReviewsController_remove",
@@ -5626,6 +5675,17 @@
           "createdAtUtc": {
             "type": "string",
             "format": "date-time"
+          },
+          "providerResponse": {
+            "type": "string",
+            "description": "The provider's single reply (D-2), or null. Written once and never edited; a retraction of the review takes it with it (D-3).",
+            "nullable": true,
+            "example": "Merci beaucoup, ce fut un plaisir."
+          },
+          "providerRespondedAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         },
         "required": [
@@ -5634,7 +5694,9 @@
           "serviceProviderId",
           "rating",
           "comment",
-          "createdAtUtc"
+          "createdAtUtc",
+          "providerResponse",
+          "providerRespondedAtUtc"
         ]
       },
       "MyReviewListDto": {
@@ -5655,6 +5717,20 @@
         "required": [
           "items",
           "limit"
+        ]
+      },
+      "RespondToReviewDto": {
+        "type": "object",
+        "properties": {
+          "response": {
+            "type": "string",
+            "description": "The provider's reply, 1 to 2000 characters after trimming. It can be written ONCE (D-2) and cannot be edited or removed afterwards; a client who retracts their review takes the reply with it (D-3).",
+            "maxLength": 2000,
+            "example": "Merci beaucoup, ce fut un plaisir. Au plaisir de vous revoir."
+          }
+        },
+        "required": [
+          "response"
         ]
       },
       "ProviderReviewItemDto": {
@@ -5683,6 +5759,17 @@
           "createdAtUtc": {
             "type": "string",
             "format": "date-time"
+          },
+          "providerResponse": {
+            "type": "string",
+            "description": "The provider's single reply (D-2), or null. Written once and never edited; a retraction of the review takes it with it (D-3).",
+            "nullable": true,
+            "example": "Merci beaucoup, ce fut un plaisir."
+          },
+          "providerRespondedAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         },
         "required": [
@@ -5690,7 +5777,9 @@
           "rating",
           "comment",
           "authorDisplayName",
-          "createdAtUtc"
+          "createdAtUtc",
+          "providerResponse",
+          "providerRespondedAtUtc"
         ]
       },
       "ProviderReviewListDto": {

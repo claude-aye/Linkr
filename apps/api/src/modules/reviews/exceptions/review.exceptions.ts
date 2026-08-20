@@ -53,3 +53,21 @@ export class ReviewSubjectMissingException extends HttpException {
     super(message, HttpStatus.CONFLICT);
   }
 }
+
+/**
+ * 409 — this review already carries the provider's reply.
+ *
+ * ⚠️ UNLIKE THE « ALREADY REVIEWED » 409, THIS ONE IS A WALL, AND THAT IS D-2.
+ * The client's 409 is a door: they may retract and rewrite. The provider gets
+ * ONE reply, cannot edit it and cannot remove it — a reply that could be
+ * rewritten after the fact would be the same trap D-3 forbids the client, in
+ * the other direction. The only thing that frees the slot is the client
+ * retracting their review, which takes the reply with it.
+ */
+export class ReviewAlreadyAnsweredException extends HttpException {
+  constructor(
+    message = 'This review already has a provider response, and it cannot be changed',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
