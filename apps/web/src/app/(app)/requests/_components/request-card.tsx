@@ -1,8 +1,11 @@
 import type { components } from '@linkr/api-client';
+import type { MyReview } from '@/lib/reviews/types';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
   clientLocationPrecisionNotice,
 } from '@/lib/service-requests/location-precision';
+
+import { ReviewSection } from './review-section';
 
 /**
  * Thin client-facing card for one of the user's own service requests (Phase
@@ -117,8 +120,32 @@ function Detail({
   );
 }
 
-export function RequestCard({ request }: { request: ClientRequest }) {
+export function RequestCard({
+  request,
+  review,
+}: {
+  request: ClientRequest;
+  review: MyReview | null;
+}) {
   const badge = STATUS_BADGES[request.status];
+
+  /**
+   * ⚠️ REVIEWABILITY IS `completedAtUtc`, NEVER `status === 'COMPLETED'` — the
+   * front mirrors the API gate exactly, and for the same reason. A request does
+   * not stay in COMPLETED: the hourly auto-release cron captures the balance
+   * after 72 h and the webhook moves it to PAID (and a refund moves it to
+   * REFUNDED). Keying the form on the current status would make it vanish from
+   * under a client who waited three days — precisely when people write reviews.
+   * `completed_at_utc` is stamped once when the job is marked done and never
+   * cleared, so it means « has reached COMPLETED », which is what D-1 says.
+   *
+   * The cast is the known *nullable* JSONB debt (CLAUDE.md §6): the generated
+   * `ServiceRequestResponseDto` degrades every nullable to
+   * `Record<string, never>`. Same surgical, documented cast the two monetary
+   * fields below already need.
+   */
+  const completedAtUtc = request.completedAtUtc as unknown as string | null;
+  const isReviewable = Boolean(completedAtUtc);
 
   // `estimatedAmount` / `estimatedCurrency` are nullable decimals, but the
   // generated `ServiceRequestResponseDto` degrades every nullable to
@@ -164,6 +191,10 @@ export function RequestCard({ request }: { request: ClientRequest }) {
           )}
         </Detail>
       </dl>
+
+      {isReviewable && (
+        <ReviewSection serviceRequestId={request.id} review={review} />
+      )}
     </li>
   );
 }

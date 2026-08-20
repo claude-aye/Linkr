@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -15,6 +16,7 @@ import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { MyReviewListDto } from './dto/my-review-list.dto';
 import { ReviewResponseDto } from './dto/review-response.dto';
 import { ReviewsService } from './reviews.service';
 
@@ -70,6 +72,23 @@ export class ReviewsController {
     @Body() dto: CreateReviewDto,
   ): Promise<ReviewResponseDto> {
     return this.service.create(user.sub, dto);
+  }
+
+  /**
+   * ⚠️ DECLARED BEFORE `@Delete(':id')` IS IRRELEVANT — but declaring a literal
+   * `mine` segment next to a `:id` route is not: on a `@Get`, `mine` would be
+   * captured as an `:id` if one existed. There is no `GET /reviews/:id` today,
+   * and if one is ever added it MUST come after this. Same trap as
+   * `GET /service-providers/me`.
+   */
+  @Get('mine')
+  @ApiOperation({
+    summary:
+      "The caller's own live reviews. Exists so that « see » and « retract » survive a page reload: the public item carries neither the request id nor an author id, so nothing else lets a client recognise their own review.",
+  })
+  @ApiResponse({ status: 200, type: MyReviewListDto })
+  listMine(@CurrentUser() user: JwtPayload): Promise<MyReviewListDto> {
+    return this.service.listMine(user.sub);
   }
 
   /**

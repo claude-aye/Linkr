@@ -53,6 +53,25 @@ export interface ProviderReviewRecord {
   authorDeleted: boolean;
 }
 
+/**
+ * One of the CALLER'S OWN reviews, as they need it to recognise and retract it.
+ *
+ * ⚠️ THIS EXISTS BECAUSE `ProviderReviewRecord` DELIBERATELY CANNOT SERVE IT.
+ * The public item carries neither `serviceRequestId` nor any author id (data
+ * minimisation — see its comment), so a client reloading their requests page
+ * has no way to tell which review is theirs, or what its id is. Without this
+ * read, the id would exist only in the POST response and the right of retraction
+ * (D-3) would survive exactly one page view.
+ */
+export interface MyReviewRecord {
+  id: string;
+  serviceRequestId: string;
+  serviceProviderId: string;
+  rating: number;
+  comment: string | null;
+  createdAtUtc: Date;
+}
+
 interface RawReviewRow {
   id: string;
   service_request_id: string;
@@ -211,6 +230,37 @@ export class ReviewsRepository {
       ),
     );
     return rows.length > 0;
+  }
+
+  /**
+   * The caller's own live reviews, newest first.
+   *
+   * Scoped by `author_user_id` in the WHERE — the same shape as the delete, so
+   * the two cannot drift on what « mine » means. Soft-deleted rows are excluded:
+   * a retracted review is gone for its author too, and showing it would invite
+   * a second retraction that can only 404.
+   *
+   * Capped like every other list in this codebase (no pagination, tracked debt).
+   * The consumer joins these against a page of requests by `serviceRequestId`,
+   * so this is ONE query for the whole page — never one per request.
+   */
+  async findMine(authorUserId: string, limit: number): Promise<MyReviewRecord[]> {
+    const rows: RawReviewRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM reviews r
+        WHERE r.author_user_id = $1
+          AND r.deleted_at_utc IS NULL
+        ORDER BY r.created_at_utc DESC, r.id DESC
+        LIMIT $2`,
+      [authorUserId, limit],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      serviceRequestId: row.service_request_id,
+      serviceProviderId: row.service_provider_id,
+      rating: row.rating,
+      comment: row.comment,
+      createdAtUtc: row.created_at_utc,
+    }));
   }
 
   /**

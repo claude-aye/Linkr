@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 
+import type { MyReview } from '@/lib/reviews/types';
+
 import { RequestCard, type ClientRequest } from './_components/request-card';
 
 // Reads the access cookie + the client's live requests — rendered per request.
@@ -21,13 +23,25 @@ const ACTIVE_STATUSES = new Set<ClientRequest['status']>([
   'COMPLETED',
 ]);
 
-function Section({ title, requests }: { title: string; requests: ClientRequest[] }) {
+function Section({
+  title,
+  requests,
+  reviews,
+}: {
+  title: string;
+  requests: ClientRequest[];
+  reviews: Map<string, MyReview>;
+}) {
   return (
     <section>
       <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
       <ul className="space-y-4">
         {requests.map((request) => (
-          <RequestCard key={request.id} request={request} />
+          <RequestCard
+            key={request.id}
+            request={request}
+            review={reviews.get(request.id) ?? null}
+          />
         ))}
       </ul>
     </section>
@@ -57,6 +71,34 @@ export default async function RequestsPage() {
     }
   } catch {
     requests = null;
+  }
+
+  /**
+   * The caller's own reviews, in ONE call, joined against the page by request id
+   * — never one lookup per card.
+   *
+   * ⚠️ THIS READ IS WHAT MAKES « SEE » AND « RETRACT » SURVIVE A RELOAD. The
+   * public review item deliberately carries neither the request id nor an author
+   * id, so nothing else can tell a client which review is theirs; without this,
+   * the id would live only in the POST response and the right of retraction
+   * (D-3) would last exactly one page view.
+   *
+   * Degraded on its own: a failure here empties the map, so every finished job
+   * shows the form instead of the review. That is the honest degradation — the
+   * API still answers 409 on a duplicate — and it must never blank the whole
+   * page, which is why it has its own try/catch and never touches `requests`.
+   * The envelope AND its items are typed natively — no mirror, no cast.
+   */
+  const reviews = new Map<string, MyReview>();
+  try {
+    const { data, error, response } = await client.GET('/reviews/mine', {});
+    if (!error && response.ok && data && Array.isArray(data.items)) {
+      for (const review of data.items) {
+        reviews.set(review.serviceRequestId, review);
+      }
+    }
+  } catch {
+    // Map stays empty — see above.
   }
 
   // API guarantees `created_at DESC` — `filter` preserves that order per section.
@@ -100,8 +142,12 @@ export default async function RequestsPage() {
           <div className="space-y-8">
             {/* A section header renders only when its bucket has ≥1 item — no
                 orphan « Terminées » heading above an empty list. */}
-            {active.length > 0 && <Section title="En cours" requests={active} />}
-            {done.length > 0 && <Section title="Terminées" requests={done} />}
+            {active.length > 0 && (
+              <Section title="En cours" requests={active} reviews={reviews} />
+            )}
+            {done.length > 0 && (
+              <Section title="Terminées" requests={done} reviews={reviews} />
+            )}
           </div>
         )}
       </section>

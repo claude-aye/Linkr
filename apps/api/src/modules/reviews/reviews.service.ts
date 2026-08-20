@@ -4,9 +4,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ServiceRequestStatus } from '../service-requests/enums/service-request-status.enum';
 import { ServiceRequestRepository } from '../service-requests/repositories/service-request.repository';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { MyReviewItemDto } from './dto/my-review-item.dto';
+import { MyReviewListDto } from './dto/my-review-list.dto';
 import { ProviderReviewItemDto } from './dto/provider-review-item.dto';
 import { ProviderReviewListDto } from './dto/provider-review-list.dto';
 import { ReviewResponseDto } from './dto/review-response.dto';
@@ -30,6 +31,17 @@ import {
  * truncated list never distorts the average.
  */
 export const PROVIDER_REVIEWS_LIMIT = 50;
+
+/**
+ * Hard cap on the caller's own reviews.
+ *
+ * 100 rather than 50, deliberately: the consumer is the client's requests page,
+ * which itself loads `?limit=100` requests and joins the two by request id. A
+ * smaller cap here would silently hide the review of an older-but-visible
+ * request — the retraction button would vanish for a review that is still on
+ * screen. The two caps are meant to match; if one moves, move the other.
+ */
+export const MY_REVIEWS_LIMIT = 100;
 
 @Injectable()
 export class ReviewsService {
@@ -69,7 +81,19 @@ export class ReviewsService {
     if (request.clientUserId !== callerUserId) {
       throw new ForbiddenException('Only the client can review this request');
     }
-    if (request.status !== ServiceRequestStatus.COMPLETED) {
+    // ⚠️ THE GATE IS `completedAtUtc`, NOT `status === COMPLETED`, AND THE
+    // DIFFERENCE IS A 72-HOUR WINDOW. D-1 says « a request that HAS REACHED
+    // COMPLETED », and a request does not stay there: the hourly auto-release
+    // cron captures the balance after PLATFORM_AUTO_RELEASE_HOURS and the
+    // webhook moves it COMPLETED → PAID. Gating on the CURRENT status would
+    // therefore let the right to review expire silently three days after the
+    // job — exactly the window in which people actually write one — and a
+    // refund (COMPLETED/PAID → REFUNDED) would close it too. `completed_at_utc`
+    // is an audit-trail timestamp: stamped once when the job is marked done,
+    // never cleared, and null for everything that never got there (measured:
+    // OPEN / ASSIGNED / IN_PROGRESS all carry null). It is the literal encoding
+    // of D-1's wording.
+    if (request.completedAtUtc === null) {
       throw new ReviewRequiresCompletedRequestException();
     }
 
@@ -127,6 +151,24 @@ export class ReviewsService {
     if (!deleted) throw new NotFoundException('Review not found');
 
     this.logger.log(`Client ${callerUserId} deleted review ${reviewId}`);
+  }
+
+  /**
+   * The caller's own reviews — what makes « see » and « retract » survive a
+   * page reload.
+   *
+   * Without it the review id would exist only in the POST response, and D-3's
+   * right of retraction would last exactly one page view: the public item
+   * carries neither the request id nor an author id, on purpose, so nothing
+   * else can tell the caller which review is theirs.
+   */
+  async listMine(callerUserId: string): Promise<MyReviewListDto> {
+    const records = await this.reviewsRepo.findMine(callerUserId, MY_REVIEWS_LIMIT);
+
+    const dto = new MyReviewListDto();
+    dto.items = records.map((record) => MyReviewItemDto.from(record));
+    dto.limit = MY_REVIEWS_LIMIT;
+    return dto;
   }
 
   /**
