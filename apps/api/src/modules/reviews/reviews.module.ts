@@ -1,11 +1,9 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { ServiceRequestsModule } from '../service-requests/service-requests.module';
-import { Review } from './entities/review.entity';
 import { ProviderReviewsController } from './provider-reviews.controller';
-import { ReviewsRepository } from './repositories/reviews.repository';
+import { ReviewsDataModule } from './reviews-data.module';
 import { ReviewsController } from './reviews.controller';
 import { ReviewsService } from './reviews.service';
 
@@ -20,14 +18,18 @@ import { ReviewsService } from './reviews.service';
  * a guard, rather than inventing a `RateLimitModule` as a second pattern for the
  * same job.
  *
- * Nothing is exported: reviews have one writer and one reader, and both are this
- * module's own controllers. Tranche 3 (reviews inside `discover`) will be an
- * aggregate read, and the N+1 warning belongs there — one grouped query for the
- * whole page, never one per provider.
+ * Nothing is exported from HERE: the controllers and the service are this
+ * module's own. What discovery needed in tranche 3 is the repository, and it
+ * takes it from `ReviewsDataModule` — see that file for why the split exists.
+ * The N+1 guard lives in the repository as `findAggregatesForProviders`: one
+ * grouped query for the whole page, never one per provider.
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Review]),
+    // The repository moved to a LEAF module so `ServiceProvidersModule` can
+    // read the rating aggregate for a discovery page without importing this
+    // module back — that would be a cycle, since this module imports it.
+    ReviewsDataModule,
     ServiceRequestsModule,
     // `ServiceProvidersService.loadOwnedProvider` — the ownership guard behind
     // the provider's reply (404 unknown / 403 not managed). Still one-way:
@@ -36,6 +38,6 @@ import { ReviewsService } from './reviews.service';
     ServiceProvidersModule,
   ],
   controllers: [ReviewsController, ProviderReviewsController],
-  providers: [ReviewsRepository, ReviewsService, RateLimitGuard],
+  providers: [ReviewsService, RateLimitGuard],
 })
 export class ReviewsModule {}

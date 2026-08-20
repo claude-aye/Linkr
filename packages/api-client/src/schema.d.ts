@@ -1622,6 +1622,17 @@ export interface components {
              * @enum {string}
              */
             categoryVerificationStatus: "PENDING" | "VERIFIED" | "REJECTED" | "NOT_REQUIRED";
+            /**
+             * @description Live review count for this provider (soft-deleted reviews excluded). 0 when never reviewed, and also 0 if the rating read failed — discovery survives a broken aggregate.
+             * @example 4
+             */
+            reviewCount: number;
+            /**
+             * Format: float
+             * @description Mean rating rounded to 2 decimals, or null below 3 live reviews (D-4). Gated server-side — the front never hides it, and never sorts on it.
+             * @example 4.67
+             */
+            averageRating: number | null;
         };
         ServiceProviderResponseDto: {
             id: string;

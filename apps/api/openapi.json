@@ -3946,6 +3946,18 @@
               "NOT_REQUIRED"
             ],
             "description": "VERIFIED (Hard Trust) | NOT_REQUIRED (Social Trust) for the requested category."
+          },
+          "reviewCount": {
+            "type": "integer",
+            "description": "Live review count for this provider (soft-deleted reviews excluded). 0 when never reviewed, and also 0 if the rating read failed — discovery survives a broken aggregate.",
+            "example": 4
+          },
+          "averageRating": {
+            "type": "number",
+            "description": "Mean rating rounded to 2 decimals, or null below 3 live reviews (D-4). Gated server-side — the front never hides it, and never sorts on it.",
+            "format": "float",
+            "nullable": true,
+            "example": 4.67
           }
         },
         "required": [
@@ -3953,7 +3965,9 @@
           "providerType",
           "serviceRadiusKm",
           "distanceMeters",
-          "categoryVerificationStatus"
+          "categoryVerificationStatus",
+          "reviewCount",
+          "averageRating"
         ]
       },
       "ServiceProviderResponseDto": {

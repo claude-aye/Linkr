@@ -4,6 +4,7 @@ import { UsersModule } from '../users/users.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { OrganizationMembershipsModule } from '../organization-memberships/organization-memberships.module';
 import { ServicesCatalogModule } from '../services-catalog/services-catalog.module';
+import { ReviewsDataModule } from '../reviews/reviews-data.module';
 import { ServiceProvider } from './entities/service-provider.entity';
 import { ProfessionalServiceZone } from './entities/professional-service-zone.entity';
 import { ProfessionalServiceCategory } from './entities/professional-service-category.entity';
@@ -34,6 +35,11 @@ import {
     OrganizationsModule,
     OrganizationMembershipsModule,
     ServicesCatalogModule,
+    // Reputation on a discovery card (D tranche 3): `ReviewsRepository` and
+    // its batch aggregate. Deliberately the DATA module and not
+    // `ReviewsModule` — that one imports THIS module, so importing it back
+    // would be a cycle. See `reviews-data.module.ts`.
+    ReviewsDataModule,
   ],
   controllers: [
     ServiceProvidersController,
