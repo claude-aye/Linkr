@@ -25,6 +25,9 @@ import {
   NotificationsSection,
   type NotificationView,
 } from './_components/notifications-section';
+import type { ProviderReviewList } from '@/lib/reviews/types';
+
+import { ReviewsReceivedSection } from './_components/reviews-received-section';
 
 /**
  * Both notification types are consumed NATIVELY from the generated schema — no
@@ -584,6 +587,38 @@ export default async function DashboardPage() {
     }
   }
 
+  /**
+   * Reviews received — same shape as every other section read here: inside the
+   * `provider` branch, its own try/catch, `null` on failure, and it NEVER
+   * touches the page-wide `failed` (a review outage must not blank the inbox).
+   *
+   * Reuses `GET /service-providers/{id}/reviews`, the SAME endpoint the public
+   * profile calls, with the provider's own id: a provider's reviews are not a
+   * different set depending on who is looking, and a second read would be a
+   * second opinion on the same data. The reply column rides on that DTO —
+   * public by design (D-2): a reply only its author could see would rebalance
+   * nothing.
+   *
+   * `averageRating` is deliberately NOT passed down: it arrives gated at three
+   * (D-4), and this section exists to answer individual reviews, not to grade
+   * the provider on their own dashboard.
+   */
+  let reviewsReceived: ProviderReviewList | null = null;
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET(
+        '/service-providers/{providerId}/reviews',
+        { params: { path: { providerId: provider.id } } },
+      );
+      if (!error && response.ok && data) {
+        reviewsReceived = data;
+      }
+    } catch {
+      reviewsReceived = null;
+    }
+  }
+
   /** Trade id → display label. The claims carry no name of their own. */
   const catalogLabels = new Map(
     catalog.map((category) => [category.id, pickTranslation(category.nameTranslations)]),
@@ -760,9 +795,31 @@ export default async function DashboardPage() {
     />
   );
 
+  /**
+   * « Avis reçus » sits last, in BOTH orders — the same placement argument as
+   * notifications, for the same reason: appending is the only position that
+   * leaves the locked inbox-first decision AND the zero-trade hoist untouched
+   * (`hoistTrades` is neither read nor modified here).
+   *
+   * It also reads right after notifications rather than before: a review is not
+   * time-critical — nothing expires, and the reply can be written a week later —
+   * whereas the inbox above it is. Absent entirely when the read failed
+   * (`null`), like its sibling; the `key` is required for the same reason too,
+   * since the array is re-ordered by the hoist and stable keys make React MOVE
+   * sections instead of rebuilding whatever sits at an index (which would wipe
+   * a half-typed reply).
+   */
+  const reviewsSection = reviewsReceived && (
+    <ReviewsReceivedSection
+      key="reviews"
+      items={reviewsReceived.items}
+      reviewCount={reviewsReceived.reviewCount}
+    />
+  );
+
   const sections = hoistTrades
-    ? [tradesSection, pendingSection, jobsSection, notificationsSection]
-    : [pendingSection, jobsSection, tradesSection, notificationsSection];
+    ? [tradesSection, pendingSection, jobsSection, notificationsSection, reviewsSection]
+    : [pendingSection, jobsSection, tradesSection, notificationsSection, reviewsSection];
 
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">

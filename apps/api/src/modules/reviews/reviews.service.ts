@@ -4,14 +4,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ServiceProvidersService } from '../service-providers/service-providers.service';
 import { ServiceRequestRepository } from '../service-requests/repositories/service-request.repository';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { MyReviewItemDto } from './dto/my-review-item.dto';
+import { RespondToReviewDto } from './dto/respond-to-review.dto';
 import { MyReviewListDto } from './dto/my-review-list.dto';
 import { ProviderReviewItemDto } from './dto/provider-review-item.dto';
 import { ProviderReviewListDto } from './dto/provider-review-list.dto';
 import { ReviewResponseDto } from './dto/review-response.dto';
 import {
+  ReviewAlreadyAnsweredException,
   ReviewAlreadyExistsException,
   ReviewRequiresCompletedRequestException,
   ReviewSubjectMissingException,
@@ -50,6 +53,7 @@ export class ReviewsService {
   constructor(
     private readonly reviewsRepo: ReviewsRepository,
     private readonly requestRepo: ServiceRequestRepository,
+    private readonly providersService: ServiceProvidersService,
   ) {}
 
   /**
@@ -151,6 +155,59 @@ export class ReviewsService {
     if (!deleted) throw new NotFoundException('Review not found');
 
     this.logger.log(`Client ${callerUserId} deleted review ${reviewId}`);
+  }
+
+  /**
+   * The provider answers a review of theirs — once (D-2).
+   *
+   * ⚠️ THE ASYMMETRY THIS CLOSES IS THE REASON THE WHOLE CHANTIER IS DELICATE.
+   * An unhappy client costs a tradesperson weeks of revenue in thirty seconds,
+   * and the tradesperson is the side of the marketplace that has to be recruited
+   * first. A single reply, published where the review is read, rebalances that
+   * without opening a thread that degenerates — which is why the client does not
+   * answer back, and why the provider gets exactly one turn.
+   *
+   * ⚠️ 403 HERE, WHERE THE DELETE USES 404, AND THE DIFFERENCE IS DELIBERATE.
+   * The delete refuses to confirm that an id is someone else's real review,
+   * because a client's own reviews are not enumerable by anyone else. Review ids
+   * ARE enumerable here — `GET /service-providers/{id}/reviews` returns them to
+   * any authenticated caller — so a 403 discloses nothing, and it tells a
+   * provider something useful instead of something misleading.
+   *
+   * Ownership is `loadOwnedProvider`, the codebase's existing guard: 404 for an
+   * unknown provider, 403 for one the caller does not manage. Nothing about
+   * organisation RBAC is re-decided here.
+   */
+  async respondToReview(
+    callerUserId: string,
+    reviewId: string,
+    dto: RespondToReviewDto,
+  ): Promise<void> {
+    const target = await this.reviewsRepo.findResponseTarget(reviewId);
+    if (!target) throw new NotFoundException('Review not found');
+
+    // Throws 404 / 403 — the caller must manage the provider being reviewed.
+    await this.providersService.loadOwnedProvider(
+      callerUserId,
+      target.serviceProviderId,
+    );
+
+    // Clean 409 on the ordinary path; the `provider_response IS NULL` predicate
+    // in the UPDATE is the backstop for two simultaneous replies.
+    if (target.providerResponse !== null) {
+      throw new ReviewAlreadyAnsweredException();
+    }
+
+    const written = await this.reviewsRepo.writeProviderResponse(
+      reviewId,
+      target.serviceProviderId,
+      dto.response,
+    );
+    if (!written) throw new ReviewAlreadyAnsweredException();
+
+    this.logger.log(
+      `Provider ${target.serviceProviderId} answered review ${reviewId}`,
+    );
   }
 
   /**

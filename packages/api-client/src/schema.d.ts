@@ -1346,6 +1346,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reviews/{id}/response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer a review of one's own provider profile — once (D-2). The reply is published where the review is read; it cannot be edited or removed, and the client does not answer back. */
+        post: operations["ReviewsController_respond"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reviews/{id}": {
         parameters: {
             query?: never;
@@ -2342,6 +2359,13 @@ export interface components {
             comment: string | null;
             /** Format: date-time */
             createdAtUtc: string;
+            /**
+             * @description The provider's single reply (D-2), or null. Written once and never edited; a retraction of the review takes it with it (D-3).
+             * @example Merci beaucoup, ce fut un plaisir.
+             */
+            providerResponse: string | null;
+            /** Format: date-time */
+            providerRespondedAtUtc: string | null;
         };
         MyReviewListDto: {
             items: components["schemas"]["MyReviewItemDto"][];
@@ -2350,6 +2374,13 @@ export interface components {
              * @example 100
              */
             limit: number;
+        };
+        RespondToReviewDto: {
+            /**
+             * @description The provider's reply, 1 to 2000 characters after trimming. It can be written ONCE (D-2) and cannot be edited or removed afterwards; a client who retracts their review takes the reply with it (D-3).
+             * @example Merci beaucoup, ce fut un plaisir. Au plaisir de vous revoir.
+             */
+            response: string;
         };
         ProviderReviewItemDto: {
             /** Format: uuid */
@@ -2365,6 +2396,13 @@ export interface components {
             authorDisplayName: string;
             /** Format: date-time */
             createdAtUtc: string;
+            /**
+             * @description The provider's single reply (D-2), or null. Written once and never edited; a retraction of the review takes it with it (D-3).
+             * @example Merci beaucoup, ce fut un plaisir.
+             */
+            providerResponse: string | null;
+            /** Format: date-time */
+            providerRespondedAtUtc: string | null;
         };
         ProviderReviewListDto: {
             items: components["schemas"]["ProviderReviewItemDto"][];
@@ -5167,6 +5205,65 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MyReviewListDto"];
                 };
+            };
+        };
+    };
+    ReviewsController_respond: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RespondToReviewDto"];
+            };
+        };
+        responses: {
+            /** @description Reply published. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or blank reply. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The caller does not manage the provider this review is about. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or retracted review. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description This review already carries a reply. Unlike the client's 409 this is final — a reply is written once and never changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The caller spent its budget for the current window. Carries `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

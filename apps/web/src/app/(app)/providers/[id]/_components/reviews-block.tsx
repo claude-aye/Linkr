@@ -58,6 +58,21 @@ function ReviewRow({ review }: { review: ProviderReview }) {
           {review.comment}
         </p>
       )}
+
+      {/* The provider's single reply (D-2), published where the review is READ —
+          that is the whole point: a reply only its author could see would
+          rebalance nothing. Indented and labelled so it reads as an answer to
+          the review above, never as a second review. */}
+      {review.providerResponse && (
+        <div className="mt-3 border-l-2 border-zinc-200 pl-3 dark:border-zinc-700">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+            Réponse du prestataire
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+            {review.providerResponse}
+          </p>
+        </div>
+      )}
     </li>
   );
 }

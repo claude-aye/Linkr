@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
+import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { ServiceRequestsModule } from '../service-requests/service-requests.module';
 import { Review } from './entities/review.entity';
 import { ProviderReviewsController } from './provider-reviews.controller';
@@ -25,7 +26,15 @@ import { ReviewsService } from './reviews.service';
  * whole page, never one per provider.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Review]), ServiceRequestsModule],
+  imports: [
+    TypeOrmModule.forFeature([Review]),
+    ServiceRequestsModule,
+    // `ServiceProvidersService.loadOwnedProvider` — the ownership guard behind
+    // the provider's reply (404 unknown / 403 not managed). Still one-way:
+    // nothing imports `reviews`, so importing this sink cannot create a cycle,
+    // exactly as `demand-signals` does.
+    ServiceProvidersModule,
+  ],
   controllers: [ReviewsController, ProviderReviewsController],
   providers: [ReviewsRepository, ReviewsService, RateLimitGuard],
 })

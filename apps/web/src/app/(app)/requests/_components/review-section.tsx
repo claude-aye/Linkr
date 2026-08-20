@@ -99,6 +99,22 @@ export function ReviewSection({
           </p>
         )}
 
+        {/* The provider's reply (D-2). The client READS it and never answers it
+            — that is the decision, not a missing feature: one reply rebalances
+            the asymmetry without opening a thread that degenerates. Retracting
+            the review takes the reply with it (D-3), which the confirmation
+            dialog below says in as many words. */}
+        {review.providerResponse && (
+          <div className="mt-3 border-l-2 border-zinc-200 pl-3 dark:border-zinc-700">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              Réponse du prestataire
+            </p>
+            <p className="mt-1 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+              {review.providerResponse}
+            </p>
+          </div>
+        )}
+
         {error && (
           <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
             {error}
@@ -130,7 +146,8 @@ export function ReviewSection({
         >
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             Votre avis ne sera plus visible sur le profil du prestataire, et il cessera de
-            compter dans sa note. Vous pourrez en écrire un nouveau pour cette demande.
+            compter dans sa note. La réponse du prestataire, s’il en a écrit une, disparaîtra
+            avec lui. Vous pourrez ensuite en écrire un nouveau pour cette demande.
           </p>
         </ConfirmDialog>
       </div>

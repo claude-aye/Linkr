@@ -17,6 +17,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { MyReviewListDto } from './dto/my-review-list.dto';
+import { RespondToReviewDto } from './dto/respond-to-review.dto';
 import { ReviewResponseDto } from './dto/review-response.dto';
 import { ReviewsService } from './reviews.service';
 
@@ -41,6 +42,15 @@ import { ReviewsService } from './reviews.service';
  */
 const REVIEW_LIMIT = 10;
 const REVIEW_WINDOW_SECONDS = 60 * 60;
+
+/**
+ * Same budget for the provider's replies, and for the same reason: honest
+ * traffic is bounded by how many unanswered reviews the caller actually owns,
+ * so ten an hour is far above real use while still capping someone hammering
+ * the route with rejected attempts (the guard counts attempts, not successes).
+ */
+const RESPONSE_LIMIT = 10;
+const RESPONSE_WINDOW_SECONDS = 60 * 60;
 
 @ApiTags('reviews')
 @UseGuards(RateLimitGuard)
@@ -89,6 +99,47 @@ export class ReviewsController {
   @ApiResponse({ status: 200, type: MyReviewListDto })
   listMine(@CurrentUser() user: JwtPayload): Promise<MyReviewListDto> {
     return this.service.listMine(user.sub);
+  }
+
+  /**
+   * The provider's single reply (D-2).
+   *
+   * A POST rather than a PATCH: this CREATES the one reply a review may carry,
+   * and it is not an update — there is nothing to update afterwards, ever. The
+   * 409 below is a WALL, unlike the client's « already reviewed » 409, which is
+   * a door: the provider cannot edit or remove their reply, and the only thing
+   * that frees the slot is the client retracting the review (which takes the
+   * reply with it, D-3).
+   */
+  @Post(':id/response')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RateLimit({ limit: RESPONSE_LIMIT, windowSeconds: RESPONSE_WINDOW_SECONDS })
+  @ApiOperation({
+    summary:
+      "Answer a review of one's own provider profile — once (D-2). The reply is published where the review is read; it cannot be edited or removed, and the client does not answer back.",
+  })
+  @ApiResponse({ status: 204, description: 'Reply published.' })
+  @ApiResponse({ status: 400, description: 'Missing or blank reply.' })
+  @ApiResponse({
+    status: 403,
+    description: 'The caller does not manage the provider this review is about.',
+  })
+  @ApiResponse({ status: 404, description: 'Unknown or retracted review.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'This review already carries a reply. Unlike the client\'s 409 this is final — a reply is written once and never changed.',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'The caller spent its budget for the current window. Carries `Retry-After`.',
+  })
+  respond(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RespondToReviewDto,
+  ): Promise<void> {
+    return this.service.respondToReview(user.sub, id, dto);
   }
 
   /**

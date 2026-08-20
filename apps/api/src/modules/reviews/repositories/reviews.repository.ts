@@ -51,6 +51,22 @@ export interface ProviderReviewRecord {
   authorFirstName: string | null;
   authorLastName: string | null;
   authorDeleted: boolean;
+  /**
+   * The provider's single reply (D-2), or null.
+   *
+   * Public by design: a reply that only its author could see would not rebalance
+   * anything. It is the whole point of D-2 — the tradesperson answers where the
+   * review is read.
+   */
+  providerResponse: string | null;
+  providerRespondedAtUtc: Date | null;
+}
+
+/** Just enough of a live review to decide whether a reply may be written. */
+export interface ReviewResponseTarget {
+  id: string;
+  serviceProviderId: string;
+  providerResponse: string | null;
 }
 
 /**
@@ -70,6 +86,9 @@ export interface MyReviewRecord {
   rating: number;
   comment: string | null;
   createdAtUtc: Date;
+  /** The provider's single reply (D-2), or null. The author reads it; they never answer it. */
+  providerResponse: string | null;
+  providerRespondedAtUtc: Date | null;
 }
 
 interface RawReviewRow {
@@ -80,6 +99,8 @@ interface RawReviewRow {
   comment: string | null;
   created_at_utc: Date;
   updated_at_utc: Date;
+  provider_response: string | null;
+  provider_responded_at_utc: Date | null;
 }
 
 interface RawProviderReviewRow {
@@ -90,6 +111,8 @@ interface RawProviderReviewRow {
   author_first_name: string | null;
   author_last_name: string | null;
   author_deleted: boolean | null;
+  provider_response: string | null;
+  provider_responded_at_utc: Date | null;
   review_count: number;
   /** Already gated by the threshold IN SQL — null below it. See the query. */
   average_rating: number | null;
@@ -131,7 +154,8 @@ function mapRow(row: RawReviewRow): ReviewRecord {
 
 const SELECT_COLUMNS = `
   r.id, r.service_request_id, r.service_provider_id,
-  r.rating, r.comment, r.created_at_utc, r.updated_at_utc
+  r.rating, r.comment, r.created_at_utc, r.updated_at_utc,
+  r.provider_response, r.provider_responded_at_utc
 `;
 
 /**
@@ -260,7 +284,71 @@ export class ReviewsRepository {
       rating: row.rating,
       comment: row.comment,
       createdAtUtc: row.created_at_utc,
+      providerResponse: row.provider_response,
+      providerRespondedAtUtc: row.provider_responded_at_utc,
     }));
+  }
+
+  /**
+   * The live review a reply is aimed at, reduced to what the decision needs:
+   * which provider it is about, and whether it already carries a reply.
+   *
+   * Soft-deleted rows are excluded — a retracted review cannot be answered, and
+   * D-3 already says a retraction takes any reply with it.
+   */
+  async findResponseTarget(reviewId: string): Promise<ReviewResponseTarget | null> {
+    const rows: RawReviewRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS} FROM reviews r
+        WHERE r.id = $1 AND r.deleted_at_utc IS NULL`,
+      [reviewId],
+    );
+    return rows.length
+      ? {
+          id: rows[0].id,
+          serviceProviderId: rows[0].service_provider_id,
+          providerResponse: rows[0].provider_response,
+        }
+      : null;
+  }
+
+  /**
+   * Writes the provider's single reply (D-2).
+   *
+   * ⚠️ BOTH COLUMNS ARE SET IN THE SAME STATEMENT, AND THAT IS NOT OPTIONAL:
+   * `chk_reviews_response_paired` rejects a row carrying one without the other.
+   * The database refuses a half-written reply rather than trusting this method
+   * to remember.
+   *
+   * ⚠️ `provider_response IS NULL` IS IN THE `WHERE`, NOT ONLY IN THE SERVICE.
+   * The service checks first for a clean 409; this predicate is what makes
+   * « at most one reply » true even under two simultaneous writes — the second
+   * UPDATE matches zero rows instead of overwriting the first. Same reason the
+   * write path and the read path share a predicate everywhere else in this
+   * codebase.
+   *
+   * `updated_at_utc` is set by hand: raw SQL bypasses TypeORM's
+   * `@UpdateDateColumn`, and the column default only fires on INSERT.
+   */
+  async writeProviderResponse(
+    reviewId: string,
+    serviceProviderId: string,
+    response: string,
+  ): Promise<boolean> {
+    const rows = updateReturningRows(
+      await this.repo.query(
+        `UPDATE reviews r
+            SET provider_response = $3,
+                provider_responded_at_utc = now(),
+                updated_at_utc = now()
+          WHERE r.id = $1
+            AND r.service_provider_id = $2
+            AND r.deleted_at_utc IS NULL
+            AND r.provider_response IS NULL
+        RETURNING r.id`,
+        [reviewId, serviceProviderId, response],
+      ),
+    );
+    return rows.length > 0;
   }
 
   /**
@@ -308,6 +396,8 @@ export class ReviewsRepository {
          u.first_name                      AS author_first_name,
          u.last_name                       AS author_last_name,
          (u.deleted_at_utc IS NOT NULL)    AS author_deleted,
+         r.provider_response,
+         r.provider_responded_at_utc,
          (COUNT(*) OVER ())::int           AS review_count,
          CASE WHEN COUNT(*) OVER () >= ${RATING_AVERAGE_MIN_REVIEWS}
               THEN (ROUND(AVG(r.rating) OVER (), 2))::float8
@@ -330,6 +420,8 @@ export class ReviewsRepository {
         authorFirstName: row.author_first_name,
         authorLastName: row.author_last_name,
         authorDeleted: row.author_deleted === true,
+        providerResponse: row.provider_response,
+        providerRespondedAtUtc: row.provider_responded_at_utc,
       })),
       reviewCount: rows.length ? rows[0].review_count : 0,
       averageRating: rows.length ? rows[0].average_rating : null,
