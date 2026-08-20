@@ -25,6 +25,7 @@ import {
   ServiceZoneRecord,
   ProfessionalServiceZoneRepository,
 } from './repositories/professional-service-zone.repository';
+import { ReviewsRepository } from '../reviews/repositories/reviews.repository';
 import {
   NotProviderOwnerException,
   ProviderOwnerConflictException,
@@ -40,6 +41,7 @@ export class ServiceProvidersService {
     private readonly usersRepository: UsersRepository,
     private readonly organizationsRepository: OrganizationsRepository,
     private readonly membershipsRepository: OrganizationMembershipsRepository,
+    private readonly reviewsRepo: ReviewsRepository,
   ) {}
 
   async createProvider(
@@ -127,6 +129,27 @@ export class ServiceProvidersService {
    * Hybrid geo discovery: active providers covering the client point for a
    * given category (radius OR named zone), sorted by distance. Same pagination
    * envelope as GET /service-requests.
+   *
+   * ⚠️ SORTED BY PROXIMITY, AND ONLY BY PROXIMITY — the rating rides along as
+   * information, never as a ranking key. There is no sort parameter, and the
+   * DTO is `forbidNonWhitelisted`, so a forged `?sort=rating` is a 400 rather
+   * than a silently ignored hint. Adding one is a product decision that has been
+   * taken and deferred, with a measurable condition for reopening it; do not
+   * prepare for it here.
+   *
+   * ⚠️ THE RATING IS ONE GROUPED QUERY FOR THE WHOLE PAGE, NEVER ONE PER CARD.
+   * The per-provider aggregate (`findByProviderWithAggregate`) exists and is
+   * exactly the wrong tool in a loop; `findAggregatesForProviders` takes the
+   * page's ids as a set. The query count of this method is CONSTANT — count,
+   * rows, aggregate — whether the page holds one provider or fifty.
+   *
+   * ⚠️ A BROKEN AGGREGATE MUST NOT COST US THE SEARCH. Reputation is a
+   * decoration on a result; the result is the product. So the rating read is
+   * caught on its own, and a failure degrades every card to « no reputation
+   * shown » rather than failing discovery — the client still gets their
+   * providers. The failure is loud in the log and silent on screen, which is the
+   * right way round: the user cannot act on it, and an error card where a rating
+   * would go tells them nothing useful.
    */
   async discover(query: DiscoverProvidersQueryDto): Promise<{
     items: DiscoveredProviderDto[];
@@ -145,11 +168,34 @@ export class ServiceProvidersService {
       limit,
     });
 
+    // One grouped query for the whole page. An empty page asks nothing at all.
+    let ratings = new Map<string, { reviewCount: number; averageRating: number | null }>();
+    try {
+      ratings = await this.reviewsRepo.findAggregatesForProviders(
+        items.map((item) => item.id),
+      );
+    } catch (err) {
+      this.logger.error(
+        `Discovery rating aggregate failed for category ${query.categoryId}; ` +
+          `serving ${items.length} result(s) without reputation`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+
+    // A provider with no live review has no row in the aggregate — and after a
+    // failure, nobody does. Both read as « nothing to say », which is what the
+    // card renders as silence rather than as « 0 avis ».
+    const enriched: DiscoveredProviderDto[] = items.map((item) => ({
+      ...item,
+      reviewCount: ratings.get(item.id)?.reviewCount ?? 0,
+      averageRating: ratings.get(item.id)?.averageRating ?? null,
+    }));
+
     this.logger.log(
       `Discovery for category ${query.categoryId} at (${query.lat}, ${query.lng}): ${total} match(es)`,
     );
 
-    return { items, total, page, limit };
+    return { items: enriched, total, page, limit };
   }
 
   async updateProvider(

@@ -179,6 +179,52 @@ export const PG_UNIQUE_VIOLATION = '23505';
  */
 export const RATING_AVERAGE_MIN_REVIEWS = 3;
 
+/**
+ * The rating aggregate — count and D-4-gated average — as ONE SQL fragment,
+ * shared by both readers of it.
+ *
+ * ⚠️ THIS EXISTS SO THE THRESHOLD HAS EXACTLY ONE SOURCE. Two callers now need
+ * the same aggregate in two different shapes: the single-provider read wants it
+ * riding along each row as a WINDOW function (`OVER ()`, evaluated before
+ * `LIMIT`, so the cap cannot make it lie), while the batch read wants it as a
+ * plain aggregate under `GROUP BY`. The only thing that differs between them is
+ * that suffix — so the suffix is the parameter, and the rule is not.
+ *
+ * Writing the `CASE` out twice would have been shorter and would have worked on
+ * the day it was written. It is also exactly how a threshold drifts: the batch
+ * variant could gate at a different number, round differently, or omit the gate
+ * entirely, and nothing would fail — a result card would simply start showing an
+ * average the profile still refuses to show, with no error anywhere.
+ *
+ * `over` is a compile-time literal, never caller data: nothing interpolated here
+ * crosses a trust boundary.
+ */
+function ratingAggregateSql(over: '' | ' OVER ()'): string {
+  return `
+    (COUNT(*)${over})::int AS review_count,
+    CASE WHEN COUNT(*)${over} >= ${RATING_AVERAGE_MIN_REVIEWS}
+         THEN (ROUND(AVG(r.rating)${over}, 2))::float8
+    END AS average_rating
+  `;
+}
+
+/**
+ * The rating aggregate for ONE provider, as a card or a profile header needs it.
+ *
+ * `averageRating` is already gated: null below {@link RATING_AVERAGE_MIN_REVIEWS}
+ * live reviews (D-4), decided in SQL. A consumer never re-derives it.
+ */
+export interface ProviderRatingAggregate {
+  reviewCount: number;
+  averageRating: number | null;
+}
+
+interface RawAggregateRow {
+  service_provider_id: string;
+  review_count: number;
+  average_rating: number | null;
+}
+
 @Injectable()
 export class ReviewsRepository {
   constructor(
@@ -398,10 +444,7 @@ export class ReviewsRepository {
          (u.deleted_at_utc IS NOT NULL)    AS author_deleted,
          r.provider_response,
          r.provider_responded_at_utc,
-         (COUNT(*) OVER ())::int           AS review_count,
-         CASE WHEN COUNT(*) OVER () >= ${RATING_AVERAGE_MIN_REVIEWS}
-              THEN (ROUND(AVG(r.rating) OVER (), 2))::float8
-         END                               AS average_rating
+         ${ratingAggregateSql(' OVER ()')}
        FROM reviews r
        LEFT JOIN users u ON u.id = r.author_user_id
        WHERE r.service_provider_id = $1
@@ -426,5 +469,57 @@ export class ReviewsRepository {
       reviewCount: rows.length ? rows[0].review_count : 0,
       averageRating: rows.length ? rows[0].average_rating : null,
     };
+  }
+
+  /**
+   * The rating aggregate for a SET of providers, in ONE grouped query.
+   *
+   * ⚠️ THIS IS THE N+1 GUARD, AND IT IS THE WHOLE POINT OF THE METHOD.
+   * {@link findByProviderWithAggregate} aggregates for ONE provider. Calling it
+   * in a loop over a page of discovery results would add one round trip per
+   * card — invisible on a fixture with two providers, and quadratic-looking the
+   * day a real search returns fifty. This takes the ids as a set and answers in
+   * a single `GROUP BY`, so the query count is CONSTANT regardless of how many
+   * providers the page holds.
+   *
+   * ⚠️ THE SOFT-DELETE EXCLUSION AND THE D-4 THRESHOLD LIVE IN HERE, NOT AT THE
+   * CALLER. The `deleted_at_utc IS NULL` predicate is in the same statement as
+   * the counts, and the average comes out of the SHARED
+   * {@link ratingAggregateSql} fragment — the same one the single-provider read
+   * uses. A caller that forgets either rule has to be impossible, not merely
+   * discouraged: a retracted review must not keep weighing on a card, and a card
+   * must never show an average the profile refuses to show.
+   *
+   * A provider with no live review simply has no row in the result. The caller
+   * reads a miss as "zero reviews, no average", which is the same thing the
+   * single-provider read returns for an empty set — the two cannot disagree.
+   *
+   * `= ANY($1::uuid[])` takes the whole set as ONE bound parameter: no
+   * placeholder list to build, and nothing interpolated into the SQL.
+   */
+  async findAggregatesForProviders(
+    serviceProviderIds: string[],
+  ): Promise<Map<string, ProviderRatingAggregate>> {
+    // No ids, no question to ask. Skipping the round trip here is also what
+    // keeps "one query for the page" true of the empty page.
+    if (serviceProviderIds.length === 0) return new Map();
+
+    const rows: RawAggregateRow[] = await this.repo.query(
+      `SELECT
+         r.service_provider_id,
+         ${ratingAggregateSql('')}
+       FROM reviews r
+       WHERE r.service_provider_id = ANY($1::uuid[])
+         AND r.deleted_at_utc IS NULL
+       GROUP BY r.service_provider_id`,
+      [serviceProviderIds],
+    );
+
+    return new Map(
+      rows.map((row) => [
+        row.service_provider_id,
+        { reviewCount: row.review_count, averageRating: row.average_rating },
+      ]),
+    );
   }
 }
