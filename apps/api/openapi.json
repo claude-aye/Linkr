@@ -3289,6 +3289,111 @@
           "demand-signals"
         ]
       }
+    },
+    "/reviews": {
+      "post": {
+        "operationId": "ReviewsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body, or a fractional rating."
+          },
+          "403": {
+            "description": "The caller is not the client of this request."
+          },
+          "404": {
+            "description": "Unknown service request."
+          },
+          "409": {
+            "description": "The request is not COMPLETED, or it already carries a live review. The second case is a door, not a wall: delete the existing review and write a new one (D-3)."
+          },
+          "429": {
+            "description": "The caller spent its budget for the current window. Carries `Retry-After`."
+          }
+        },
+        "summary": "Write the client's review of a COMPLETED request. The reviewed provider and the author are resolved server-side from the request — neither is accepted from the body — which is what makes a review unfalsifiable (D-1).",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/reviews/{id}": {
+      "delete": {
+        "operationId": "ReviewsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Review retracted."
+          },
+          "404": {
+            "description": "Unknown, already retracted, or not the caller's review — deliberately one answer, so a 403 cannot confirm that an id belongs to someone else."
+          }
+        },
+        "summary": "Retract one's own review (soft delete). Takes the provider's reply with it, and frees the request's review slot (D-3).",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/service-providers/{providerId}/reviews": {
+      "get": {
+        "operationId": "ProviderReviewsController_list",
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderReviewListDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List a provider's reviews with their aggregate (public). Soft-deleted reviews are excluded inside the aggregate itself, and `averageRating` is null below 3 live reviews (D-4) — gated server-side, never left to the front to hide.",
+        "tags": [
+          "reviews"
+        ]
+      }
     }
   },
   "info": {
@@ -5394,6 +5499,148 @@
           "items",
           "totalSectors",
           "totalSignals",
+          "limit"
+        ]
+      },
+      "CreateReviewDto": {
+        "type": "object",
+        "properties": {
+          "serviceRequestId": {
+            "type": "string",
+            "description": "The COMPLETED service request being reviewed. The provider and the author are derived from it server-side and are NOT accepted here.",
+            "format": "uuid"
+          },
+          "rating": {
+            "type": "integer",
+            "description": "Whole-star rating, 1 to 5. Never fractional (D-5).",
+            "minimum": 1,
+            "maximum": 5,
+            "example": 5
+          },
+          "comment": {
+            "type": "string",
+            "description": "Free-text comment, 1 to 2000 characters after trimming. Optional — omit it rather than sending an empty string.",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "serviceRequestId",
+          "rating"
+        ]
+      },
+      "ReviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceRequestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceProviderId": {
+            "type": "string",
+            "description": "The provider this review is about, resolved server-side.",
+            "format": "uuid"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "example": 5
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true,
+            "example": "Travail impeccable."
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "serviceRequestId",
+          "serviceProviderId",
+          "rating",
+          "comment",
+          "createdAtUtc",
+          "updatedAtUtc"
+        ]
+      },
+      "ProviderReviewItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "example": 5
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true,
+            "example": "Travail impeccable."
+          },
+          "authorDisplayName": {
+            "type": "string",
+            "description": "Author's first name plus last initial (« Carol R. »), or « — » if the account was deleted. Never the full name, never display_name.",
+            "example": "Carol R."
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "rating",
+          "comment",
+          "authorDisplayName",
+          "createdAtUtc"
+        ]
+      },
+      "ProviderReviewListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderReviewItemDto"
+            }
+          },
+          "reviewCount": {
+            "type": "integer",
+            "description": "Live reviews for this provider — the whole set, not the page. Soft-deleted reviews are excluded inside the aggregate itself.",
+            "example": 4
+          },
+          "averageRating": {
+            "type": "number",
+            "description": "Mean rating rounded to 2 decimals, or null when there are fewer than 3 live reviews (D-4). Gated server-side — the front is never asked to hide it.",
+            "format": "float",
+            "nullable": true,
+            "example": 4.67
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Server-side hard cap on `items`. There is no pagination.",
+            "example": 50
+          }
+        },
+        "required": [
+          "items",
+          "reviewCount",
+          "averageRating",
           "limit"
         ]
       }

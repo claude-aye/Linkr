@@ -50,6 +50,12 @@ import { ServiceRequestsCron } from './service-requests.cron';
     ServiceRequestsCron,
     AdminGuard,
   ],
-  exports: [ServiceRequestsService],
+  // ServiceRequestRepository is exported for the reviews module, which must read
+  // a request's client, status and assigned provider — the three facts that make
+  // a review unfalsifiable (D-1) and that must never come from a request body.
+  // The repository rather than the service on purpose: `ServiceRequestsService.getById`
+  // carries an ADMIN bypass, and a review is AUTHORED by its caller, so the
+  // owner-only check `confirmCompletion` uses is the correct one there.
+  exports: [ServiceRequestsService, ServiceRequestRepository],
 })
 export class ServiceRequestsModule {}

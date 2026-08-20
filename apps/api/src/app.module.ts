@@ -22,6 +22,7 @@ import { StripeConnectModule } from './modules/stripe-connect/stripe-connect.mod
 import { PaymentsModule } from './modules/payments/payments.module';
 import { StripeWebhooksModule } from './modules/stripe-webhooks/stripe-webhooks.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { DemandSignalsModule } from './modules/demand-signals/demand-signals.module';
 
 @Module({
@@ -57,6 +58,7 @@ import { DemandSignalsModule } from './modules/demand-signals/demand-signals.mod
     StripeWebhooksModule,
     GeocodingModule,
     DemandSignalsModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}
