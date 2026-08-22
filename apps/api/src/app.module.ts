@@ -7,6 +7,7 @@ import { validate } from './config/env.validation';
 import { getDatabaseConfig } from './config/database.config';
 import { getRedisConfig } from './config/redis.config';
 import { StorageModule } from './common/storage/storage.module';
+import { EmailModule } from './common/email/email.module';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -42,6 +43,7 @@ import { DemandSignalsModule } from './modules/demand-signals/demand-signals.mod
     }),
     ScheduleModule.forRoot(),
     StorageModule,
+    EmailModule,
     HealthModule,
     UsersModule,
     AuthModule,

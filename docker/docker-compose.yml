@@ -51,6 +51,19 @@ services:
       postgres:
         condition: service_healthy
 
+  # Local catch-all mailbox (chantier A-1). Nothing it receives ever leaves
+  # this machine, which is the point: the email foundation is exercised without
+  # a provider, a domain or a DNS record. No volume on purpose — messages are
+  # in-memory and a restart is the reset.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: linkr-mailpit
+    ports:
+      - "1025:1025"   # SMTP  — what the API talks to
+      - "8025:8025"   # HTTP  — the web UI, http://localhost:8025
+    networks:
+      - linkr-network
+
 networks:
   linkr-network:
     driver: bridge
