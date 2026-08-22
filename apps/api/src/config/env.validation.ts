@@ -115,7 +115,37 @@ const envSchema = Joi.object({
   // Hours a COMPLETED, non-contested request waits before the balance (80%)
   // auto-releases (3.10c). Required at boot.
   PLATFORM_AUTO_RELEASE_HOURS: Joi.number().integer().min(1).required(),
-});
+
+  // Outbound email (chantier A-1). Host and port are required with no default:
+  // an email that quietly goes nowhere has no symptom, so a missing setting
+  // must stop the boot rather than surface three days later as a user who
+  // never got their message. .env.example carries the local Mailpit values.
+  SMTP_HOST: Joi.string().required(),
+  SMTP_PORT: Joi.number().port().required(),
+  // false = plain connection, upgraded by STARTTLS when the relay offers it
+  // (Mailpit, and port 587). Set true only for implicit TLS on port 465.
+  SMTP_SECURE: Joi.boolean().default(false),
+  // Optional: Mailpit does not authenticate. Paired by `.and(...)` below.
+  SMTP_USER: Joi.string().optional(),
+  SMTP_PASSWORD: Joi.string().optional(),
+  // The sender identity belongs to the deployment, never to a caller. No
+  // default, for the same reason as NOMINATIM_USER_AGENT: a shipped one would
+  // have every install send from the same fake domain.
+  // `tlds: { allow: false }` checks the SHAPE without checking the suffix
+  // against the IANA root zone. Without it Joi rejects `.test` — the TLD
+  // RFC 2606 reserves for exactly this use, which every test address in this
+  // repo already uses — and copying .env.example would produce an API that
+  // refuses to boot. It also matches how the rest of the codebase validates an
+  // address: class-validator's @IsEmail() does not check the TLD list either.
+  EMAIL_FROM_ADDRESS: Joi.string()
+    .email({ tlds: { allow: false } })
+    .required(),
+  EMAIL_FROM_NAME: Joi.string().default('Linkr'),
+})
+  // Credentials go together or not at all. Half-configured auth would connect
+  // anonymously and be refused at delivery — a failure that only shows up in a
+  // worker log, long after boot would have been the cheap place to catch it.
+  .and('SMTP_USER', 'SMTP_PASSWORD');
 
 export function validate(config: Record<string, unknown>): Record<string, unknown> {
   const { error, value } = envSchema.validate(config, {

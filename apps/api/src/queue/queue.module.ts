@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import {
+  EMAIL_JOB_OPTIONS,
+  EMAIL_QUEUE,
   STRIPE_WEBHOOKS_JOB_OPTIONS,
   STRIPE_WEBHOOKS_QUEUE,
 } from './queue.constants';
@@ -16,6 +18,10 @@ import {
     BullModule.registerQueue({
       name: STRIPE_WEBHOOKS_QUEUE,
       defaultJobOptions: STRIPE_WEBHOOKS_JOB_OPTIONS,
+    }),
+    BullModule.registerQueue({
+      name: EMAIL_QUEUE,
+      defaultJobOptions: EMAIL_JOB_OPTIONS,
     }),
   ],
   exports: [BullModule],
