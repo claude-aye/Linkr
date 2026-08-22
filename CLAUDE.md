@@ -751,7 +751,7 @@ NONE → EMAIL → PHONE → IDENTITY
 The following operations MUST be queued via **BullMQ** (never executed synchronously in HTTP handlers):
 
 1. **Stripe webhooks** — Verify signature → enqueue → respond 200 OK to Stripe within 5 seconds. Process asynchronously.
-2. **Email sending** — Transactional emails (booking confirmations, receipts, etc.)
+2. **Email sending** — Transactional emails (booking confirmations, receipts, etc.). **Le socle existe depuis A-1** : file `email` (`queue/queue.constants.ts`), `EmailService.send()` en **producteur seul**, rendu + envoi dans `EmailProcessor` (`common/email/`). **Ne jamais appeler un transport SMTP depuis un handler HTTP** — passer par `EmailService`.
 3. **Push notifications** — To mobile clients
 4. **License expiration check (Cron job, nightly)** — Scans `verification_documents` for `expires_at_utc < NOW()`. Marks expired docs as `EXPIRED`, downgrades parent `professional_service_category.verification_status` to `REJECTED`, notifies the provider.
 5. **Quote deadline expiration (Cron job, hourly)** — Scans `service_requests.quotes_deadline_utc < NOW()` with status `OPEN` and transitions them to `EXPIRED` if no quote was accepted.
@@ -1061,6 +1061,21 @@ Tasks should be executed sequentially. Each task must produce **something testab
 **Anti-objectifs respectés** : zéro migration, zéro écriture, **aucun paramètre de tri** et **aucun sélecteur de tri** (chantier différé, avec sa condition chiffrée de réouverture, écrit dans `ETAT_AUTONOMIE.md`) ; pas de filtre par note minimale, pas de badge « top prestataire », pas de mise en avant ; la dette **« deux causes, un 409 »** de l'écran client **non traitée** (le verrou 3.12b impose le mappage par code HTTP seul, donc la sortie honnête est de **distinguer les codes côté API** — décision d'architecture, hors de cette tranche) ; `assertPayable`, capture, commission, remboursements, webhooks **non touchés** (§3) ; module `notifications` **non touché** ; `POST /reviews`, `DELETE /reviews/:id`, `POST /reviews/:id/response` et l'écran `/requests` **non modifiés** ; aucune couleur, aucun composant nouveau (l'étoile reprend la famille amber déjà en place).
 **Dettes** : (1) la dette de contrat `discover` (annotation tableau nu → DTO d'enveloppe dédié) reste **ouverte**, avec son miroir et son cast front ; (2) **écrire un avis ne notifie toujours personne** — `notifications` reste le chantier du collaborateur ; (3) pas de pagination (50 avis/profil, 100 avis propres, 100 demandes — **plafonds solidaires**) ; (4) `ratingFmt` est **mirroité** dans la carte depuis le bloc du profil (const local non exporté des deux côtés) — même forme que la dette « helper de statut partagé », **ni élargie ni payée** ; (5) le repli 502 des BFF reste **tutoyant**.
 
+**Chantier A — courriels transactionnels, tranche A-1 : le socle d'envoi (backend seul)** : **le projet cesse d'être muet.** Aucune dépendance d'envoi, aucun `EmailService`, aucun `TODO` n'existait — vérifié au `grep`, pas supposé. A-1 pose le socle et **rien d'autre** ; **A-2** (réinitialisation de mot de passe) le consommera. ⚠️ **Étiquette : `A-1`/`A-2`. La lettre `E` reste réservée à la messagerie client ↔ prestataire** (mandat §8, chantier 4) — ne pas rebaptiser. **ZÉRO route HTTP, ZÉRO contrôleur, ZÉRO migration, ZÉRO changement de schéma, diff `openapi.json`/`schema.d.ts` STRICTEMENT VIDE** (aucun DTO ne change ; le socle n'a **aucune** surface exposée — vérifié au boot : **0 route mappée** contenant `email`, sur 102). Module `auth` et module `notifications` **non touchés**.
+> **⚠️ « DÉFINITIF » NE SE DÉRIVE PAS DE `attemptsMade`, ET C'EST LA DÉCISION CENTRALE DU LOT.** BullMQ émet `failed` à **chaque** tentative, donc un échec définitif doit être **dérivé** — et le prédicat correct est **`job.finishedOn`**, jamais `attemptsMade >= opts.attempts`. **Lu dans la source, puis mesuré** : `shouldRetryJob` (`bullmq/classes/job.js`) cesse de réessayer quand les tentatives sont épuisées **OU** quand l'erreur est une `UnrecoverableError`, et **seule** la branche qui abandonne vraiment estampille `finishedOn` ; `attemptsMade` est incrémenté **après**, donc c'est le **COMPTE** honnête à journaliser, pas le **PRÉDICAT** de reprise. **La comparaison naïve aurait produit un trou silencieux** : notre propre échec « gabarit inconnu » s'arrête après **UNE** tentative par conception, donc `1 >= 3` est faux, donc il serait classé « va réessayer » — et n'aurait produit **aucune** ligne définitive, c'est-à-dire exactement le symptôme que A-1.8 existe pour empêcher. **Mesuré dans les deux branches** (voir « Validé » ci-dessous).
+> **⚠️ `removeOnComplete: true` PROTÈGE LE CHEMIN HEUREUX ; `removeOnFail` CONSERVE LA CHARGE UTILE — LA TENSION EST ASSUMÉE, PAS MASQUÉE.** Un job livré est **supprimé** (prouvé : la clé `bull:email:1` n'existe plus, `completed` = 0), pour qu'un jeton A-2 ne traîne pas dans Redis. Mais un job **échoué** garde **tout son payload** jusqu'à 24 h (prouvé : `HGET bull:email:3 data` rend le corps complet) — précisément le cas où un jeton n'est pas parti. **L'échappatoire « mettre un id en file et relire le secret à l'envoi » est FERMÉE** : la base ne stockera que le **haché** du jeton, il n'y a donc rien à relire. **Conséquence pour A-2 : le plafond d'exposition est la DURÉE DE VIE DU JETON, pas l'éviction Redis.** Le garder court et à usage unique ; ne pas l'allonger en supposant que Redis oublie — l'éviction BullMQ est *best-effort* et n'est évaluée que quand un job **ultérieur** du même type se termine, donc un échec isolé peut survivre indéfiniment à son plafond d'âge. C'est écrit en commentaire au-dessus de `EMAIL_JOB_OPTIONS`.
+**Où vivent les choses, et pourquoi** : le **nom de file, les `defaultJobOptions` et le type de payload** vont dans `queue/queue.constants.ts`, l'enregistrement dans `queue/queue.module.ts` — **le foyer central existant**, dont le docblock dit déjà « Central registration of the application's BullMQ queues ». Écart assumé vs l'arborescence du brief (qui ne mentionnait pas `queue/`) : A-1.3 exige de suivre le patron en place, or le patron est central. **Options PAR FILE — les `defaultJobOptions` de `stripe-webhooks` ne sont pas touchées d'un caractère.** Le reste (`email.module.ts`, `email.service.ts`, `email.processor.ts`, `senders/`, `templates/`) vit sous `common/email/`. **Le worker tourne IN-PROCESS**, comme `StripeWebhookProcessor` — aucun second modèle d'exécution, aucun conteneur worker.
+**Le service ENQUEUE, il n'envoie jamais** : `EmailService.send()` dépose un job et connaît **ni Nodemailer ni SMTP**. **Aucun appel SMTP dans le cycle d'une requête HTTP** — sinon un relais lent rendrait chaque inscription lente, et un échec de livraison ferait échouer l'inscription. **Le rendu se fait dans le worker**, pas à la mise en file : le payload transporte `{to, template, vars, locale}`, donc un gabarit se corrige **sans invalider les jobs déjà en attente**, et les journaux de job ne charrient pas le corps. `vars` **n'est jamais journalisé** — en A-2 il portera un jeton, et une ligne de log est le seul endroit où un secret survit à toutes les politiques de rétention écrites pour le magasin d'où il vient.
+**Le registre est typé, et l'inconnu est rattrapé DEUX fois** : `EMAIL_TEMPLATES … as const` + `send<TName extends EmailTemplateName>` → un nom inconnu **ne compile pas**, et les `vars` sont vérifiées **contre le gabarit nommé**. ⚠️ Mais **la preuve de compilation ne survit pas à Redis** : après un aller-retour JSON, `template` est une chaîne nue — d'où `isEmailTemplateName` dans le worker, et une **`UnrecoverableError`** plutôt qu'un `throw` ordinaire (réessayer ne peut pas réparer un nom absent du registre : le payload est déjà écrit et le registre ne change qu'au déploiement). Le guard utilise `hasOwnProperty`, pas `in` — sinon `toString` serait un « gabarit » valide (couvert par un test).
+**Gabarits = fonctions TypeScript pures**, aucun moteur, aucune étape de build. Dictionnaire **local au fichier**, `Record<Locale, ProbeCopy>` — **renforcement assumé** vs la lettre de A-1.5 (`Record<Locale, string>`) : exhaustif sur les locales **et** sur les clés de chaque locale, donc une traduction à moitié écrite est une erreur de compilation plutôt qu'un `undefined` interpolé dans un objet de courriel. **Tout gabarit produit `html` ET `text`** (un courriel sans partie texte part en indésirable) — vérifié au test **et** dans le message réellement reçu. **`escapeHtml` existe dès le premier gabarit**, pas depuis le premier incident : A-2 interpolera une URL de réinitialisation.
+> **⚠️ PIÈGE DE TYPAGE À NE PAS « RANGER » : les `vars` d'un gabarit se déclarent en `type`, JAMAIS en `interface`.** TypeScript donne une signature d'index implicite à un alias de type d'objet et la refuse à une interface — une interface ne serait donc pas assignable à `EmailJob['vars']` (`Record<string, unknown>`) et l'enfilage exigerait un cast. Écrit en commentaire sur `EmailVars` et sur `ProbeEmailVars`. La conversion casse le build **bruyamment**, elle ne dégrade pas en silence.
+**Env — 7 variables (37 → 44, §12 mise à jour dans la même PR)** : `SMTP_HOST`/`SMTP_PORT`/`EMAIL_FROM_ADDRESS` **requises sans défaut** (un courriel qui ne part pas n'a **aucun** symptôme : mieux vaut refuser de démarrer que découvrir trois jours plus tard un utilisateur qui n'a rien reçu ; et l'identité d'expéditeur appartient au déploiement — même raisonnement que `NOMINATIM_USER_AGENT`) ; `SMTP_SECURE`=`false` et `EMAIL_FROM_NAME`=`Linkr` par défaut ; `SMTP_USER`/`SMTP_PASSWORD` **optionnelles mais LIÉES par `.and(...)`** (Mailpit n'authentifie pas ; une auth à moitié configurée se connecterait anonymement et serait refusée à la livraison — un échec visible seulement dans un journal de worker, longtemps après que le boot aurait été l'endroit bon marché pour l'attraper).
+> **⚠️ DÉFAUT TROUVÉ EN L'EXÉCUTANT, PAS EN LE RELISANT — `Joi.string().email()` REJETTE `.test`.** Joi valide le TLD contre la liste IANA par défaut, donc `no-reply@linkr.test` — la valeur que **mon propre** `.env.example` proposait — faisait **échouer le boot**. Corrigé en `email({ tlds: { allow: false } })` : la **forme** est vérifiée, le suffixe non. C'est aussi ce que fait le reste du dépôt (`@IsEmail()` de class-validator ne consulte pas la liste non plus), et `.test` est le TLD que la RFC 2606 réserve exactement à cet usage — que toutes les adresses de test du dépôt utilisent déjà. **Sans ce correctif, la première conséquence de cette PR aurait été une API qui refuse de démarrer après un `git pull`.**
+**Mailpit** (`axllent/mailpit:latest`) ajouté à `docker/docker-compose.yml` sur le réseau `linkr-network` : **1025** SMTP + **8025** interface, **aucune collision** (`grep` sur tout le dépôt : zéro occurrence des deux ports ; les ports pris sont 5432/6379/5050/5000/3001). **Aucun volume, délibérément** — les messages sont en mémoire, un redémarrage est la remise à zéro, et `docker/data/` n'enfle pas.
+**Validé** : `@linkr/api` **build vert**, **jest 49/49 vert** (36 + **13 nouveaux** sur le rendu, l'échappement et le registre). **Preuves RUNTIME dans le bac à sable** (Docker **injoignable** — `dial unix /var/run/docker.sock` ; Postgres 16 + Redis montés à la main, **puits SMTP jetable non commité** tenant le rôle de Mailpit) : **① chemin heureux** — un job enfilé, le worker rend et envoie, et le message **réellement reçu** porte `From: Linkr <no-reply@linkr.test>` (nom + adresse depuis l'env), le sujet `Linkr — courriel de vérification` (accents intacts après décodage RFC 2047), `Content-Type: multipart/alternative` avec **les deux parties** `text/plain` **et** `text/html`, les `vars` interpolées dans les deux et l'apostrophe échappée en `&#39;` côté HTML ; **② `removeOnComplete`** — la clé du job livré **n'existe plus** dans Redis, `completed` = 0 ; **③ chemin d'échec, `SMTP_PORT` sur un port mort** — **exactement 3 tentatives et exactement UNE ligne définitive** : `WARN … attempt 1/3, will retry` → `WARN … attempt 2/3` → `ERROR Email PERMANENTLY FAILED after 3 attempt(s)`, back-off exponentiel **lisible dans les horodatages** (+5 s puis +10 s) ; **④ gabarit inconnu** — `ERROR … PERMANENTLY FAILED after 1 attempt(s)` **immédiatement**, **zéro** ligne de reprise, **rien** n'atteint le puits : c'est la branche que la dérivation `attemptsMade` aurait laissée **muette**. **⑤ L'app complète boote** avec `EmailModule` (`/health` = `{database: up, redis: up}`, **aucun cycle**, **0 route ajoutée**).
+**Anti-objectifs respectés** : zéro route/contrôleur/`@Public()`, zéro migration, zéro changement de schéma, **module `auth` non touché** (c'est A-2), **module `notifications` NON branché** sur le socle, **aucun fichier `payments*`/`stripe*` modifié** (lecture seule de la config de file en recon), aucune surface de lecture, aucun fournisseur réel, aucun domaine, aucun DNS. **Le déclencheur de smoke est JETABLE et NON COMMITÉ** (ni route, ni contrôleur, ni script `package.json`) — il est fourni dans la description de la PR.
+**Dettes relevées** : (1) **rien n'appelle encore `EmailService`** — le socle est prouvé mais inutilisé, c'est A-2 qui le branche ; (2) le lint `@linkr/api` reste rouge sur la **dette flat-config pré-existante** (ESLint 10 refuse `.eslintrc` faute d'`eslint.config.js`) — indépendante de ces fichiers, **non touchée** ; (3) `axllent/mailpit:latest` n'est pas épinglé (précédent : `dpage/pgadmin4:latest`) ; (4) aucune gestion de rebond, aucune liste de suppression, aucun suivi d'ouverture — hors périmètre et non planifié.
+
 
 ---
 
@@ -1068,17 +1083,17 @@ Tasks should be executed sequentially. Each task must produce **something testab
 
 > ⚠️ **CETTE SECTION EST DÉRIVÉE DE `apps/api/src/config/env.validation.ts`. NE PAS LA RÉDIGER À LA MAIN.**
 > La source de vérité est le schéma Joi, jamais ce tableau. Toute modification du schéma
-> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 8 août 2026
-> (37 variables).
+> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 22 août 2026
+> (44 variables).
 
 Câblage : `apps/api/src/app.module.ts:28-32` → `ConfigModule.forRoot({ validate, isGlobal: true, envFilePath: '.env' })`.
 Échec : `env.validation.ts:127-130` lève une erreur au démarrage. `abortEarly: false` → **toutes**
 les variables manquantes sont listées d'un coup. `allowUnknown: true` tolère les variables
 inconnues, **pas** les manquantes.
 
-### API (`apps/api/.env`) — 37 variables
+### API (`apps/api/.env`) — 44 variables
 
-**Requises inconditionnellement (11) — l'API refuse de démarrer sans elles :**
+**Requises inconditionnellement (14) — l'API refuse de démarrer sans elles :**
 
 | Variable | Contrainte |
 |---|---|
@@ -1093,11 +1108,14 @@ inconnues, **pas** les manquantes.
 | `PLATFORM_COMMISSION_RATE_PERCENT` | — |
 | `PLATFORM_DEPOSIT_RATE_PERCENT` | — |
 | `PLATFORM_AUTO_RELEASE_HOURS` | entier ≥ 1 |
+| `SMTP_HOST` | sans défaut, délibéré — un courriel qui ne part pas n'a aucun symptôme |
+| `SMTP_PORT` | port valide, sans défaut (même raison) |
+| `EMAIL_FROM_ADDRESS` | forme d'adresse, **TLD non validé** (`tlds: {allow:false}`) — sinon `.test` est rejeté |
 
 **Conditionnelles (4)** — requises **uniquement si** `STORAGE_DRIVER=s3` :
 `STORAGE_BUCKET` · `STORAGE_REGION` · `STORAGE_ACCESS_KEY_ID` · `STORAGE_SECRET_ACCESS_KEY`
 
-**Optionnelles avec défaut (12) :**
+**Optionnelles avec défaut (14) :**
 
 | Variable | Défaut |
 |---|---|
@@ -1113,12 +1131,19 @@ inconnues, **pas** les manquantes.
 | `CONNECT_ONBOARDING_RETURN_URL` | `http://localhost:3000/connect/return` |
 | `CONNECT_ONBOARDING_REFRESH_URL` | `http://localhost:3000/connect/refresh` |
 | `PLATFORM_DEFAULT_CURRENCY` | `CAD` |
+| `SMTP_SECURE` | `false` (TLS implicite ; STARTTLS reste possible) |
+| `EMAIL_FROM_NAME` | `Linkr` |
 
-**Optionnelles sans défaut (10) :**
+**Optionnelles sans défaut (12) :**
 `GOOGLE_OAUTH_CLIENT_ID` · `GOOGLE_OAUTH_CLIENT_SECRET` · `GOOGLE_OAUTH_CALLBACK_URL` ·
 `APPLE_OAUTH_CLIENT_ID` · `APPLE_OAUTH_TEAM_ID` · `APPLE_OAUTH_KEY_ID` ·
 `APPLE_OAUTH_PRIVATE_KEY` · `APPLE_OAUTH_CALLBACK_URL` · `STORAGE_ENDPOINT` ·
-`STRIPE_CONNECT_CLIENT_ID` *(dormante)*
+`STRIPE_CONNECT_CLIENT_ID` *(dormante)* · `SMTP_USER` · `SMTP_PASSWORD`
+
+⚠️ **`SMTP_USER` et `SMTP_PASSWORD` sont liées par `.and(...)`** — l'une sans l'autre fait
+**échouer le boot**. Une authentification à moitié configurée se connecterait anonymement et
+serait refusée à la livraison : un échec qui n'apparaîtrait que dans un journal de worker,
+longtemps après que le boot aurait été l'endroit bon marché pour l'attraper.
 
 ⚠️ **`PORT` a pour défaut `3000`, mais l'API tourne sur `5000`** — c'est `apps/api/.env` qui le
 surcharge. Une machine dont le `.env` est incomplet démarrera sur le mauvais port, et le front
