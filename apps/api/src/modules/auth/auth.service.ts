@@ -132,10 +132,44 @@ export class AuthService {
     return { ...tokens, user: this.toPublicDto(user) };
   }
 
+  /**
+   * Exchanges a refresh token for a fresh pair — and refuses the ones a password
+   * change has expelled (A-2.10).
+   *
+   * ⚠️ THE REVOCATION CHECK LIVES HERE, ON THE REFRESH PATH, AND NOWHERE ELSE.
+   * The ACCESS token is deliberately NOT checked: doing so would mean a database
+   * read on every authenticated request, to close a window that is already
+   * bounded by the access token's ≤15-minute lifetime. Accepted, bounded, and
+   * cheap — an attacker holding a stolen access token keeps it for minutes, not
+   * for the seven days a refresh token would have given them.
+   *
+   * ⚠️ THE COMPARISON IS IN SECONDS, AND THAT IS NOT A ROUNDING PREFERENCE. JWT
+   * `iat` is in whole seconds (RFC 7519); `sessionsInvalidatedAtUtc` is a
+   * millisecond-precision timestamp. Comparing raw milliseconds would reject a
+   * token issued in the SAME second as the change — i.e. the token the user just
+   * received from the very reset they performed — so the bound is floored to
+   * seconds before comparing. Strict `<`: a token issued during that same second
+   * survives. The blast radius of that one second is one token belonging to the
+   * person who just proved control of the mailbox.
+   *
+   * A token with no `iat` is refused rather than trusted. Every token this
+   * service signs has one (jsonwebtoken adds it), so an absent `iat` means a
+   * token this service did not mint in the normal way — not a token to renew.
+   */
   async refresh(refreshToken: string): Promise<TokenPair> {
     const payload = this.verifyRefreshToken(refreshToken);
     const user = await this.usersRepository.findById(payload.sub);
     if (!user) throw new UnauthorizedException('User not found');
+
+    const invalidatedAtSeconds = Math.floor(
+      user.sessionsInvalidatedAtUtc.getTime() / 1000,
+    );
+    if (payload.iat === undefined || payload.iat < invalidatedAtSeconds) {
+      // Same message as every other refresh failure: a client that learns
+      // "expelled" rather than "expired" learns nothing it can act on
+      // differently — both mean sign in again.
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
 
     return this.signTokenPair(user.id, user.email);
   }

@@ -43,7 +43,30 @@ import { refreshTokens } from '@/lib/auth/refresh';
 // otherwise be bounced to `/login`, leaving the page reachable only by an
 // account that already exists. Its BFF (`/api/auth/signup`) needs no entry: it
 // already falls under `PUBLIC_API_PREFIX`.
-const PUBLIC_PAGES = ['/login', '/signup'];
+const PUBLIC_PAGES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+
+/**
+ * Public pages that must ALSO be reachable while signed in.
+ *
+ * ⚠️ A NARROW EXEMPTION FROM THE BOUNCE BELOW, NOT A FIX OF IT. Step 2 sends an
+ * authenticated visitor from any public page to `/dashboard` — a bonus-UX branch
+ * that predates this change and stays exactly as it is for `/login` and
+ * `/signup`.
+ *
+ * These two cannot afford it. There is NO authenticated change-password screen
+ * in this application (verified: nothing outside the auth module touches a
+ * password), so the emailed link is a signed-in user's ONLY route to a new
+ * password. Bouncing them to the dashboard would remove their sole recourse in
+ * the exact scenario where they need it — a live session on a device they no
+ * longer trust, or a session that outlived their memory of the password. It
+ * would also make the link behave differently depending on whether the reader
+ * happens to be signed in somewhere, which is not a distinction a mailed link
+ * should have.
+ *
+ * The day an authenticated change-password screen exists, this list is worth
+ * revisiting; until then it is load-bearing.
+ */
+const PUBLIC_PAGES_ALLOWED_WHILE_SIGNED_IN = ['/forgot-password', '/reset-password'];
 const PUBLIC_API_PREFIX = '/api/auth';
 const API_PREFIX = '/api/';
 
@@ -64,7 +87,7 @@ export async function proxy(request: NextRequest) {
   // 2. Public pages. We NEVER refresh here — public pages only care about the
   //    access cookie's presence (a bonus-UX bounce to the dashboard).
   if (PUBLIC_PAGES.includes(pathname)) {
-    if (hasAccess) {
+    if (hasAccess && !PUBLIC_PAGES_ALLOWED_WHILE_SIGNED_IN.includes(pathname)) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     return NextResponse.next();

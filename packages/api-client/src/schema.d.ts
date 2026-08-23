@@ -84,6 +84,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/forgot-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request a password reset link */
+        post: operations["AuthController_forgotPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set a new password using a reset token */
+        post: operations["AuthController_resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/me": {
         parameters: {
             query?: never;
@@ -1404,6 +1438,19 @@ export interface components {
         UpdateUserDto: Record<string, never>;
         SignupDto: Record<string, never>;
         RefreshTokenDto: Record<string, never>;
+        ForgotPasswordDto: {
+            /**
+             * @description Address to send a reset link to. The response is identical whether or not an account exists for it.
+             * @example carol@linkr.test
+             */
+            email: string;
+        };
+        ResetPasswordDto: {
+            /** @description The raw token from the emailed link. Only its SHA-256 is stored server-side. */
+            token: string;
+            /** @description The new password. Same constraints as signup. */
+            password: string;
+        };
         CreateOrganizationDto: Record<string, never>;
         UpdateOrganizationDto: Record<string, never>;
         AddMemberDto: Record<string, never>;
@@ -2651,6 +2698,57 @@ export interface operations {
         };
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_forgotPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPasswordDto"];
+            };
+        };
+        responses: {
+            /** @description Always returned, whether or not an account exists for the address. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordDto"];
+            };
+        };
+        responses: {
+            /** @description Password changed; sessions expelled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description One response for every token failure — unknown, expired, already used or replaced. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

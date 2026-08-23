@@ -1,3 +1,4 @@
+import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
 
 /**
@@ -8,6 +9,7 @@ import { probeEmail } from './probe.template';
  * three days later in a log — assuming anyone was reading the log.
  */
 export const EMAIL_TEMPLATES = {
+  'password-reset': passwordResetEmail,
   probe: probeEmail,
 } as const;
 
@@ -31,4 +33,5 @@ export function isEmailTemplateName(value: string): value is EmailTemplateName {
   return Object.prototype.hasOwnProperty.call(EMAIL_TEMPLATES, value);
 }
 
+export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';

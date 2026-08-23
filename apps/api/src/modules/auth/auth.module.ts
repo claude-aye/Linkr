@@ -3,6 +3,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { EmailModule } from '../../common/email/email.module';
+import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { LocalStrategy } from './strategies/local.strategy';
@@ -11,6 +14,9 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { AppleOAuthStrategy } from './strategies/apple.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { UsersModule } from '../users/users.module';
+import { PasswordResetToken } from './entities/password-reset-token.entity';
+import { PasswordResetTokenRepository } from './password-reset-token.repository';
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
   imports: [
@@ -29,10 +35,21 @@ import { UsersModule } from '../users/users.module';
       },
     }),
     UsersModule,
+    // A-2: the reset flow's own table, and the A-1 email foundation it consumes.
+    // `EmailModule` is non-global by design — this is its first consumer, and the
+    // dependency is one-way (email knows nothing of auth), so no cycle.
+    TypeOrmModule.forFeature([PasswordResetToken]),
+    EmailModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
+    PasswordResetService,
+    PasswordResetTokenRepository,
+    // Module-local provider, exactly like AdminGuard and like DemandSignalsModule
+    // does — the codebase's convention for a guard. An undecorated route in this
+    // module is untouched by it.
+    RateLimitGuard,
     LocalStrategy,
     JwtStrategy,
     GoogleStrategy,
