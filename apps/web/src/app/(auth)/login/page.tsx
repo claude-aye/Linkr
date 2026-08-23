@@ -1,6 +1,8 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, Suspense, useState } from 'react';
+
+import { ResetSuccessNotice } from './reset-success-notice';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -53,6 +55,13 @@ export default function LoginPage() {
           </p>
         </header>
 
+        {/* Shown after a successful reset (A-2.21: no auto-login, so the user
+            lands here and needs to be told the change worked). Suspense is
+            required by `useSearchParams()` and is what keeps /login static. */}
+        <Suspense fallback={null}>
+          <ResetSuccessNotice />
+        </Suspense>
+
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label htmlFor="email" className={labelClass}>
@@ -103,6 +112,15 @@ export default function LoginPage() {
             {submitting ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-sm">
+          <Link
+            href="/forgot-password"
+            className="font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+          >
+            Mot de passe oublié?
+          </Link>
+        </p>
 
         <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
           Vous n’avez pas de compte?{' '}

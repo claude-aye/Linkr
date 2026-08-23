@@ -11,6 +11,30 @@ const nextConfig: NextConfig = {
   // recouvrait le coin bas-gauche et volait des taps sur mobile pendant le
   // smoke. Dev only — aucun effet sur le build de prod.
   devIndicators: false,
+  /**
+   * `Referrer-Policy: no-referrer` on the reset page (A-2.19).
+   *
+   * That page carries a live credential in its query string for the instant
+   * before its effect strips it. Without this header, ANY external resource the
+   * page requests in that window — a font, an image, a third-party script added
+   * later by someone who did not know — would carry the full URL, token
+   * included, in its `Referer`. The two mitigations are complementary and
+   * neither replaces the other: the header covers the window before the effect
+   * runs, the effect covers everything after.
+   *
+   * Scoped to this one path rather than applied site-wide: a global referrer
+   * policy is a real change in how the whole application reports traffic, and
+   * that is a separate decision from protecting one token.
+   */
+  async headers() {
+    return [
+      {
+        source: '/reset-password',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
+    ];
+  },
+
   // NOTE: Next 16 removed the `eslint` config key and no longer runs ESLint
   // during `next build` (see node_modules/next/dist/docs/.../upgrading/version-16.md),
   // so there is nothing to disable here — lint never gates the build. Lint-green
