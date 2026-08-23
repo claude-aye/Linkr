@@ -17,6 +17,8 @@ import { useRouter } from 'next/navigation';
  * (`QUEBEC_LOCALE_DEFAULTS`) — never here.
  */
 
+import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
+
 /** The 409 branch is the only one that offers a way out, hence the flag. */
 type FormError = { text: string; withLoginLink: boolean };
 
@@ -32,8 +34,17 @@ const NAME_MAX = 100;
  * the response body is never parsed to pick a message (convention locked since
  * 3.12b). Vouvoiement throughout.
  */
-function errorForStatus(status: number): FormError {
+function errorForStatus(status: number, response: Response): FormError {
   switch (status) {
+    // Distinct from the 400 below on purpose: nothing is wrong with what they
+    // typed, so telling them to check their fields would send them hunting for
+    // a mistake that is not there. The budget is per address and is raised
+    // before the duplicate-email lookup — it says nothing about any account.
+    case 429:
+      return {
+        text: tooManyAttemptsMessage(response),
+        withLoginLink: false,
+      };
     case 409:
       // The case that matters: say what happened AND what to do about it.
       return {
@@ -107,7 +118,7 @@ export default function SignupPage() {
       });
 
       if (!res.ok) {
-        setError(errorForStatus(res.status));
+        setError(errorForStatus(res.status, res));
         return;
       }
 
