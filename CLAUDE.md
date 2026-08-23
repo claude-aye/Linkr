@@ -729,6 +729,26 @@ NONE → EMAIL → PHONE → IDENTITY
 ```
 - `users.verification_level` exists as a column and as an enum, **but no code path ever writes it**: there is no SMS OTP, no sending dependency, no update DTO exposing it. It stays at `NONE` for every user, forever. The column carries a SQL `COMMENT` saying so (migration `CommentVerificationLevelNotEnforced`, mirrored by the entity's `comment` option).
 - **No guard depends on it.** The provider-creation gate that required `PHONE`/`IDENTITY` was removed: it referenced an unreachable state, so `POST /service-providers` was a dead end and every existing provider had been inserted by hand. **Product decision: creating a provider profile requires no verification level.** The phone requirement comes back **with** the OTP, never before — a guard on an unreachable state is a dead end wherever it is placed.
+**Session revocation bound — `users.sessions_invalidated_at_utc` (A-2) :**
+- Colonne `timestamptz NOT NULL DEFAULT now()`, comparée à l'`iat` du refresh token dans
+  `AuthService.refresh` : tout refresh émis **avant** cette borne est refusé (401). Le jeton
+  d'**accès** n'est **pas** vérifié — sa durée de vie ≤ 15 min borne déjà la fenêtre, et le
+  vérifier coûterait une lecture en base à chaque requête authentifiée.
+- ⚠️ **La comparaison se fait en SECONDES** (`iat < Math.floor(borne / 1000)`). L'`iat` JWT est
+  en secondes entières, la colonne en millisecondes : comparer en millisecondes rejetterait le
+  jeton émis dans la **même seconde** que le changement — c'est-à-dire celui que l'utilisateur
+  vient de recevoir de sa propre réinitialisation. Couvert par un test dédié
+  (`auth.service.refresh.spec.ts`).
+- ⚠️ **CE N'EST PAS UN MIROIR DU MOT DE PASSE, ET LA DISTINCTION EST PORTANTE.** Le mot de passe
+  vit sur `user_auth_providers.password_hash` ; cette colonne dit « tout ce qui est plus vieux
+  que ceci est nul », une idée strictement plus large. **Tout futur point de changement de mot
+  de passe DOIT l'écrire** — un écran authentifié de changement de mot de passe, un « déconnecter
+  partout », une révocation administrative. Aujourd'hui A-2 en est le **seul** écrivain, non par
+  choix mais parce qu'**aucune route authentifiée de changement de mot de passe n'existe**
+  (vérifié : hors du module `auth`, aucun fichier ne touche à un mot de passe). Le jour où l'une
+  est ajoutée, elle écrit cette colonne dans la même transaction que le hash — sinon un mot de
+  passe change sans que les sessions de l'ancien titulaire tombent, et rien ne le signale.
+
 - Access to money is protected elsewhere and is untouched: `assertPayable` blocks the OPEN→ASSIGNED transition until the provider's Stripe Connect account has `charges_enabled`, and Stripe runs its own KYC.
 - The intended-but-unbuilt semantics, for whoever implements OTP: phone verification required to activate Pro mode; `IDENTITY` reached after Stripe Connect Express KYC completion.
 
@@ -1077,21 +1097,38 @@ Tasks should be executed sequentially. Each task must produce **something testab
 **Dettes relevées** : (1) **rien n'appelle encore `EmailService`** — le socle est prouvé mais inutilisé, c'est A-2 qui le branche ; (2) le lint `@linkr/api` reste rouge sur la **dette flat-config pré-existante** (ESLint 10 refuse `.eslintrc` faute d'`eslint.config.js`) — indépendante de ces fichiers, **non touchée** ; (3) `axllent/mailpit:latest` n'est pas épinglé (précédent : `dpage/pgadmin4:latest`) ; (4) aucune gestion de rebond, aucune liste de suppression, aucun suivi d'ouverture — hors périmètre et non planifié.
 
 
+**Chantier A — courriels transactionnels, tranche A-2 : réinitialisation de mot de passe (API + front)** : **le socle A-1 trouve son premier consommateur, et un utilisateur qui oublie son mot de passe cesse d'être bloqué à vie.** `POST /auth/forgot-password` + `POST /auth/reset-password`, la table `password_reset_tokens`, la borne de révocation `users.sessions_invalidated_at_utc`, deux pages et deux relais BFF. Contrat : `openapi.json` **+85/−0**, `schema.d.ts` **+98/−0**, **zéro suppression, aucune route existante modifiée**.
+> **⚠️ LA BANDE DE MIGRATION RÉSERVÉE A ÉTÉ ÉCARTÉE VOLONTAIREMENT — NE PAS « RÉPARER » LE NUMÉRO.** La bande `1780480000000`–`1780499999999` est libre et avait été offerte pour ce lot, mais elle est **DERRIÈRE LA TÊTE** (`1780520000000-CreateReviews`). Une migration numérotée derrière la tête est **ignorée** sur toute base déjà passée au-delà : elle s'appliquerait sur une base neuve et **jamais** sur celle d'un développeur existant, et la divergence n'a **aucun symptôme** jusqu'à ce que quelque chose lise une colonne absente. D'où **`1780530000000` = tête + 10000000**. Un créneau « libre » derrière la tête est un piège, pas une occasion.
+> **⚠️ LE JETON N'EST JAMAIS STOCKÉ — ET C'EST CE QUI FERME LE RACCOURCI.** 32 octets aléatoires, **base64url** dans le courriel, **SHA-256 hex** en base. **SHA-256 et non Argon2id** : un sel aléatoire rendrait la recherche par égalité impossible, et 32 octets cryptographiques n'ont aucune faible entropie à compenser — la menace qu'un hachage lent adresse (deviner un secret choisi par un humain) n'existe pas ici. Conséquence directe : l'échappatoire « mettre un id en file et relire le secret à l'envoi » est **CLOSE**, donc le plafond réel d'exposition est **la durée de vie du jeton (60 min)**, pas l'éviction Redis (cf. `EMAIL_JOB_OPTIONS`, qui conserve un job **échoué** jusqu'à 24 h avec sa charge utile). Ne pas allonger le TTL en supposant que Redis oublie. **Mesuré** : `select count(*) … where token_hash like '%<jeton>%'` → **0**, `length(token_hash)` → **64**.
+> **⚠️ LES TROIS ÉCRITURES SONT UNE SEULE TRANSACTION, ET LA GARDE DE CONCURRENCE VIT DANS LE `WHERE`.** Consommation (`UPDATE … SET consumed_at_utc = now() WHERE token_hash = $1 AND consumed_at_utc IS NULL AND expires_at_utc > now() RETURNING user_id`) + écriture du `password_hash` sur `user_auth_providers` + déplacement de la borne sur `users`. **Brûler le jeton sans écrire le mot de passe bloquerait l'utilisateur DÉFINITIVEMENT** — lien mort en main, mot de passe inchangé —, le pire résultat que cette fonctionnalité puisse produire et celui qu'une implémentation naïve en deux temps produit sous n'importe quelle erreur. **Pas de `SELECT` préalable, pas de `FOR UPDATE`** : le prédicat est évalué par la base pendant que l'`UPDATE` verrouille la ligne, donc deux requêtes simultanées **ne peuvent pas** matcher toutes les deux — la seconde touche **zéro ligne**. **Mesuré contre un vrai Postgres** : deux `consumeAndSetPassword` concurrents sur le même jeton → **exactement UN gagnant**, mot de passe du gagnant stocké, jeton consommé **une seule fois**, borne déplacée dans la même transaction. ⚠️ Le quirk `UPDATE … RETURNING → [rows, affected]` (6 copies locales dans le dépôt) est traité en lisant `[0]` explicitement : un `rows.length` nu vaudrait **2 sur zéro ligne**, transformant « ce jeton est invalide » en « ce jeton a marché ».
+> **⚠️ LE 429 EST PAR IP, JAMAIS PAR COURRIEL — LE CONTRÔLE DE SÉCURITÉ SE RETOURNERAIT EN FUITE.** Un `429` qui ne sortirait que pour les comptes **existants** est un oracle d'énumération déguisé en protection. La route porte donc `@RateLimit({ limit: 10, windowSeconds: 900 })`, clé = IP (repli du garde en l'absence de sujet authentifié). Le plafond **par adresse** existe aussi (5 / heure) mais vit **DANS LE SERVICE** et supprime **l'ENVOI**, jamais la réponse : une garde HTTP court-circuiterait la réponse et rendrait le silence **observable**. **2ᵉ usager de `common/rate-limit/` (#78) — en MÉMOIRE, pas Redis** (la décision humaine se contredisait sur ce point et a été corrigée) : mêmes raisons que le limiteur demand-signals — un compteur adossé à Redis doit choisir entre échouer **ouvert** (plus aucune protection au moment de la tension) et échouer **fermé** (la réinitialisation meurt sur une panne de cache). ⚠️ **Le plafond par adresse SE MULTIPLIE PAR INSTANCE** : répliquer l'API donne à une adresse N × 5 courriels par fenêtre, sans erreur ni log. Ça dégrade **doucement** (plus de courriel vers une adresse réelle, jamais moins), d'où une mise en garde et non un blocage ; la sortie est un compteur partagé, **jamais une constante plus petite**. Corollaire mesuré au smoke : redémarrer l'API remet les compteurs à zéro.
+> **⚠️ `202` CONSTANT, ET LE RELAIS BFF DÉVIE DE LA TRANSPARENCE POUR LE PRÉSERVER.** L'API répond **202, corps vide, dans tous les cas** — compte inexistant, compte existant, demande répétée, envoi supprimé par le plafond. Le relais `api/auth/forgot-password` est le **seul non transparent** du dépôt : il effondre **tout** en 202, **5xx et API injoignable compris**, et **journalise** l'échec au lieu de le surfacer. Coût assumé et réel : un utilisateur dont le courriel a vraiment échoué reçoit le même écran qu'un autre dont le courriel part. L'alternative est pire — un 502 qui n'apparaîtrait que sur le chemin qui **fonctionne** serait exactement le signal d'énumération. **Mesuré** : compte existant et compte inexistant → `202` / corps `[]` / **0 octet** des deux côtés ; à l'écran, l'écran de confirmation est **identique au caractère près**. ⚠️ **Écart de temps résiduel ASSUMÉ, non masqué** (A-2.14) : **17,7 ms vs 5,3 ms** mesurés. Pas de délai aléatoire — il se moyenne sur assez d'essais, donc il n'achète rien contre qui prendrait la peine de mesurer, tout en coûtant de la latence à tout le monde. L'atténuation honnête est le limiteur par IP, qui borne le nombre d'échantillons.
+> **⚠️ LA COPIE DIT « SI UN COMPTE EXISTE », JAMAIS « UN COURRIEL VOUS A ÉTÉ ENVOYÉ ».** Une confirmation qui affirmerait l'envoi mentirait la moitié du temps — et un écran qui dirait autre chose selon le cas **serait** l'oracle. Le conditionnel est ce qui rend la confirmation **honnête ET constante**. Même famille que les quatre applications déjà en place (silence sur `GEOCODED`, « pas encore assez pour décider », seuil de trois avis) : **la plateforme ne prétend jamais savoir ce qu'elle ne sait pas.**
+> **⚠️ AUCUN `GET` NE CONSOMME (A-2.7).** Le lien du courriel ouvre une **page** portant un formulaire ; seul le `POST` consomme. Les antivirus de messagerie et les prévisualiseurs de liens **préchargent** les URL avant qu'un humain clique — un `GET` consommateur détruirait le jeton avant son destinataire. Le Server Component de `/reset-password` **lit** le jeton et n'agit pas dessus ; son rendu doit rester sans effet de bord.
+> **⚠️ LA BORNE DE RÉVOCATION N'EST PAS UN MIROIR DU MOT DE PASSE — cf. §8.1.** Comparaison **en secondes** (piège de granularité mesuré et testé), vérifiée **uniquement sur le chemin de rafraîchissement**, et **tout futur point de changement de mot de passe doit l'écrire**. A-2 en est aujourd'hui le seul écrivain **parce qu'aucune route authentifiée de changement de mot de passe n'existe** (A-2.11 est vide, vérifié au `grep`), pas par choix.
+**`ON DELETE CASCADE`, en déviation de la convention `RESTRICT` du dépôt** : motif écrit dans le docblock — une demande d'effacement Loi 25 doit pouvoir passer **sans nettoyage manuel** de jetons résiduels. Les lignes n'ont aucune valeur historique (un jeton non consommé ne vaut rien, un jeton consommé est dépensé), donc `RESTRICT` ne protégerait rien. **Mesuré** : supprimer l'utilisateur a emporté ses **5** jetons, zéro balayage.
+**Un mot sur le socle A-1, touché en une seule ligne d'intention** : le test d'exhaustivité du registre (`probe.template.spec.ts`) **ne compilait plus** dès l'ajout d'un second gabarit — `Parameters<union>` s'effondre en **intersection**, donc un unique sac de `vars` partagé devient invalide (TS2345 mesuré, pas supposé). Remplacé par une **carte de fixtures par gabarit** typée `Record<EmailTemplateName, …>` : l'intention de la boucle est **conservée et renforcée** — un gabarit sans fixture est désormais une **erreur de compilation**, plus un gabarit silencieusement non exercé. C'est la **seule** raison pour laquelle le socle a été modifié au-delà d'un ajout.
+**Validé** : `@linkr/api` **build vert**, **jest 73/73 vert** (⚠️ **la ligne de base réelle sur `main` est 53, pas les 49 inscrits en A-1** — chiffre périmé, mesuré par `git stash` ; +20 ici) ; `@linkr/api-client` et `@linkr/web` **typecheck + lint + build VERTS** (`/forgot-password` en `○` statique, `/reset-password` + les 2 relais en `ƒ`, `/login` **reste `○`**). **Miroirs d'entité vérifiés en lançant `migration:generate` pour de vrai** (puis jetée) : elle ne propose plus, sur mes objets, **que** le renommage de FK — le bruit connu du dépôt. ⚠️ **Le probe a trouvé une vraie omission** au passage : le `COMMENT ON TABLE` n'était pas miroité (`COMMENT ON TABLE … IS NULL` proposé), corrigé par l'option `comment` du `@Entity` ; les commentaires de **colonne**, eux, étaient déjà miroités et n'apparaissaient pas — ce qui **prouve** le mécanisme.
+**Smoke END-TO-END RÉEL exécuté** (Docker **injoignable** dans le bac à sable — `dial unix /var/run/docker.sock` ; **Postgres 16.13 + PostGIS 3.4 installé** + Redis montés à la main, migrations réellement passées, API `:5000` + web `:3001`, **navigateur Chromium**, **puits SMTP jetable non commité** tenant le rôle de Mailpit) — **11/11 au niveau base** (concurrence, rejeu, rotation, expiration, hash inconnu, rollback sur compte OAuth-only, cascade Loi 25) ; **HTTP** : 202 indiscernables · courriel **réellement reçu**, `multipart/alternative` avec **les deux parties** · reset **204** · rejeu **400** au message unique · ancien mot de passe **401** / nouveau **200** · **expulsion prouvée** (refresh **200 avant**, **401 après**, borne déplacée en base) · rotation (premier lien **400**, second **204**) · limiteur **10/fenêtre puis 429 + `Retry-After`** ; **jeton absent des journaux : 0 occurrence** dans `/tmp/api.log`. **20/20 au navigateur** : lien depuis la connexion · confirmation conditionnelle · **écran identique pour une adresse inconnue** · **jeton retiré de la barre d'adresse** · redirection vers la connexion **sans auto-login** + avis de succès · rejeu expliqué avec sa sortie · lien sans jeton · **les deux axes** à 320/375/414 px (**zéro débordement**, cible **36 px**).
+**Deux défauts trouvés en exécutant, pas en relisant** : (1) le lint a refusé `setState` dans un effet sur `/reset-password` → restructuré en **Server Component + Client Component** (patron `requests/new/`), ce qui supprime **aussi** la question d'hydratation que mon garde contournait ; (2) l'avis de succès sur `/login` **ne s'affichait jamais** — un initialiseur `useState` lisant `window.location` sur une page **prérendue statiquement** diverge du rendu serveur, et React tranche en faveur du serveur, **en silence**. Corrigé par `useSearchParams()` dans un `<Suspense>` (composant dédié), ce qui **garde `/login` statique**.
+**Anti-objectifs respectés** : socle A-1 non modifié **au-delà de l'ajout d'un gabarit** et de l'adaptation forcée ci-dessus ; `EMAIL_JOB_OPTIONS` et les `defaultJobOptions` globales **non touchées** ; **aucun fichier `payments*` / `stripe*` / `notifications*`** ; **pas d'auto-login** après réinitialisation ; migration **hors** de la bande réservée, et **exécutée seulement dans le bac à sable** (jamais sur une base de l'humain) ; `openapi.json` **régénéré en bootant l'app**, jamais à la main.
+**Dettes relevées, NON corrigées** : (1) **`CONNECT_ONBOARDING_RETURN_URL` / `_REFRESH_URL` défautent sur le port 3000 alors que le web tourne sur 3001** — elles ne pointent sur rien ; relevé au passage, **hors périmètre**, à réaligner dans une PR dédiée (cf. §12) ; (2) **aucun écran authentifié de changement de mot de passe** — A-2.11 reste vide, et c'est ce qui rend l'exemption du rebond dans `proxy.ts` **portante** ; (3) le repli 502 des BFF reste **tutoyant** (« Réessaie plus tard. ») alors que les pages vouvoient — divergence héritée, mirroitée pour ne pas faire diverger les deux nouveaux relais de leurs frères ; (4) **pas de test adossé à une base** dans le dépôt (jest est unitaire seul) : la concurrence est prouvée par une **sonde runtime non commitée**, décrite dans la PR, pas par un test rejouable en CI ; (5) `axllent/mailpit:latest` toujours non épinglé (A-1).
+
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
 
 > ⚠️ **CETTE SECTION EST DÉRIVÉE DE `apps/api/src/config/env.validation.ts`. NE PAS LA RÉDIGER À LA MAIN.**
 > La source de vérité est le schéma Joi, jamais ce tableau. Toute modification du schéma
-> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 22 août 2026
-> (44 variables).
+> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 23 août 2026
+> (45 variables).
 
 Câblage : `apps/api/src/app.module.ts:28-32` → `ConfigModule.forRoot({ validate, isGlobal: true, envFilePath: '.env' })`.
 Échec : `env.validation.ts:127-130` lève une erreur au démarrage. `abortEarly: false` → **toutes**
 les variables manquantes sont listées d'un coup. `allowUnknown: true` tolère les variables
 inconnues, **pas** les manquantes.
 
-### API (`apps/api/.env`) — 44 variables
+### API (`apps/api/.env`) — 45 variables
 
 **Requises inconditionnellement (14) — l'API refuse de démarrer sans elles :**
 
@@ -1115,7 +1152,7 @@ inconnues, **pas** les manquantes.
 **Conditionnelles (4)** — requises **uniquement si** `STORAGE_DRIVER=s3` :
 `STORAGE_BUCKET` · `STORAGE_REGION` · `STORAGE_ACCESS_KEY_ID` · `STORAGE_SECRET_ACCESS_KEY`
 
-**Optionnelles avec défaut (14) :**
+**Optionnelles avec défaut (15) :**
 
 | Variable | Défaut |
 |---|---|
@@ -1133,6 +1170,7 @@ inconnues, **pas** les manquantes.
 | `PLATFORM_DEFAULT_CURRENCY` | `CAD` |
 | `SMTP_SECURE` | `false` (TLS implicite ; STARTTLS reste possible) |
 | `EMAIL_FROM_NAME` | `Linkr` |
+| `WEB_APP_BASE_URL` | `http://localhost:3001` — base du lien de réinitialisation |
 
 **Optionnelles sans défaut (12) :**
 `GOOGLE_OAUTH_CLIENT_ID` · `GOOGLE_OAUTH_CLIENT_SECRET` · `GOOGLE_OAUTH_CALLBACK_URL` ·
@@ -1144,6 +1182,14 @@ inconnues, **pas** les manquantes.
 **échouer le boot**. Une authentification à moitié configurée se connecterait anonymement et
 serait refusée à la livraison : un échec qui n'apparaîtrait que dans un journal de worker,
 longtemps après que le boot aurait été l'endroit bon marché pour l'attraper.
+
+⚠️ **`WEB_APP_BASE_URL` sert à bâtir le lien absolu du courriel de réinitialisation.**
+Requise-avec-défaut plutôt que dérivée de la requête : le courriel est rendu dans un worker
+BullMQ qui n'a aucune requête, et un lien bâti sur un en-tête `Host` fourni par l'appelant est
+une faille de redirection déguisée. Son défaut pointe sur le **3001**, le port réel de
+`apps/web` — contrairement aux `CONNECT_ONBOARDING_*` voisines, qui défautent sur **3000** et
+ne pointent donc sur rien. **Dette pré-existante, délibérément non corrigée** en A-2 (hors
+périmètre) : les deux URL Stripe Connect sont à réaligner sur 3001 dans une PR dédiée.
 
 ⚠️ **`PORT` a pour défaut `3000`, mais l'API tourne sur `5000`** — c'est `apps/api/.env` qui le
 surcharge. Une machine dont le `.env` est incomplet démarrera sur le mauvais port, et le front
