@@ -105,6 +105,21 @@ const envSchema = Joi.object({
     .uri()
     .default('http://localhost:3000/connect/refresh'),
 
+  /**
+   * Base URL of the web app, used to build the absolute password reset link that
+   * goes into an email (A-2).
+   *
+   * Required-with-default rather than derived from the incoming request: the mail
+   * is rendered in a BullMQ worker that has no request to derive from, and a link
+   * built from a caller-supplied `Host` header is a redirect vulnerability with
+   * extra steps. The default is the port `apps/web` actually runs on — 3001.
+   *
+   * ⚠️ Not to be confused with `CONNECT_ONBOARDING_*` above, which default to
+   * port 3000 and therefore point at nothing. That is a pre-existing debt, out of
+   * this change's scope and deliberately not fixed here.
+   */
+  WEB_APP_BASE_URL: Joi.string().uri().default('http://localhost:3001'),
+
   // Platform economics (3.10b) — required at boot, snapshotted on each payment.
   PLATFORM_COMMISSION_RATE_PERCENT: Joi.number().min(0).max(100).required(),
   PLATFORM_DEPOSIT_RATE_PERCENT: Joi.number().min(0).max(100).required(),
