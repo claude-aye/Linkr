@@ -28,6 +28,10 @@ import {
 import type { ProviderReviewList } from '@/lib/reviews/types';
 
 import { ReviewsReceivedSection } from './_components/reviews-received-section';
+import {
+  ConnectStatusBand,
+  connectBandPlacement,
+} from './connect-status-band';
 
 /**
  * Both notification types are consumed NATIVELY from the generated schema — no
@@ -37,6 +41,13 @@ import { ReviewsReceivedSection } from './_components/reviews-received-section';
  */
 type NotificationList = components['schemas']['NotificationListDto'];
 type NotificationItem = components['schemas']['NotificationItemDto'];
+
+/**
+ * Same story for the Connect mirror: read NATIVELY, no mirror type and no cast.
+ * Only `onboardedAtUtc` degrades to `Record<string, never>` (§6 nullable debt),
+ * and nothing on this page reads it.
+ */
+type ConnectAccount = components['schemas']['ConnectAccountResponseDto'];
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
@@ -619,6 +630,42 @@ export default async function DashboardPage() {
     }
   }
 
+  /**
+   * Stripe Connect state — « puis-je être payé ? ».
+   *
+   * ⚠️ THE 404 IS A STATE, NOT A FAILURE. `ConnectAccountNotFoundException`
+   * means this provider never started onboarding, which is exactly what the
+   * band exists to say — so it maps to `null` and the band still mounts.
+   * A 5xx / transport failure is a different thing entirely: we then do NOT
+   * know whether he can be paid, so `connect` stays `undefined`, the band is
+   * absent, and — see the ordering note further down — nothing is hoisted.
+   *
+   * Degrades in its own try/catch like its siblings: a Connect outage must not
+   * blank the inbox.
+   *
+   * ⚠️ THIS READS THE MIRROR ONLY (`connect/status` touches no Stripe). It must
+   * NEVER be swapped for `connect/sync` "to keep the state fresh": that route
+   * is a billed Stripe round-trip, and putting it on a render path would call
+   * Stripe on every dashboard view.
+   */
+  let connect: ConnectAccount | null | undefined = undefined;
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET(
+        '/service-providers/{id}/connect/status',
+        { params: { path: { id: provider.id } } },
+      );
+      if (response.status === 404) {
+        connect = null;
+      } else if (!error && response.ok && data) {
+        connect = data;
+      }
+    } catch {
+      connect = undefined;
+    }
+  }
+
   /** Trade id → display label. The claims carry no name of their own. */
   const catalogLabels = new Map(
     catalog.map((category) => [category.id, pickTranslation(category.nameTranslations)]),
@@ -817,9 +864,49 @@ export default async function DashboardPage() {
     />
   );
 
-  const sections = hoistTrades
+  /**
+   * The Connect band — present only when we actually KNOW the payment state.
+   * `undefined` (the read failed) renders nothing at all; `null` (404) is a
+   * known state and renders « Configurez vos paiements ».
+   */
+  const connectSection = connect !== undefined && provider && (
+    <ConnectStatusBand
+      key="connect"
+      providerId={provider.id}
+      account={connect}
+      context="dashboard"
+    />
+  );
+
+  /**
+   * ⚠️ A HEAD BAND OUTRANKS EVERYTHING, INCLUDING THE ZERO-TRADE HOIST.
+   *
+   * Both hoists answer « what is the one thing that unblocks this provider ? »,
+   * and when both fire, being unable to be paid wins: declaring one more trade
+   * earns a provider nothing while the money cannot reach him. So the band goes
+   * first and the rest of the order — hoisted or locked — follows underneath,
+   * untouched.
+   *
+   * Placement comes from `connectBandPlacement`, the SAME function the band
+   * renders from, never from a second copy of the predicate here.
+   *
+   * A failed read deliberately does NOT hoist anything: we do not know whether
+   * he can be paid, and demoting his inbox under a guess is the trade the
+   * `trades === null` branch above already refuses to make.
+   */
+  const connectPlacement =
+    connect === undefined ? null : connectBandPlacement(connect);
+
+  const ordered = hoistTrades
     ? [tradesSection, pendingSection, jobsSection, notificationsSection, reviewsSection]
     : [pendingSection, jobsSection, tradesSection, notificationsSection, reviewsSection];
+
+  const sections =
+    connectPlacement === 'head'
+      ? [connectSection, ...ordered]
+      : connectPlacement === 'foot'
+        ? [...ordered, connectSection]
+        : ordered;
 
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">

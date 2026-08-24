@@ -132,6 +132,64 @@ export class StripeConnectService {
   }
 
   /**
+   * Pull the account's CURRENT state from Stripe and overwrite the local mirror.
+   *
+   * WHY THIS ROUTE EXISTS: `getStatus` reads the mirror and nothing else, and
+   * `assertPayable` (payments) reads only `charges_enabled` off that same mirror.
+   * So a webhook that never landed leaves a provider who finished KYC
+   * permanently unpayable, silently — nothing in the product would say so. This
+   * is the manual repair for that, and the only place we ever pull from Stripe
+   * on a provider's behalf.
+   *
+   * It RESYNCS, it never onboards: a provider with no mirror row gets a 404
+   * rather than a freshly created Stripe account (that is `onboard`'s job).
+   *
+   * ⚠️ NEVER call this from a render path. It is a billed, latency-bearing
+   * Stripe round-trip; wiring it into a page render would make every dashboard
+   * view hit Stripe. It is driven by an explicit click or by the post-onboarding
+   * return page, both of which are user-initiated navigations.
+   */
+  async sync(
+    providerId: string,
+    currentUser: JwtPayload,
+  ): Promise<ConnectAccountResponseDto> {
+    const provider = await this.resolveOwnedIndividualProvider(
+      providerId,
+      currentUser,
+    );
+
+    const account = await this.repo.findByServiceProviderId(provider.id);
+    if (!account) throw new ConnectAccountNotFoundException();
+
+    let retrieved: StripeAccount;
+    try {
+      retrieved = (await this.stripe.client.accounts.retrieve(
+        account.stripeAccountId,
+      )) as StripeAccount;
+    } catch (err) {
+      this.wrapStripeError(err);
+    }
+
+    const synced = await this.syncFromAccount(retrieved);
+    if (!synced) {
+      // `syncFromAccount` returns null when no local row matched the Stripe
+      // account id. That should be unreachable here — the id came from our own
+      // mirror one statement ago — so it means the row vanished mid-request or
+      // the ids diverged. Surfacing the null as a DTO would hand the caller a
+      // crash; a 502 says "the sync did not happen" truthfully.
+      this.logger.error(
+        `Connect sync for provider ${provider.id} retrieved Stripe account ` +
+          `${account.stripeAccountId} but no local row matched on write-back`,
+      );
+      throw new StripeConnectOperationFailedException(
+        'the local Connect mirror could not be updated',
+      );
+    }
+
+    return ConnectAccountResponseDto.from(synced);
+  }
+
+  /**
    * Map a Stripe account snapshot to our local onboarding status. Evaluated
    * top-to-bottom, first match wins (order is intentional — see 3.10a brief).
    */
