@@ -8,6 +8,7 @@ import {
   REFRESH_MAX_AGE,
   baseCookieOptions,
 } from '@/lib/auth/cookies';
+import { withClientIp } from '@/lib/http/client-ip';
 import type { AuthResponse } from '@/lib/auth/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
@@ -80,7 +81,9 @@ export async function POST(request: Request) {
   try {
     apiResponse = await fetch(`${API_BASE_URL}/auth/signup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Carries the visitor's address so the API's per-IP budget meters a
+      // PERSON rather than this server — see `lib/http/client-ip`.
+      headers: withClientIp({ 'Content-Type': 'application/json' }, request),
       body: JSON.stringify({
         email,
         password,
@@ -112,6 +115,22 @@ export async function POST(request: Request) {
     // set on any of these paths.
     if (apiResponse.status === 409) {
       return NextResponse.json({ message: 'Courriel déjà utilisé.' }, { status: 409 });
+    }
+    // The 429 is relayed for the same reason as the 409: it is a distinct thing
+    // that happened, and the page can only tell the user what to do about it if
+    // it can tell it apart. Collapsed into the 400 below it would read as "your
+    // form is wrong" to someone whose form is fine. It says nothing about any
+    // account — the guard raises it before the duplicate-email lookup — and
+    // `Retry-After` rides along so the page can say HOW LONG.
+    if (apiResponse.status === 429) {
+      const retryAfter = apiResponse.headers.get('retry-after');
+      return NextResponse.json(
+        { message: 'Trop de tentatives.' },
+        {
+          status: 429,
+          headers: retryAfter ? { 'Retry-After': retryAfter } : undefined,
+        },
+      );
     }
     return NextResponse.json({ message: 'Requête invalide.' }, { status: 400 });
   }

@@ -8,6 +8,7 @@ import {
   baseCookieOptions,
 } from '@/lib/auth/cookies';
 import { refreshTokens } from '@/lib/auth/refresh';
+import { resolveClientIp } from '@/lib/http/client-ip';
 
 /**
  * Route-protection proxy (Phase 3.11b-3).
@@ -163,7 +164,9 @@ function denyUnauthenticated(
  *  - FAILURE → deny-clear (fail-safe strict, both cookies dropped).
  */
 async function attemptRefresh(request: NextRequest, refreshToken: string) {
-  const result = await refreshTokens(refreshToken);
+  // The visitor's address rides along, same as the auth relays do — this hop is
+  // server-to-server too, so without it the API would meter this server.
+  const result = await refreshTokens(refreshToken, resolveClientIp(request));
 
   // FAIL-SAFE STRICT: an invalid/expired refresh (401/403), a 5xx, or an
   // unreachable API all land here → clean logout. No retry, no degraded mode.

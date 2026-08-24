@@ -21,6 +21,14 @@
  * No `next/headers` / `server-only` import on purpose: this module is consumed by
  * the proxy (Node runtime), which must stay free of those server-component-scoped
  * APIs. NEVER log a token here.
+ *
+ * `clientIp` carries the visitor's address across the hop, like the auth relays
+ * do (chantier B). `POST /auth/refresh` carries no budget today, so nothing reads
+ * it yet; it is threaded because this is the one auth call the browser makes
+ * without knowing it, and a route that gained a budget later while silently
+ * metering the web tier would be the shared-bucket bug all over again — with no
+ * symptom to lead anyone back here. The caller resolves the address; this module
+ * has no request to resolve it from.
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
@@ -29,12 +37,18 @@ export type RefreshResult =
   | { ok: true; accessToken: string; refreshToken: string }
   | { ok: false };
 
-export async function refreshTokens(refreshToken: string): Promise<RefreshResult> {
+export async function refreshTokens(
+  refreshToken: string,
+  clientIp?: string | null,
+): Promise<RefreshResult> {
   let apiResponse: Response;
   try {
     apiResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(clientIp ? { 'X-Forwarded-For': clientIp } : {}),
+      },
       body: JSON.stringify({ refreshToken }),
       cache: 'no-store',
     });

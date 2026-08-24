@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
+import { AUTH_RATE_LIMITS } from './auth-rate-limits';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -35,14 +36,38 @@ export class AuthController {
     private readonly passwordResetService: PasswordResetService,
   ) {}
 
+  /**
+   * ⚠️ THE BUDGET IS BY IP (the guard's fallback when nobody is authenticated),
+   * NEVER by email — same reasoning as `forgot-password` below: a per-email 429
+   * would only ever fire for addresses that already exist, turning the limiter
+   * into the enumeration oracle the generic errors exist to deny.
+   */
   @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(AUTH_RATE_LIMITS.SIGNUP)
   @Post('signup')
   signup(@Body() dto: SignupDto): Promise<AuthResponseDto> {
     return this.authService.signup(dto);
   }
 
+  /**
+   * ⚠️ THE GUARD ORDER IS LOAD-BEARING, AND ONE DECORATOR IS WHAT PINS IT.
+   * `RateLimitGuard` MUST run before `LocalAuthGuard`, because `LocalAuthGuard`
+   * is what looks the user up and rejects a bad password: put it first and a
+   * failed sign-in throws 401 before the counter is ever touched, so wrong
+   * passwords cost nothing and the limiter stops capping the one thing it exists
+   * to cap. They are listed in ONE `@UseGuards(...)` — stacking two decorators
+   * would leave the order to the direction decorators are applied in, which is
+   * not something the next reader should have to know. Pinned by
+   * `auth.controller.spec.ts`.
+   *
+   * A consequence worth stating: the 429 is therefore raised BEFORE any lookup,
+   * so it is byte-identical for a known and an unknown address. It says
+   * something about the caller's connection, never about the account.
+   */
   @Public()
-  @UseGuards(LocalAuthGuard)
+  @UseGuards(RateLimitGuard, LocalAuthGuard)
+  @RateLimit(AUTH_RATE_LIMITS.LOGIN)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Req() req: Request & { user: User }): AuthResponseDto {
@@ -73,7 +98,7 @@ export class AuthController {
    */
   @Public()
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 10, windowSeconds: 15 * 60 })
+  @RateLimit(AUTH_RATE_LIMITS.FORGOT_PASSWORD)
   @Post('forgot-password')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Request a password reset link' })
@@ -102,7 +127,7 @@ export class AuthController {
    */
   @Public()
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 10, windowSeconds: 15 * 60 })
+  @RateLimit(AUTH_RATE_LIMITS.RESET_PASSWORD)
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Set a new password using a reset token' })

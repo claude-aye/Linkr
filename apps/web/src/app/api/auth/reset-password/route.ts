@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { withClientIp } from '@/lib/http/client-ip';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
 
 interface ResetPasswordRequestBody {
@@ -43,7 +45,9 @@ export async function POST(request: Request) {
     // Field by field, never spread — `forbidNonWhitelisted` upstream.
     apiResponse = await fetch(`${API_BASE_URL}/auth/reset-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Carries the visitor's address so this route's per-IP budget meters a
+      // PERSON rather than this server — see `lib/http/client-ip`.
+      headers: withClientIp({ 'Content-Type': 'application/json' }, request),
       body: JSON.stringify({ token, password }),
       cache: 'no-store',
     });

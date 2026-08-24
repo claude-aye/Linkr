@@ -1,5 +1,43 @@
 import * as Joi from 'joi';
 
+/** proxy-addr's named ranges, accepted alongside literal IPs and CIDR blocks. */
+const PROXY_ADDR_KEYWORDS = ['loopback', 'linklocal', 'uniquelocal'];
+
+/**
+ * Accepts a comma-separated `TRUSTED_PROXY_IPS`, rejecting anything Express
+ * would later choke on — a typo here is not cosmetic: `proxy-addr` throws at
+ * first use, i.e. on a request rather than at boot, which is exactly the kind of
+ * failure this project validates env vars to avoid.
+ */
+function validateTrustedProxyList(
+  value: string,
+  helpers: Joi.CustomHelpers<string>,
+): string | Joi.ErrorReport {
+  const entries = value.split(',').map((entry) => entry.trim());
+
+  if (entries.some((entry) => entry.length === 0)) {
+    return helpers.message({
+      custom: 'TRUSTED_PROXY_IPS must not contain an empty entry',
+    } as Joi.LanguageMessages);
+  }
+
+  const invalid = entries.filter(
+    (entry) =>
+      !PROXY_ADDR_KEYWORDS.includes(entry) &&
+      Joi.string().ip({ cidr: 'optional' }).validate(entry).error !== undefined,
+  );
+
+  if (invalid.length > 0) {
+    return helpers.message({
+      custom:
+        `TRUSTED_PROXY_IPS entries must be an IP, a CIDR block, or one of ` +
+        `${PROXY_ADDR_KEYWORDS.join('/')} — rejected: ${invalid.join(', ')}`,
+    } as Joi.LanguageMessages);
+  }
+
+  return value;
+}
+
 const envSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
@@ -14,6 +52,33 @@ const envSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid('log', 'error', 'warn', 'debug', 'verbose')
     .default('log'),
+
+  /**
+   * Which upstream peers may be believed when they say who the real caller is
+   * (chantier B). Comma-separated; each entry is an IP, a CIDR block, or one of
+   * proxy-addr's keywords (`loopback`, `linklocal`, `uniquelocal`).
+   *
+   * ⚠️ THIS VALUE IS THE DIFFERENCE BETWEEN A RATE LIMIT AND A DENIAL OF SERVICE
+   * AGAINST OUR OWN USERS. Every browser reaches this API through the Next
+   * server, never directly, so without it `request.ip` is the Next server's
+   * address for EVERY visitor — one shared bucket, drained collectively, and the
+   * first person to spend it locks out everyone else. Fed to
+   * `app.set('trust proxy', …)` in `main.ts`.
+   *
+   * ⚠️ IT IS A LIST OF WHO MAY BE BELIEVED, NOT A SWITCH. Express walks
+   * `X-Forwarded-For` from the socket peer outwards and stops at the first
+   * address NOT in this list — so a header arriving from an untrusted peer is
+   * ignored and `request.ip` falls back to the socket peer. Failing CLOSED like
+   * that is the point: the worst case is the old shared bucket, never a caller
+   * who hands themselves a fresh budget by writing a header.
+   *
+   * The default covers the single-host setup this repo ships (API and web on the
+   * same machine). A deployment that puts them on different hosts MUST widen it
+   * to the web tier's address, or silently go back to one shared bucket.
+   */
+  TRUSTED_PROXY_IPS: Joi.string()
+    .custom(validateTrustedProxyList, 'trusted proxy list')
+    .default('loopback'),
 
   // JWT — access token
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),

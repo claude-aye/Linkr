@@ -3,6 +3,8 @@
 import { type FormEvent, useState } from 'react';
 import Link from 'next/link';
 
+import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
+
 /**
  * Request a password reset link (`/forgot-password`).
  *
@@ -43,8 +45,20 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email: trimmedEmail }),
       });
 
-      // The relay collapses everything to 202 — including an unreachable API —
-      // so in practice only a malformed request lands here.
+      // ⚠️ THE 429 IS THE ONE THING THE RELAY LETS THROUGH, AND ONLY THE ONE
+      // FROM THE IP BUDGET. It is raised before the address is looked at, so it
+      // cannot say whether an account exists. The OTHER cap — five sends an hour
+      // per address — never reaches here: it suppresses the mail and still
+      // answers 202, precisely because it CAN only be reached by an address that
+      // exists. Surfacing that one would be the oracle this page is built to
+      // deny. Do not merge the two.
+      if (res.status === 429) {
+        setError(tooManyAttemptsMessage(res));
+        return;
+      }
+
+      // The relay collapses everything else to 202 — including an unreachable
+      // API — so in practice only a malformed request lands here.
       if (!res.ok) {
         setError('Certains champs sont invalides. Veuillez les vérifier.');
         return;

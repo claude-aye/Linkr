@@ -6,6 +6,8 @@ import { ResetSuccessNotice } from './reset-success-notice';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -24,8 +26,20 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
+      // ⚠️ THE 429 IS BRANCHED BEFORE THE CATCH-ALL, AND IT IS NOT A DETAIL.
+      // Folded into « identifiants invalides » it would tell someone whose
+      // password is perfectly correct that it is wrong — sending them to reset a
+      // password that never needed resetting. The budget is per address and the
+      // guard raises it before any lookup, so this says nothing about the
+      // account. Mapping is by HTTP status ALONE (convention locked since
+      // 3.12b): the body is never parsed to pick a message.
+      if (res.status === 429) {
+        setError(tooManyAttemptsMessage(res));
+        return;
+      }
+
       if (!res.ok) {
-        setError('Identifiants invalides. Vérifie ton courriel et ton mot de passe.');
+        setError('Identifiants invalides. Veuillez vérifier votre courriel et votre mot de passe.');
         return;
       }
 
@@ -33,7 +47,7 @@ export default function LoginPage() {
       router.push('/');
       router.refresh();
     } catch {
-      setError('Connexion impossible. Réessaie plus tard.');
+      setError('Connexion impossible. Veuillez réessayer plus tard.');
     } finally {
       setSubmitting(false);
     }
@@ -51,7 +65,7 @@ export default function LoginPage() {
             Connexion
           </h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Accède à ton portail Linkr.
+            Accédez à votre portail Linkr.
           </p>
         </header>
 
