@@ -24,6 +24,7 @@ import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestAssignmentStatus } from './enums/service-request-assignment-status.enum';
 import { buildTransition } from './service-request-state-machine';
+import { MIN_LEAD_TIME_HOURS, RESPONSE_WINDOW_HOURS } from './constants';
 import { buildAssignmentTransition } from './service-request-assignment-state-machine';
 import {
   DirectBookingValidationException,
@@ -37,6 +38,9 @@ import {
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { SystemRole } from '../users/enums/system-role.enum';
 import { PaymentsService } from '../payments/payments.service';
+
+/** Hours → milliseconds, for the desired-window arithmetic in `create()`. */
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 @Injectable()
 export class ServiceRequestsService {
@@ -61,6 +65,19 @@ export class ServiceRequestsService {
     clientUserId: string,
     dto: CreateServiceRequestDto,
   ): Promise<ServiceRequestResponseDto> {
+    // Captured ONCE. The lead-time check and the response-deadline derivation
+    // below must speak of the SAME instant: re-reading the clock between them
+    // would let a request validate against one `now` and expire against another.
+    const now = new Date();
+
+    const desiredStartAtUtc = dto.desiredStartAtUtc ? new Date(dto.desiredStartAtUtc) : null;
+    const desiredEndAtUtc = dto.desiredEndAtUtc ? new Date(dto.desiredEndAtUtc) : null;
+
+    // Starts as the caller-supplied value — which is what a PROJECT_TENDER and
+    // a windowless DIRECT_BOOKING keep. The DIRECT_BOOKING block below
+    // OVERWRITES it as soon as a desired start is offered (D5/D7).
+    let responseDeadlineUtc = dto.responseDeadlineUtc ? new Date(dto.responseDeadlineUtc) : null;
+
     if (dto.requestType === ServiceRequestType.DIRECT_BOOKING) {
       if (!dto.serviceItemId) {
         throw new DirectBookingValidationException(
@@ -80,6 +97,48 @@ export class ServiceRequestsService {
         throw new DirectBookingValidationException(
           'The requested service provider is not active',
         );
+      }
+
+      // Desired window (D1-D4). The two bounds stay OPTIONAL here: the web form
+      // does not send them yet, and requiring them before their producer exists
+      // would 400 every booking made from the UI. What is enforced is
+      // COHERENCE — a window, when offered, must be usable. Making them
+      // mandatory is a later PR, landing with the form that fills them.
+      if ((desiredStartAtUtc === null) !== (desiredEndAtUtc === null)) {
+        throw new DirectBookingValidationException(
+          'desiredStartAtUtc and desiredEndAtUtc must be provided together',
+        );
+      }
+      if (desiredStartAtUtc && desiredEndAtUtc) {
+        if (desiredEndAtUtc.getTime() <= desiredStartAtUtc.getTime()) {
+          throw new DirectBookingValidationException(
+            'desiredEndAtUtc must be strictly after desiredStartAtUtc',
+          );
+        }
+        if (
+          desiredStartAtUtc.getTime() <
+          now.getTime() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR
+        ) {
+          throw new DirectBookingValidationException(
+            `desiredStartAtUtc must be at least ${MIN_LEAD_TIME_HOURS} hours from now`,
+          );
+        }
+      }
+
+      // D5/D7 — the deadline is DERIVED, never received. A value supplied by
+      // the caller is OVERWRITTEN, not completed: if the derivation only
+      // applied when the field was absent, any authenticated caller would pick
+      // its own expiry and a request that never expires would be trivial to
+      // forge. min(desired start, now + window): the provider can neither
+      // answer after the appointment hour, nor sit on the request longer than
+      // the window. No desired start ⇒ nothing to derive FROM, so the caller's
+      // value stands untouched — the statu quo path the web form still takes.
+      // PROJECT_TENDER keeps its own quotes_deadline_utc: another column,
+      // another lifecycle, not this branch's business.
+      if (desiredStartAtUtc) {
+        const windowEnd = new Date(now.getTime() + RESPONSE_WINDOW_HOURS * MS_PER_HOUR);
+        responseDeadlineUtc =
+          desiredStartAtUtc.getTime() < windowEnd.getTime() ? desiredStartAtUtc : windowEnd;
       }
     }
 
@@ -106,11 +165,12 @@ export class ServiceRequestsService {
       // UNKNOWN. Never derived from the coordinates: a caller that does not
       // state where the point came from does not get to claim a provenance.
       serviceLocationPrecision: dto.serviceLocationPrecision,
-      desiredStartAtUtc: dto.desiredStartAtUtc ? new Date(dto.desiredStartAtUtc) : null,
-      desiredEndAtUtc: dto.desiredEndAtUtc ? new Date(dto.desiredEndAtUtc) : null,
+      desiredStartAtUtc,
+      desiredEndAtUtc,
       estimatedAmount: dto.estimatedAmount != null ? String(dto.estimatedAmount) : null,
       estimatedCurrency: dto.estimatedCurrency ?? null,
-      responseDeadlineUtc: dto.responseDeadlineUtc ? new Date(dto.responseDeadlineUtc) : null,
+      // Derived above for a windowed DIRECT_BOOKING, caller-supplied otherwise.
+      responseDeadlineUtc,
       quotesDeadlineUtc: dto.quotesDeadlineUtc ? new Date(dto.quotesDeadlineUtc) : null,
     });
 
@@ -193,6 +253,14 @@ export class ServiceRequestsService {
       serviceProviderId: string;
       workerUserId: string;
       clientUserId: string;
+      /**
+       * Appointment hour retained on acceptance (D8). REQUIRED, not optional,
+       * and deliberately so: a caller that forgot to say which hour to retain
+       * would NOT COMPILE. Same motive as `serviceLocationPrecision` on the web
+       * side — make the omission structurally impossible rather than merely
+       * discouraged. Pass `null` explicitly when there is no hour to retain.
+       */
+      scheduledAtUtc: Date | null;
       now?: Date;
     },
   ): Promise<void> {
@@ -215,6 +283,12 @@ export class ServiceRequestsService {
         status: requestTransition.status,
         assignedServiceProviderId: params.serviceProviderId,
         acceptedAtUtc: now,
+        // D8 — RÈGLE DE RÉSOLUTION, pas un simple transfert. Le client offre une
+        // fenêtre ; le prestataire, en acceptant, retient SON DÉBUT.
+        // `desired_end_at_utc` n'est pas perdu : il reste en base et reste
+        // affiché au prestataire, qui sait ainsi de quelle marge il dispose. Ne
+        // pas lire l'absence de la borne de fin ici comme un oubli.
+        scheduledAtUtc: params.scheduledAtUtc,
       },
       manager,
     );
@@ -382,6 +456,7 @@ export class ServiceRequestsService {
         // INDIVIDUAL provider self-assigns: caller === provider.user_id (asserted above).
         workerUserId: callerUserId,
         clientUserId: request.clientUserId,
+        scheduledAtUtc: request.desiredStartAtUtc,
       });
       await qr.commitTransaction();
     } catch (err) {
