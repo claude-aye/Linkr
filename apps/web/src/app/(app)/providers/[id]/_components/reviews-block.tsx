@@ -1,4 +1,5 @@
 import type { ProviderReview, ProviderReviewList } from '@/lib/reviews/types';
+import { formatDateLong } from '@/lib/dates/format';
 
 /**
  * A provider's reviews on their profile — Server Component, no interactivity,
@@ -16,12 +17,6 @@ import type { ProviderReview, ProviderReviewList } from '@/lib/reviews/types';
  * GEOCODED, the demand map's banner): it never claims to know what it does not.
  */
 
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'long' });
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
-}
 
 /** fr-CA renders 4.33 as « 4,33 » — a decimal point would read as English. */
 const ratingFmt = new Intl.NumberFormat('fr-CA', {
@@ -50,7 +45,7 @@ function ReviewRow({ review }: { review: ProviderReview }) {
           </span>
         </p>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatDate(review.createdAtUtc)}
+          {formatDateLong(review.createdAtUtc)}
         </span>
       </div>
       {review.comment && (

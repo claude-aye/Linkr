@@ -1,5 +1,6 @@
 import type { components } from '@linkr/api-client';
 import type { MyReview } from '@/lib/reviews/types';
+import { formatDateLong } from '@/lib/dates/format';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
   clientLocationPrecisionNotice,
@@ -76,13 +77,6 @@ const STATUS_BADGES: Record<Status, { label: string; className: string }> = {
   },
 };
 
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'long' });
-
-/** `createdAtUtc` is always present — date only, fr-CA. */
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
-}
 
 /**
  * fr-CA currency formatting — same OUTPUT as the create form's `priceLabel` for
@@ -169,7 +163,7 @@ export function RequestCard({
           {badge.label}
         </span>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatDate(request.createdAtUtc)}
+          {formatDateLong(request.createdAtUtc)}
         </span>
       </div>
 

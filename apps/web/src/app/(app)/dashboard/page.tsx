@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import type { components } from '@linkr/api-client';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import { formatDate, formatDateTime } from '@/lib/dates/format';
 import { pickTranslation } from '@/lib/i18n/translations';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
@@ -51,20 +52,6 @@ type ConnectAccount = components['schemas']['ConnectAccountResponseDto'];
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
-
-const dateTimeFmt = new Intl.DateTimeFormat('fr-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
-/** Date only — the fallback once a relative age stops carrying meaning. */
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium' });
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
-}
 
 function formatMoney(amount: string | null, currency: string | null): string {
   if (!amount) return '—';
@@ -121,7 +108,7 @@ function formatRelative(iso: string): string {
   if (days < 7) return `il y a ${days} j`;
 
   // Past a week « il y a 43 j » stops meaning anything — give the date instead.
-  return dateFmt.format(new Date(then));
+  return formatDate(iso);
 }
 
 /** One distinct color per pipeline status (feminine: la demande). */
