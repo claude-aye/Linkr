@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import type { components } from '@linkr/api-client';
 
+import { SUPPORT_EMAIL } from '@/lib/constants';
+
 import { ConnectLinkAction } from './_actions/connect-link-action';
 import { ConnectRecheckAction } from './_actions/connect-recheck-action';
 
@@ -25,14 +27,6 @@ import { ConnectRecheckAction } from './_actions/connect-recheck-action';
  * nullable debt), and nothing here reads it.
  */
 type ConnectAccount = components['schemas']['ConnectAccountResponseDto'];
-
-/**
- * Support contact for a blocked account. TODO: replace with the real support
- * address once one exists. It is deliberately a visible placeholder rather than
- * an empty string — and `href="#"` is forbidden, because a contact affordance
- * that goes nowhere is worse than no affordance at all.
- */
-const SUPPORT_EMAIL = 'REMPLACER@linkr.ca';
 
 /**
  * WHERE the band sits, decided by CAPABILITIES — never by the status enum.
@@ -78,7 +72,10 @@ interface BandCopy {
   action: { kind: 'onboard' | 'refresh-link'; label: string } | null;
   /** Discreet « Vérifier de nouveau » (re-reads Stripe through `sync`). */
   recheck: boolean;
-  /** Support mailto — DISABLED only (see below). */
+  /**
+   * Support mailto. Set on every branch a `DISABLED` account can reach — the
+   * status, not the branch, is what decides it (see the two call sites below).
+   */
   contact: boolean;
 }
 
@@ -99,6 +96,34 @@ function headCopy(account: ConnectAccount | null): BandCopy {
       action: { kind: 'onboard', label: 'Configurer mes paiements' },
       recheck: false,
       contact: false,
+    };
+  }
+
+  /**
+   * ⚠️ THIS TEST RUNS BEFORE `DISABLED`, AND THE ORDER IS THE POINT.
+   *
+   * A `DISABLED` account can still have charges live: that is exactly the state
+   * Stripe produces when `proof_of_liveness` fails, measured on a real account
+   * during the PR 88 smoke (`DISABLED / chargesEnabled: true / payoutsEnabled:
+   * false`). Reached through the `DISABLED` branch, such a provider would read
+   * « vous ne pouvez plus recevoir de paiement » — which is false, and false in
+   * the dangerous direction: money WILL come in and then sit frozen at Stripe.
+   *
+   * So a provider is described by WHAT HE CAN DO, never by the label he
+   * carries. The status still decides one thing here — whether the escape hatch
+   * is offered — because a `RESTRICTED` file is his to complete, whereas a
+   * `DISABLED` one may not be fixable by any link we can mint.
+   */
+  if (account.chargesEnabled && !account.payoutsEnabled) {
+    return {
+      title: 'Vos versements sont suspendus',
+      body:
+        'Vous pouvez recevoir des paiements, mais Stripe ne peut pas les verser ' +
+        'sur votre compte bancaire : l’argent reste bloqué chez Stripe. ' +
+        'Complétez votre dossier pour débloquer vos versements.',
+      action: { kind: 'refresh-link', label: 'Débloquer mes versements' },
+      recheck: false,
+      contact: account.onboardingStatus === 'DISABLED',
     };
   }
 
@@ -138,20 +163,6 @@ function headCopy(account: ConnectAccount | null): BandCopy {
         'recevoir des paiements dès que la vérification sera terminée.',
       action: null,
       recheck: true,
-      contact: false,
-    };
-  }
-
-  // Charges live but payouts frozen — the silent-failure case above.
-  if (account.chargesEnabled && !account.payoutsEnabled) {
-    return {
-      title: 'Vos versements sont suspendus',
-      body:
-        'Vous pouvez recevoir des paiements, mais Stripe ne peut pas les verser ' +
-        'sur votre compte bancaire : l’argent reste bloqué chez Stripe. ' +
-        'Complétez votre dossier pour débloquer vos versements.',
-      action: { kind: 'refresh-link', label: 'Débloquer mes versements' },
-      recheck: false,
       contact: false,
     };
   }
@@ -289,9 +300,19 @@ export function ConnectStatusBand({
           />
         )}
 
+        {/* Subject and body are prefilled because the person clicking this is
+            blocked and frustrated: without the provider id, the first reply we
+            send is « qui êtes-vous ? ». The id is his own and he is
+            authenticated, so nothing leaks. `encodeURIComponent` is required —
+            unencoded accents and spaces break the link in several mail
+            clients. */}
         {copy.contact && (
           <a
-            href={`mailto:${SUPPORT_EMAIL}`}
+            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
+              'Compte de paiement bloqué',
+            )}&body=${encodeURIComponent(
+              `Identifiant prestataire : ${providerId}`,
+            )}`}
             className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
           >
             Nous écrire
