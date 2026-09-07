@@ -231,6 +231,11 @@ export class QuotesService {
         serviceProviderId: provider.id,
         workerUserId: provider.userId,
         clientUserId: request.clientUserId,
+        // D8 a été tranchée pour la RÉSERVATION DIRECTE seulement : aucune règle de
+        // résolution n'est décidée pour le chemin tender. `null` EXPLICITE, jamais une
+        // omission — c'est ce site d'appel qu'il faudra changer le jour où un tender
+        // portera une heure retenue.
+        scheduledAtUtc: null,
       });
 
       // Agreed amount for a PROJECT_TENDER is the accepted quote's amount.
