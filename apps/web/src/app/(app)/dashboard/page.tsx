@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import type { components } from '@linkr/api-client';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
-import { formatDate, formatDateTime } from '@/lib/dates/format';
+import { formatDate, formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
 import { pickTranslation } from '@/lib/i18n/translations';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
@@ -367,7 +367,13 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <Detail label="Client">{item.clientDisplayName || '—'}</Detail>
-        <Detail label="Date souhaitée">{formatDateTime(item.desiredStartAtUtc)}</Detail>
+        {/* D6 — la FENÊTRE complète, jamais le seul début : c'est la marge de
+            manœuvre du prestataire, et la masquer viderait la plage de son sens.
+            Lu NATIVEMENT (le miroir manuel `ProviderServiceRequestItem` déclare
+            les deux bornes en `string | null`) — aucun cast ici. */}
+        <Detail label="Date souhaitée">
+          {formatDateTimeRange(item.desiredStartAtUtc, item.desiredEndAtUtc)}
+        </Detail>
         <Detail label="Prix estimé">
           {formatMoney(item.estimatedAmount, item.estimatedCurrency)}
         </Detail>
