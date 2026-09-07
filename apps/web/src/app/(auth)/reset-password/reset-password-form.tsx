@@ -21,6 +21,14 @@ import { useRouter } from 'next/navigation';
  * The complementary half is `Referrer-Policy: no-referrer`, set on this route in
  * `next.config.ts` — it covers the window before this effect runs. Neither
  * replaces the other.
+ *
+ * ⚠️ THE SAME REASONING COVERS THE `<form>` TAG, WHICH IS WHY IT CARRIES
+ * `method="post"`. Everything above strips a credential the URL should never
+ * have held — but a submission that fires BEFORE hydration would put a fresh
+ * `password=…` right back into that same URL, by the browser's own default. The
+ * defence was one attribute short of complete. The POST does not make the
+ * native submission work (it lands on a 405); it turns a silent leak into a
+ * visible failure. Enforced by the (auth) block in `eslint.config.mjs`.
  */
 
 const PASSWORD_MIN = 8;
@@ -134,7 +142,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
             </p>
           </>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div>
               <label htmlFor="password" className={labelClass}>
                 Nouveau mot de passe

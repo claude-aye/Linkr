@@ -1461,6 +1461,14 @@ ne le corrige pas.
 
     ⚠️ **La page de retour n'est PAS une preuve de succès.** Stripe y renvoie le prestataire dès qu'il **quitte** le formulaire — complété, à moitié rempli, ou abandonné. Elle resynchronise **puis** affiche ce que le miroir dit ; elle ne félicite jamais personne avant d'avoir lu. Et la page de **reprise** a un budget d'**une seule tentative** : en cas d'échec elle atterrit sur `/dashboard/paiements` (destination **terminale**), jamais de retour vers Stripe ni vers elle-même — sinon le prestataire tourne en boucle reprise → lien → Stripe → périmé → reprise sans que rien ne change à l'écran.
 
+14. **Aucun `<form>` sous `(auth)` ne part en GET — `method="post"` sur la balise est obligatoire, en plus du `preventDefault()`.** Ça ressemblera à un attribut mort : les quatre écrans soumettent par `fetch` en `POST` vers le BFF, donc la méthode de la balise semble sans effet. Elle l'est **tant que le JS est hydraté**. Avant hydratation, la soumission native part, et la méthode par défaut d'un `<form>` est `GET` : les champs partent dans la query string. Mesuré sur `/login` — `f.method` renvoyait `get` et l'URL observée contenait `?email=…&password=…` **en clair**, ce qui atterrit dans l'historique du navigateur, dans les journaux de tout intermédiaire, et dans l'en-tête `Referer` transmis au site suivant. Le cas n'est pas théorique : il s'est produit au retour d'un KYC Stripe long, quand la page était affichée avant d'être hydratée.
+
+    **Ce que le correctif fait, et ce qu'il ne fait pas.** `method="post"` ne rend pas la soumission native fonctionnelle — elle atterrit en 405 sur une route de page App Router. Il **transforme une fuite silencieuse en échec visible**, et c'est tout ce qu'on lui demande. Ne pas retirer l'attribut au motif que « le `fetch` fait déjà le POST ».
+
+    **Le `noValidate` des quatre écrans aggrave la fenêtre** : avant hydratation, le navigateur ne bloque même pas les champs vides, donc rien ne freine la soumission.
+
+    **Portée : les quatre écrans d'`(auth)` seulement.** Les formulaires non sensibles du dépôt restent hors périmètre, et `search-form` est **légitimement** destiné à un GET — ne pas généraliser la règle à `src/app` entier. Le garde-fou est une paire de règles `no-restricted-syntax` scopée sur `src/app/(auth)/**/*.tsx` dans `apps/web/eslint.config.mjs` : la première exige la présence de `method`, la seconde en exige la valeur littérale `post` (elle attrape donc aussi `method={variable}`, qu'aucune analyse statique ne pourrait vérifier). Ce n'est **pas un test** — `apps/web` n'a aucun banc de test — c'est une interdiction de forme, qui mord au `pnpm lint`. Elle existe parce que les quatre écrans sont explicitement des jumeaux : le cinquième sera copié sur eux.
+
 ---
 
 ## 14. Out-of-Scope (For Reference)
