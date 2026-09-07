@@ -2976,6 +2976,49 @@
         ]
       }
     },
+    "/service-providers/{id}/connect/sync": {
+      "post": {
+        "operationId": "StripeConnectController_sync",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectAccountResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this provider"
+          },
+          "404": {
+            "description": "Provider not found, or no Connect account yet"
+          },
+          "501": {
+            "description": "ORGANIZATION provider onboarding is not implemented"
+          },
+          "502": {
+            "description": "Stripe API call failed, or the mirror could not be updated"
+          }
+        },
+        "summary": "Re-read the account from Stripe and overwrite the local mirror for an owned provider. Manual repair for a webhook that never landed — resyncs only, never creates an account.",
+        "tags": [
+          "stripe-connect"
+        ]
+      }
+    },
     "/service-providers/{id}/connect/refresh-link": {
       "post": {
         "operationId": "StripeConnectController_refreshLink",

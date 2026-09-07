@@ -1192,6 +1192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-providers/{id}/connect/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-read the account from Stripe and overwrite the local mirror for an owned provider. Manual repair for a webhook that never landed — resyncs only, never creates an account. */
+        post: operations["StripeConnectController_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/service-providers/{id}/connect/refresh-link": {
         parameters: {
             query?: never;
@@ -4861,6 +4878,55 @@ export interface operations {
             };
             /** @description ORGANIZATION provider onboarding is not implemented */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StripeConnectController_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectAccountResponseDto"];
+                };
+            };
+            /** @description You do not own this provider */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider not found, or no Connect account yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ORGANIZATION provider onboarding is not implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stripe API call failed, or the mirror could not be updated */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

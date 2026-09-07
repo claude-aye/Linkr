@@ -58,6 +58,25 @@ export class StripeConnectController {
     return this.service.getStatus(id, user);
   }
 
+  @Post(':id/connect/sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Re-read the account from Stripe and overwrite the local mirror for an owned provider. ' +
+      'Manual repair for a webhook that never landed — resyncs only, never creates an account.',
+  })
+  @ApiResponse({ status: 200, type: ConnectAccountResponseDto })
+  @ApiResponse({ status: 403, description: 'You do not own this provider' })
+  @ApiResponse({ status: 404, description: 'Provider not found, or no Connect account yet' })
+  @ApiResponse({ status: 501, description: 'ORGANIZATION provider onboarding is not implemented' })
+  @ApiResponse({ status: 502, description: 'Stripe API call failed, or the mirror could not be updated' })
+  sync(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ConnectAccountResponseDto> {
+    return this.service.sync(id, user);
+  }
+
   @Post(':id/connect/refresh-link')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
