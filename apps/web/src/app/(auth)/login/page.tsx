@@ -76,7 +76,11 @@ export default function LoginPage() {
           <ResetSuccessNotice />
         </Suspense>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {/* `method="post"` n'est pas décoratif : sans lui, une soumission qui
+            part avant l'hydratation encode les champs dans la query string.
+            Voir la règle no-restricted-syntax du bloc (auth) dans
+            eslint.config.mjs. */}
+        <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label htmlFor="email" className={labelClass}>
               Courriel
