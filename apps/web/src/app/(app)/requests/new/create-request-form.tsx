@@ -3,7 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { components } from '@linkr/api-client';
-import { formatDateTimeRange } from '@/lib/dates/format';
+import { formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
 
 /**
  * Client service-request creation form (Phase 3.13-3-front) — the piece that
@@ -172,6 +172,20 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+/**
+ * Instant le plus tôt acceptable pour le début souhaité.
+ *
+ * ⚠️ LA SECONDE DE GRÂCE N'EST PAS DE LA COQUETTERIE. L'attribut `min` d'un
+ * `datetime-local` s'arrête à LA MINUTE, alors que `Date.now()` compte les
+ * millisecondes. Sans marge, un plancher réel à 13:07:04 s'affiche « 13:07 »
+ * dans le champ, et la valeur que le sélecteur propose est refusée par le
+ * validateur à quatre secondes près — un rejet que rien à l'écran n'explique.
+ * On tolère donc la minute entamée.
+ */
+function earliestStartMs(): number {
+  return Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR - 60 * 1000;
+}
+
 const fieldClass =
   'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
 const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
@@ -224,6 +238,25 @@ export function CreateRequestForm({
   const [desiredEnd, setDesiredEnd] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Le champ que la dernière erreur désigne, et un compteur de rejets.
+   *
+   * ⚠️ LES DEUX EXISTENT À CAUSE D'UN DÉFAUT OBSERVÉ, pas par souci d'esthétique.
+   * Mesuré le 8 septembre 2026 : un début à 09 h 56 sous un plancher à 11 h 55,
+   * l'utilisateur corrige la FIN (les deux champs sont côte à côte et le message
+   * ne désigne pas le sien), reclique, et `setError` réécrit LA MÊME chaîne :
+   * React ne repeint rien, aucun pixel ne change, et le bouton paraît mort. Il
+   * ne l'était pas — `disabled` valait `false` et le gestionnaire s'exécutait à
+   * chaque clic. Le mécanisme était juste, le retour à l'utilisateur ne l'était
+   * pas.
+   *
+   * `errorField` déplace le focus et colore la bordure du champ FAUTIF ; le
+   * `nonce` remonte le panneau d'alerte à chaque rejet, pour qu'un second clic
+   * sur la même faute produise malgré tout un événement — y compris pour un
+   * lecteur d'écran, que `role="alert"` laisserait muet sur un texte identique.
+   */
+  const [errorField, setErrorField] = useState<'desiredStart' | 'desiredEnd' | null>(null);
+  const [errorNonce, setErrorNonce] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [locationState, setLocationState] = useState<LocationState>({ kind: 'idle' });
 
@@ -253,9 +286,36 @@ export function CreateRequestForm({
    * `handleSubmit` and, behind it, the API.
    */
   useEffect(() => {
-    const floor = toLocalInputValue(new Date(Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR));
-    if (desiredStartRef.current) desiredStartRef.current.min = floor;
-    if (desiredEndRef.current) desiredEndRef.current.min = floor;
+    /**
+     * ⚠️ LE PLANCHER DOIT ÊTRE RAFRAÎCHI, PAS POSÉ UNE FOIS.
+     *
+     * Mesuré le 8 septembre 2026, et c'est un vrai défaut, pas une coquetterie :
+     * une page ouverte depuis sept minutes portait `min = 13:00` alors que le
+     * validateur, qui recalcule à CHAQUE clic, exigeait déjà `13:07:04`. Le
+     * champ autorisait donc une valeur que la soumission refusait ensuite, et
+     * l'écart grandissait d'une minute par minute. L'utilisateur voyait un
+     * formulaire qui rejette une saisie que son propre sélecteur venait de lui
+     * proposer — un rejet incompréhensible, pris pour un bouton mort.
+     *
+     * Un `min` PÉRIMÉ EST PLUS PERMISSIF que le validateur, et c'est précisément
+     * ce qui nuit : trop permissif laisse entrer ce qui sera refusé derrière.
+     */
+    const refresh = () => {
+      const floor = toLocalInputValue(new Date(Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR));
+      if (desiredStartRef.current) desiredStartRef.current.min = floor;
+      if (desiredEndRef.current) desiredEndRef.current.min = floor;
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    const start = desiredStartRef.current;
+    const end = desiredEndRef.current;
+    start?.addEventListener('focus', refresh);
+    end?.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(timer);
+      start?.removeEventListener('focus', refresh);
+      end?.removeEventListener('focus', refresh);
+    };
   }, []);
 
   /**
@@ -459,15 +519,33 @@ export function CreateRequestForm({
 
     // Light client validation — the API is the real judge; this only spares an
     // obviously-doomed round-trip. No network call on failure.
+
+    /**
+     * Rejette la soumission en DÉSIGNANT le champ fautif.
+     *
+     * Le `nonce` change à chaque appel même quand le message est identique : le
+     * panneau d'alerte est remonté, donc un second clic sur la même faute reste
+     * perceptible. Le focus va sur le champ concerné quand il y en a un — c'est
+     * lui qui répond à « lequel des deux ? » sans que l'utilisateur ait à poser
+     * la question.
+     */
+    const reject = (message: string, field: 'desiredStart' | 'desiredEnd' | null = null) => {
+      setError(message);
+      setErrorField(field);
+      setErrorNonce((n) => n + 1);
+      if (field === 'desiredStart') desiredStartRef.current?.focus();
+      if (field === 'desiredEnd') desiredEndRef.current?.focus();
+    };
+
     const trimmedTitle = title.trim();
     const trimmedDescription = description.trim();
     const trimmedAddress = serviceAddress.trim();
     if (!trimmedTitle || !trimmedDescription || !trimmedAddress) {
-      setError('Veuillez remplir tous les champs.');
+      reject('Veuillez remplir tous les champs.');
       return;
     }
     if (trimmedTitle.length > TITLE_MAX || trimmedAddress.length > ADDRESS_MAX) {
-      setError('Certains champs dépassent la longueur autorisée.');
+      reject('Certains champs dépassent la longueur autorisée.');
       return;
     }
 
@@ -476,27 +554,32 @@ export function CreateRequestForm({
     // pick an address out of the candidate list and only THEN be told the date
     // is refused — the second half of a submit rejected for the first half.
     if (!desiredStart || !desiredEnd) {
-      setError('Veuillez indiquer la période souhaitée : un début et une fin.');
+      reject(
+        'Veuillez indiquer la période souhaitée : un début et une fin.',
+        desiredStart ? 'desiredEnd' : 'desiredStart',
+      );
       return;
     }
     const desiredWindow = readDesiredWindow();
     if (!desiredWindow) {
-      setError('La période souhaitée est invalide.');
+      reject('La période souhaitée est invalide.', 'desiredStart');
       return;
     }
     if (desiredWindow.endMs <= desiredWindow.startMs) {
-      setError('La fin de la période doit être postérieure au début.');
+      reject('La fin de la période doit être postérieure au début.', 'desiredEnd');
       return;
     }
-    if (desiredWindow.startMs < Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR) {
-      setError(
-        `Le début souhaité doit être dans au moins ${MIN_LEAD_TIME_HOURS} heures.`,
+    if (desiredWindow.startMs < earliestStartMs()) {
+      reject(
+        `Le début souhaité doit être au plus tôt à ${formatDateTime(new Date(earliestStartMs()).toISOString())}.`,
+        'desiredStart',
       );
       return;
     }
     if (desiredWindow.endMs - desiredWindow.startMs > MAX_WINDOW_HOURS * MS_PER_HOUR) {
-      setError(
+      reject(
         `La période souhaitée ne peut pas dépasser ${MAX_WINDOW_HOURS} heures.`,
+        'desiredEnd',
       );
       return;
     }
@@ -855,9 +938,17 @@ export function CreateRequestForm({
               type="datetime-local"
               required
               value={desiredStart}
-              onChange={(e) => handleDesiredStartChange(e.target.value)}
+              onChange={(e) => {
+                if (errorField === 'desiredStart') setErrorField(null);
+                handleDesiredStartChange(e.target.value);
+              }}
               aria-describedby="desiredStart-hint"
-              className={fieldClass}
+              aria-invalid={errorField === 'desiredStart' || undefined}
+              className={
+                errorField === 'desiredStart'
+                  ? `${fieldClass} border-red-400 focus:border-red-500 focus:ring-red-200 dark:border-red-800 dark:focus:ring-red-900`
+                  : fieldClass
+              }
             />
             <p
               id="desiredStart-hint"
@@ -878,9 +969,17 @@ export function CreateRequestForm({
               type="datetime-local"
               required
               value={desiredEnd}
-              onChange={(e) => setDesiredEnd(e.target.value)}
+              onChange={(e) => {
+                if (errorField === 'desiredEnd') setErrorField(null);
+                setDesiredEnd(e.target.value);
+              }}
               aria-describedby="desiredEnd-hint"
-              className={fieldClass}
+              aria-invalid={errorField === 'desiredEnd' || undefined}
+              className={
+                errorField === 'desiredEnd'
+                  ? `${fieldClass} border-red-400 focus:border-red-500 focus:ring-red-200 dark:border-red-800 dark:focus:ring-red-900`
+                  : fieldClass
+              }
             />
             <p
               id="desiredEnd-hint"
@@ -893,6 +992,7 @@ export function CreateRequestForm({
 
         {error && (
           <p
+            key={errorNonce}
             role="alert"
             className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
           >
