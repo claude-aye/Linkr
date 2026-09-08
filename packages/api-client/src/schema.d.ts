@@ -2004,9 +2004,15 @@ export interface components {
              * @enum {string}
              */
             serviceLocationPrecision?: "GEOCODED" | "SEARCH_AREA" | "UNKNOWN";
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the desired service window. REQUIRED for DIRECT_BOOKING (with desiredEndAtUtc); optional for PROJECT_TENDER.
+             */
             desiredStartAtUtc?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the desired service window. REQUIRED for DIRECT_BOOKING (with desiredStartAtUtc); optional for PROJECT_TENDER.
+             */
             desiredEndAtUtc?: string;
             /** @description Estimated amount. Requires estimatedCurrency. */
             estimatedAmount?: number;
