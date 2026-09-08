@@ -17,15 +17,25 @@ import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { DirectBookingValidationException } from './exceptions/service-request.exceptions';
-import { MIN_LEAD_TIME_HOURS, RESPONSE_WINDOW_HOURS } from './constants';
+import {
+  MAX_WINDOW_HOURS,
+  MIN_LEAD_TIME_HOURS,
+  RESPONSE_WINDOW_HOURS,
+} from './constants';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 
 /**
- * Desired window (PR 1). Two properties are under test and neither is visible
- * from the DTO:
+ * Desired window (PR 1, tightened by PR 3). Three properties are under test,
+ * and none of them is visible from the DTO — every case here calls `create()`
+ * directly, PAST the ValidationPipe, which is exactly why the service mirrors
+ * the DTO instead of trusting it:
+ *   • the two bounds are REQUIRED for a DIRECT_BOOKING (D3) and still absent-
+ *     able for a PROJECT_TENDER;
+ *   • the window is at most MAX_WINDOW_HOURS wide, STRICTLY (D5d) — 24 h pile
+ *     passes, 24 h + 1 ms does not;
  *   • the response deadline is DERIVED — min(desired start, now + window) — and
- *     OVERWRITES anything the caller sent (D5/D7);
- *   • the bounds stay OPTIONAL, so the web form, which does not send them yet,
- *     keeps working unchanged.
+ *     OVERWRITES anything the caller sent (D5/D7).
  * Everything is mocked: no database, no clock control beyond a tolerance.
  */
 
@@ -52,6 +62,12 @@ function baseDto(overrides: Partial<CreateServiceRequestDto> = {}): CreateServic
     description: 'Une coloration complète.',
     serviceAddress: '1 rue de Test, Québec, QC',
     serviceLocation: { type: 'Point', coordinates: [-71.21, 46.81] },
+    // A valid window is part of the BASE since PR 3: the bounds are required
+    // for a DIRECT_BOOKING, so a base without them would make every unrelated
+    // case fail for the wrong reason. Cases that test their ABSENCE strip them
+    // explicitly with `undefined`.
+    desiredStartAtUtc: hoursFromNow(3),
+    desiredEndAtUtc: hoursFromNow(5),
     ...overrides,
   } as CreateServiceRequestDto;
 }
@@ -178,7 +194,10 @@ describe('ServiceRequestsService.create — desired window coherence', () => {
     const { service } = buildService();
 
     await expect(
-      service.create(CLIENT_ID, baseDto({ desiredStartAtUtc: hoursFromNow(5) })),
+      service.create(
+        CLIENT_ID,
+        baseDto({ desiredStartAtUtc: hoursFromNow(5), desiredEndAtUtc: undefined }),
+      ),
     ).rejects.toBeInstanceOf(DirectBookingValidationException);
   });
 
@@ -186,7 +205,66 @@ describe('ServiceRequestsService.create — desired window coherence', () => {
     const { service } = buildService();
 
     await expect(
-      service.create(CLIENT_ID, baseDto({ desiredEndAtUtc: hoursFromNow(5) })),
+      service.create(
+        CLIENT_ID,
+        baseDto({ desiredStartAtUtc: undefined, desiredEndAtUtc: hoursFromNow(5) }),
+      ),
+    ).rejects.toBeInstanceOf(DirectBookingValidationException);
+  });
+
+  /**
+   * The INVERSION of PR 1's non-regression case. Until the web form filled the
+   * bounds, a windowless DIRECT_BOOKING had to be accepted; now that it does,
+   * the same input is a 400. This is the case that would silently pass again if
+   * someone re-added an `if (desiredStartAtUtc)` guard to the service.
+   */
+  it('rejects a DIRECT_BOOKING with no bounds at all (D3)', async () => {
+    const { service } = buildService();
+
+    await expect(
+      service.create(
+        CLIENT_ID,
+        baseDto({ desiredStartAtUtc: undefined, desiredEndAtUtc: undefined }),
+      ),
+    ).rejects.toBeInstanceOf(DirectBookingValidationException);
+  });
+
+  /**
+   * THE boundary pair. `>=` instead of `>` passes every other case in this file
+   * and fails only the second of these two — which is why they are written
+   * together and must stay together.
+   */
+  it(`accepts a window of exactly ${MAX_WINDOW_HOURS}h`, async () => {
+    const { service, created } = buildService();
+    const start = hoursFromNow(3);
+
+    await service.create(
+      CLIENT_ID,
+      baseDto({
+        desiredStartAtUtc: start,
+        desiredEndAtUtc: new Date(
+          new Date(start).getTime() + MAX_WINDOW_HOURS * MS_PER_HOUR,
+        ).toISOString(),
+      }),
+    );
+
+    expect(created().desiredStartAtUtc?.toISOString()).toBe(new Date(start).toISOString());
+  });
+
+  it(`rejects a window wider than ${MAX_WINDOW_HOURS}h`, async () => {
+    const { service } = buildService();
+    const start = hoursFromNow(3);
+
+    await expect(
+      service.create(
+        CLIENT_ID,
+        baseDto({
+          desiredStartAtUtc: start,
+          desiredEndAtUtc: new Date(
+            new Date(start).getTime() + (MAX_WINDOW_HOURS + 1) * MS_PER_HOUR,
+          ).toISOString(),
+        }),
+      ),
     ).rejects.toBeInstanceOf(DirectBookingValidationException);
   });
 });
@@ -245,21 +323,12 @@ describe('ServiceRequestsService.create — response deadline derivation', () =>
   });
 });
 
-describe('ServiceRequestsService.create — non-regression: the window is optional', () => {
+describe('ServiceRequestsService.create — non-regression: PROJECT_TENDER is untouched', () => {
   /**
-   * The web form does not send the bounds yet. Until the PR that adds it, a
-   * windowless DIRECT_BOOKING must still be created — and derive nothing.
+   * The bounds became mandatory for DIRECT_BOOKING only. A tender has no
+   * appointment to schedule, so it must still be creatable without them — the
+   * case that would break if the requirement were hoisted out of the branch.
    */
-  it('accepts a DIRECT_BOOKING with no bounds and derives no deadline', async () => {
-    const { service, created } = buildService();
-
-    await service.create(CLIENT_ID, baseDto());
-
-    expect(created().desiredStartAtUtc).toBeNull();
-    expect(created().desiredEndAtUtc).toBeNull();
-    expect(created().responseDeadlineUtc).toBeNull();
-  });
-
   it('leaves PROJECT_TENDER untouched: no bounds, no derived deadline', async () => {
     const { service, created } = buildService();
 
@@ -269,6 +338,8 @@ describe('ServiceRequestsService.create — non-regression: the window is option
         requestType: ServiceRequestType.PROJECT_TENDER,
         serviceItemId: undefined,
         requestedServiceProviderId: undefined,
+        desiredStartAtUtc: undefined,
+        desiredEndAtUtc: undefined,
       }),
     );
 
@@ -291,11 +362,96 @@ describe('ServiceRequestsService.create — non-regression: the window is option
         serviceItemId: undefined,
         requestedServiceProviderId: undefined,
         desiredStartAtUtc: hoursFromNow(24 * 10),
+        desiredEndAtUtc: undefined,
         quotesDeadlineUtc: quotesDeadline,
       }),
     );
 
     expect(created().responseDeadlineUtc).toBeNull();
     expect(created().quotesDeadlineUtc?.toISOString()).toBe(new Date(quotesDeadline).toISOString());
+  });
+});
+
+/**
+ * DTO level, not service level — on purpose. What is under test here is the D9
+ * repair: the `@ValidateIf` pattern itself, which lives entirely in the DTO and
+ * which every other case in this file bypasses by calling `create()` directly.
+ *
+ * The options mirror `main.ts` exactly (`whitelist` + `forbidNonWhitelisted`);
+ * a probe that validated under different options would prove something the
+ * running app never does.
+ *
+ * ⚠️ The two PROJECT_TENDER cases are not padding. A single
+ * `@ValidateIf(DIRECT_BOOKING)` — the obvious repair — passes every
+ * DIRECT_BOOKING case below and silently drops format checking on a tender,
+ * re-opening the very 500 this repair closes, by the other door. Delete them
+ * and the disjunction can be "simplified" back with a green suite.
+ */
+describe('CreateServiceRequestDto — conditional validation (D9)', () => {
+  function errorsFor(payload: Record<string, unknown>): string[] {
+    const dto = plainToInstance(CreateServiceRequestDto, payload);
+    return validateSync(dto as object, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    })
+      .map((e) => e.property)
+      .sort();
+  }
+
+  const directBase = {
+    requestType: ServiceRequestType.DIRECT_BOOKING,
+    serviceCategoryId: CATEGORY_ID,
+    serviceItemId: ITEM_ID,
+    requestedServiceProviderId: PROVIDER_ID,
+    title: 'Coloration',
+    description: 'Une coloration complète.',
+    serviceAddress: '1 rue de Test, Québec, QC',
+    serviceLocation: { type: 'Point', coordinates: [-71.21, 46.81] },
+    desiredStartAtUtc: hoursFromNow(3),
+    desiredEndAtUtc: hoursFromNow(5),
+  };
+
+  const tenderBase = {
+    ...directBase,
+    requestType: ServiceRequestType.PROJECT_TENDER,
+    serviceItemId: undefined,
+    requestedServiceProviderId: undefined,
+    desiredStartAtUtc: undefined,
+    desiredEndAtUtc: undefined,
+  };
+
+  it('accepts a well-formed DIRECT_BOOKING (the control)', () => {
+    expect(errorsFor(directBase)).toEqual([]);
+  });
+
+  it('rejects a malformed serviceItemId on DIRECT_BOOKING — 400, not a SQL 500', () => {
+    expect(errorsFor({ ...directBase, serviceItemId: 'nope' })).toContain('serviceItemId');
+  });
+
+  it('rejects an absent serviceItemId on DIRECT_BOOKING', () => {
+    expect(errorsFor({ ...directBase, serviceItemId: undefined })).toContain('serviceItemId');
+  });
+
+  it('rejects a malformed requestedServiceProviderId on DIRECT_BOOKING', () => {
+    expect(errorsFor({ ...directBase, requestedServiceProviderId: 'nope' })).toContain(
+      'requestedServiceProviderId',
+    );
+  });
+
+  it('rejects absent bounds on DIRECT_BOOKING (D3, at the HTTP door)', () => {
+    expect(
+      errorsFor({ ...directBase, desiredStartAtUtc: undefined, desiredEndAtUtc: undefined }),
+    ).toEqual(['desiredEndAtUtc', 'desiredStartAtUtc']);
+  });
+
+  it('accepts a PROJECT_TENDER with none of the conditional fields', () => {
+    expect(errorsFor(tenderBase)).toEqual([]);
+  });
+
+  it('still checks the FORMAT of a value a tender does supply', () => {
+    expect(errorsFor({ ...tenderBase, desiredStartAtUtc: 'nope' })).toContain(
+      'desiredStartAtUtc',
+    );
+    expect(errorsFor({ ...tenderBase, serviceItemId: 'nope' })).toContain('serviceItemId');
   });
 });

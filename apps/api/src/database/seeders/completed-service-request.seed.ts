@@ -418,6 +418,12 @@ async function createRequest(
       serviceAddress: '1 rue de la Fixture, Quebec, QC',
       serviceLocation: BASE_LOCATION,
       serviceLocationPrecision: 'GEOCODED',
+      // Les bornes sont désormais REQUISES (D3). Dérivées de `now` : une date en
+      // dur deviendrait un 400 « début dans moins de 2 h » dès le lendemain, et
+      // le seeder mourrait sans que personne ne comprenne pourquoi. 3 h et 5 h
+      // respectent le plancher (2 h) et le plafond (24 h).
+      desiredStartAtUtc: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      desiredEndAtUtc: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
       estimatedAmount: PRICE_AMOUNT,
       estimatedCurrency: CURRENCY,
     },
