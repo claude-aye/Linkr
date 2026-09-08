@@ -31,3 +31,14 @@ export const MIN_LEAD_TIME_HOURS = 2;
  * répondre après l'heure du rendez-vous, ni s'asseoir dessus plus longtemps.
  */
 export const RESPONSE_WINDOW_HOURS = 48;
+
+/**
+ * Largeur maximale de la fenêtre souhaitée (D5d). Miroir de la règle client
+ * (`create-request-form.tsx`), qui applique la même valeur avec le même
+ * comparateur STRICT — 24 h pile passe, 24 h + 1 ms est refusée.
+ *
+ * ⚠️ Existe à cause de D8 : l'acceptation retient le DÉBUT, donc une plage très
+ * large est un « quand vous voulez » que le système écrase silencieusement.
+ * Mieux vaut refuser franchement que d'accepter une donnée qu'on trahit ensuite.
+ */
+export const MAX_WINDOW_HOURS = 24;

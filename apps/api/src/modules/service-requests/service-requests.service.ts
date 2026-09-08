@@ -24,7 +24,7 @@ import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestAssignmentStatus } from './enums/service-request-assignment-status.enum';
 import { buildTransition } from './service-request-state-machine';
-import { MIN_LEAD_TIME_HOURS, RESPONSE_WINDOW_HOURS } from './constants';
+import { MAX_WINDOW_HOURS, MIN_LEAD_TIME_HOURS, RESPONSE_WINDOW_HOURS } from './constants';
 import { buildAssignmentTransition } from './service-request-assignment-state-machine';
 import {
   DirectBookingValidationException,
@@ -99,30 +99,42 @@ export class ServiceRequestsService {
         );
       }
 
-      // Desired window (D1-D4). The two bounds stay OPTIONAL here: the web form
-      // does not send them yet, and requiring them before their producer exists
-      // would 400 every booking made from the UI. What is enforced is
-      // COHERENCE — a window, when offered, must be usable. Making them
-      // mandatory is a later PR, landing with the form that fills them.
-      if ((desiredStartAtUtc === null) !== (desiredEndAtUtc === null)) {
+      // Desired window (D1-D5d). The two bounds are now REQUIRED (D3): the web
+      // form fills them since PR 2, so the constraint finally has a producer.
+      //
+      // ⚠️ This MIRRORS the DTO rather than trusting it, exactly as the two
+      // checks above mirror `serviceItemId` and `requestedServiceProviderId`.
+      // Not belt-and-braces: the DTO only guards the HTTP door, and every test
+      // of these rules calls `create()` directly, past the ValidationPipe. A
+      // rule that lives only in the DTO is a rule no test on this path can see.
+      if (!desiredStartAtUtc || !desiredEndAtUtc) {
         throw new DirectBookingValidationException(
-          'desiredStartAtUtc and desiredEndAtUtc must be provided together',
+          'DIRECT_BOOKING requires both desiredStartAtUtc and desiredEndAtUtc',
         );
       }
-      if (desiredStartAtUtc && desiredEndAtUtc) {
-        if (desiredEndAtUtc.getTime() <= desiredStartAtUtc.getTime()) {
-          throw new DirectBookingValidationException(
-            'desiredEndAtUtc must be strictly after desiredStartAtUtc',
-          );
-        }
-        if (
-          desiredStartAtUtc.getTime() <
-          now.getTime() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR
-        ) {
-          throw new DirectBookingValidationException(
-            `desiredStartAtUtc must be at least ${MIN_LEAD_TIME_HOURS} hours from now`,
-          );
-        }
+      if (desiredEndAtUtc.getTime() <= desiredStartAtUtc.getTime()) {
+        throw new DirectBookingValidationException(
+          'desiredEndAtUtc must be strictly after desiredStartAtUtc',
+        );
+      }
+      if (
+        desiredStartAtUtc.getTime() <
+        now.getTime() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR
+      ) {
+        throw new DirectBookingValidationException(
+          `desiredStartAtUtc must be at least ${MIN_LEAD_TIME_HOURS} hours from now`,
+        );
+      }
+      // D5d — width cap. STRICT `>`: exactly MAX_WINDOW_HOURS passes, which is
+      // the comparator the client form already uses; flipping it to `>=` would
+      // reject a window the UI just accepted, and nothing would say why.
+      if (
+        desiredEndAtUtc.getTime() - desiredStartAtUtc.getTime() >
+        MAX_WINDOW_HOURS * MS_PER_HOUR
+      ) {
+        throw new DirectBookingValidationException(
+          `The desired window cannot exceed ${MAX_WINDOW_HOURS} hours`,
+        );
       }
 
       // D5/D7 — the deadline is DERIVED, never received. A value supplied by
@@ -131,15 +143,18 @@ export class ServiceRequestsService {
       // its own expiry and a request that never expires would be trivial to
       // forge. min(desired start, now + window): the provider can neither
       // answer after the appointment hour, nor sit on the request longer than
-      // the window. No desired start ⇒ nothing to derive FROM, so the caller's
-      // value stands untouched — the statu quo path the web form still takes.
-      // PROJECT_TENDER keeps its own quotes_deadline_utc: another column,
-      // another lifecycle, not this branch's business.
-      if (desiredStartAtUtc) {
-        const windowEnd = new Date(now.getTime() + RESPONSE_WINDOW_HOURS * MS_PER_HOUR);
-        responseDeadlineUtc =
-          desiredStartAtUtc.getTime() < windowEnd.getTime() ? desiredStartAtUtc : windowEnd;
-      }
+      // the window. PROJECT_TENDER keeps its own quotes_deadline_utc: another
+      // column, another lifecycle, not this branch's business — and it is the
+      // only path where a caller-supplied responseDeadlineUtc now survives,
+      // since a direct booking always has a start to derive from.
+      //
+      // No `if (desiredStartAtUtc)` guard any more: the check above throws when
+      // either bound is missing, so reaching this line means both are present.
+      // A residual guard would read as "the deadline is sometimes not derived",
+      // which since D3 is no longer true for a direct booking.
+      const windowEnd = new Date(now.getTime() + RESPONSE_WINDOW_HOURS * MS_PER_HOUR);
+      responseDeadlineUtc =
+        desiredStartAtUtc.getTime() < windowEnd.getTime() ? desiredStartAtUtc : windowEnd;
     }
 
     if (dto.requestType === ServiceRequestType.PROJECT_TENDER) {
