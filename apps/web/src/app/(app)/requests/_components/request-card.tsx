@@ -1,5 +1,6 @@
 import type { components } from '@linkr/api-client';
 import type { MyReview } from '@/lib/reviews/types';
+import { formatDateLong, formatDateTimeRange } from '@/lib/dates/format';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
   clientLocationPrecisionNotice,
@@ -76,13 +77,6 @@ const STATUS_BADGES: Record<Status, { label: string; className: string }> = {
   },
 };
 
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'long' });
-
-/** `createdAtUtc` is always present — date only, fr-CA. */
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
-}
 
 /**
  * fr-CA currency formatting — same OUTPUT as the create form's `priceLabel` for
@@ -156,6 +150,12 @@ export function RequestCard({
   const estimatedAmount = request.estimatedAmount as unknown as string | null;
   const estimatedCurrency = request.estimatedCurrency as unknown as string | null;
 
+  // Same debt, same surgical cast: the desired window is nullable on the DTO
+  // and therefore degrades to `Record<string, never>` too. A client whose
+  // request now carries a date but cannot see it would be one silence more.
+  const desiredStartAtUtc = request.desiredStartAtUtc as unknown as string | null;
+  const desiredEndAtUtc = request.desiredEndAtUtc as unknown as string | null;
+
   // Exception marker: `null` on GEOCODED, so a precise request shows nothing.
   // Read NATIVELY — the field is a required string union on the DTO, no cast.
   const locationNotice = clientLocationPrecisionNotice(request.serviceLocationPrecision);
@@ -169,7 +169,7 @@ export function RequestCard({
           {badge.label}
         </span>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatDate(request.createdAtUtc)}
+          {formatDateLong(request.createdAtUtc)}
         </span>
       </div>
 
@@ -178,6 +178,9 @@ export function RequestCard({
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <Detail label="Montant estimé">
           {formatMoney(estimatedAmount, estimatedCurrency)}
+        </Detail>
+        <Detail label="Période souhaitée">
+          {formatDateTimeRange(desiredStartAtUtc, desiredEndAtUtc)}
         </Detail>
         <Detail label="Adresse" wide>
           {request.serviceAddress}

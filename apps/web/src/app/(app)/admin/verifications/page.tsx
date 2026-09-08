@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import { formatDate, formatDateTime } from '@/lib/dates/format';
 import { pickTranslation } from '@/lib/i18n/translations';
 import type {
   RequiredDocumentType,
@@ -19,23 +20,6 @@ const DOCUMENT_TYPE_LABELS: Record<RequiredDocumentType, string> = {
   COMPETENCY_CARD: 'Carte de compétence',
   CERTIFICATION: 'Certification',
 };
-
-const dateTimeFmt = new Intl.DateTimeFormat('fr-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium' });
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
-}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '—';

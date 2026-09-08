@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import type { components } from '@linkr/api-client';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import { formatDate, formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
 import { pickTranslation } from '@/lib/i18n/translations';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
@@ -51,20 +52,6 @@ type ConnectAccount = components['schemas']['ConnectAccountResponseDto'];
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
-
-const dateTimeFmt = new Intl.DateTimeFormat('fr-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
-/** Date only — the fallback once a relative age stops carrying meaning. */
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium' });
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
-}
 
 function formatMoney(amount: string | null, currency: string | null): string {
   if (!amount) return '—';
@@ -121,7 +108,7 @@ function formatRelative(iso: string): string {
   if (days < 7) return `il y a ${days} j`;
 
   // Past a week « il y a 43 j » stops meaning anything — give the date instead.
-  return dateFmt.format(new Date(then));
+  return formatDate(iso);
 }
 
 /** One distinct color per pipeline status (feminine: la demande). */
@@ -380,7 +367,13 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <Detail label="Client">{item.clientDisplayName || '—'}</Detail>
-        <Detail label="Date souhaitée">{formatDateTime(item.desiredStartAtUtc)}</Detail>
+        {/* D6 — la FENÊTRE complète, jamais le seul début : c'est la marge de
+            manœuvre du prestataire, et la masquer viderait la plage de son sens.
+            Lu NATIVEMENT (le miroir manuel `ProviderServiceRequestItem` déclare
+            les deux bornes en `string | null`) — aucun cast ici. */}
+        <Detail label="Date souhaitée">
+          {formatDateTimeRange(item.desiredStartAtUtc, item.desiredEndAtUtc)}
+        </Detail>
         <Detail label="Prix estimé">
           {formatMoney(item.estimatedAmount, item.estimatedCurrency)}
         </Detail>

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 
 import type { ProviderReview } from '@/lib/reviews/types';
+import { formatDateLong } from '@/lib/dates/format';
 
 /**
  * « Avis reçus » — the provider reads their reviews and answers each one ONCE.
@@ -31,12 +32,6 @@ import type { ProviderReview } from '@/lib/reviews/types';
 
 const RESPONSE_MAX = 2000;
 
-const dateFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'long' });
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
-}
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -116,7 +111,7 @@ function ReviewRow({ review }: { review: ProviderReview }) {
           </span>
         </p>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          {formatDate(review.createdAtUtc)}
+          {formatDateLong(review.createdAtUtc)}
         </span>
       </div>
 

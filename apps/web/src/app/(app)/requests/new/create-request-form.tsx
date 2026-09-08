@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { components } from '@linkr/api-client';
+import { formatDateTimeRange } from '@/lib/dates/format';
 
 /**
  * Client service-request creation form (Phase 3.13-3-front) — the piece that
@@ -79,6 +80,42 @@ type LocationState =
  * the nullable migration is a separate, tracked PR.)
  */
 const QUEBEC_SERVICE_LOCATION = { type: 'Point', coordinates: [-71.21, 46.81] };
+
+/**
+ * D5c — the same floor the API enforces (`MIN_LEAD_TIME_HOURS`). Mirrored, not
+ * imported: `apps/web` does not depend on `apps/api`. If one moves, both move.
+ */
+const MIN_LEAD_TIME_HOURS = 2;
+/** D5b — window length pre-filled when the client only picks a start. */
+const DEFAULT_WINDOW_HOURS = 2;
+/**
+ * D5d — largeur MAXIMALE de la fenêtre souhaitée.
+ *
+ * ⚠️ CE PLAFOND EXISTE À CAUSE DE LA RÈGLE DE RÉSOLUTION D8, pas par goût de la
+ * contrainte. À l'acceptation, l'API retient le DÉBUT de la fenêtre et
+ * `desired_end_at_utc` ne décide plus rien. Une plage d'un mois — observée au
+ * smoke de la PR 2, le sélecteur natif rend le défilement du mois trop facile —
+ * n'est donc pas une disponibilité large : c'est un « quand vous voulez » que le
+ * système écrase silencieusement en retenant le premier instant. Mieux vaut
+ * refuser franchement que d'accepter une donnée qu'on trahit ensuite.
+ *
+ * Au-delà d'une journée, une fenêtre cesse d'exprimer la souplesse du client sur
+ * une journée de travail. ⚠️ Contrôle CLIENT UNIQUEMENT pour l'instant : l'API ne
+ * vérifie que `fin > début`. Le miroir côté service part avec la PR 3, en même
+ * temps que le passage des bornes à obligatoire.
+ */
+const MAX_WINDOW_HOURS = 24;
+const MS_PER_HOUR = 60 * 60 * 1000;
+
+/**
+ * `datetime-local` speaks WALL TIME with no zone — « YYYY-MM-DDTHH:mm », read
+ * in the BROWSER's zone. Built from LOCAL parts on purpose: `toISOString()`
+ * would shift the value by the UTC offset and pre-fill the wrong hour.
+ */
+function toLocalInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const TITLE_MAX = 200;
 const ADDRESS_MAX = 500;
@@ -181,6 +218,10 @@ export function CreateRequestForm({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [serviceAddress, setServiceAddress] = useState('');
+  // Wall-clock strings straight from the two inputs — converted to instants
+  // only at submit (see `readDesiredWindow`), never stored as Dates.
+  const [desiredStart, setDesiredStart] = useState('');
+  const [desiredEnd, setDesiredEnd] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -190,6 +231,70 @@ export function CreateRequestForm({
   const addressBlockRef = useRef<HTMLDivElement>(null);
   /** Focus target of « Corriger l’adresse » — the only focus move we make. */
   const addressInputRef = useRef<HTMLInputElement>(null);
+  /** The two window inputs — see the `min` effect below for why refs. */
+  const desiredStartRef = useRef<HTMLInputElement>(null);
+  const desiredEndRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * The `min` floor is written to the DOM after mount, NOT rendered.
+   *
+   * Two reasons, and the second is measured. (1) « maintenant + 2 h » in the
+   * browser's wall time cannot be rendered on the server: Node runs in UTC and
+   * the browser in Toronto, so the server HTML and the first client render
+   * would disagree — a hydration mismatch, the same class of defect that made
+   * the A-2 login notice never appear. (2) The obvious fix, `useState` + a
+   * `setState` in this effect, is REFUSED by `react-hooks/set-state-in-effect`
+   * (verified by running the lint on a probe, not assumed). Writing the
+   * attribute directly is the escape hatch that rule's own message names —
+   * « manually updating the DOM ».
+   *
+   * It is a COURTESY: it narrows the mobile picker, and nothing more. A client
+   * can still type an earlier hour, and the real gates are the check in
+   * `handleSubmit` and, behind it, the API.
+   */
+  useEffect(() => {
+    const floor = toLocalInputValue(new Date(Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR));
+    if (desiredStartRef.current) desiredStartRef.current.min = floor;
+    if (desiredEndRef.current) desiredEndRef.current.min = floor;
+  }, []);
+
+  /**
+   * The window as instants, or null when either bound is missing/unparseable.
+   * ⚠️ `new Date('').toISOString()` THROWS — every path to the payload goes
+   * through here so an unusable bound becomes a message, never a blank screen.
+   */
+  function readDesiredWindow(): {
+    startIso: string;
+    endIso: string;
+    startMs: number;
+    endMs: number;
+  } | null {
+    const start = new Date(desiredStart);
+    const end = new Date(desiredEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    return {
+      startIso: start.toISOString(),
+      endIso: end.toISOString(),
+      startMs: start.getTime(),
+      endMs: end.getTime(),
+    };
+  }
+
+  /**
+   * D5b — moving the start pulls the end along, but ONLY when the end is empty
+   * or would now sit before it. An end the client chose, and that stays valid,
+   * is never overwritten.
+   */
+  function handleDesiredStartChange(value: string) {
+    setDesiredStart(value);
+    const start = new Date(value);
+    if (!value || Number.isNaN(start.getTime())) return;
+    const end = desiredEnd ? new Date(desiredEnd) : null;
+    const endUnusable = !end || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime();
+    if (endUnusable) {
+      setDesiredEnd(toLocalInputValue(new Date(start.getTime() + DEFAULT_WINDOW_HOURS * MS_PER_HOUR)));
+    }
+  }
 
   const priceLabel = formatMoney(priceAmount, priceCurrency);
   const geocoding = locationState.kind === 'geocoding';
@@ -246,6 +351,11 @@ export function CreateRequestForm({
     serviceLocationPrecision: NonNullable<
       CreateServiceRequestBody['serviceLocationPrecision']
     >,
+    // REQUIRED third parameter, same motive as the precision above: a caller
+    // that forgot the window would NOT COMPILE. It is passed rather than read
+    // from state so the value that travels is the one `handleSubmit` actually
+    // validated, and so a future third caller cannot post a dateless booking.
+    desiredWindow: { startIso: string; endIso: string },
   ) {
     // Derived/constant fields are assembled HERE, never entered nor URL-borne.
     const payload: CreateServiceRequestBody = {
@@ -265,6 +375,14 @@ export function CreateRequestForm({
         serviceLocation as unknown as CreateServiceRequestBody['serviceLocation'],
       // Travels with the coordinate above; no cast needed (clean string union).
       serviceLocationPrecision,
+      // D0b — heure murale saisie, convertie dans le fuseau du NAVIGATEUR.
+      // Correct pour un client au Québec ; décalé pour un client qui réserve
+      // depuis un autre fuseau. Dette assumée et documentée (CLAUDE.md §13.1) :
+      // l'alternative — de l'arithmétique de fuseaux écrite à la main dans une
+      // application SANS banc de test — est plus risquée que la dette. Le
+      // stockage reste UTC.
+      desiredStartAtUtc: desiredWindow.startIso,
+      desiredEndAtUtc: desiredWindow.endIso,
     };
 
     setPending(true);
@@ -353,6 +471,36 @@ export function CreateRequestForm({
       return;
     }
 
+    // The window is checked HERE, in the light block, so it runs BEFORE the
+    // geocoding interception below. Validating it after would make the client
+    // pick an address out of the candidate list and only THEN be told the date
+    // is refused — the second half of a submit rejected for the first half.
+    if (!desiredStart || !desiredEnd) {
+      setError('Veuillez indiquer la période souhaitée : un début et une fin.');
+      return;
+    }
+    const desiredWindow = readDesiredWindow();
+    if (!desiredWindow) {
+      setError('La période souhaitée est invalide.');
+      return;
+    }
+    if (desiredWindow.endMs <= desiredWindow.startMs) {
+      setError('La fin de la période doit être postérieure au début.');
+      return;
+    }
+    if (desiredWindow.startMs < Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR) {
+      setError(
+        `Le début souhaité doit être dans au moins ${MIN_LEAD_TIME_HOURS} heures.`,
+      );
+      return;
+    }
+    if (desiredWindow.endMs - desiredWindow.startMs > MAX_WINDOW_HOURS * MS_PER_HOUR) {
+      setError(
+        `La période souhaitée ne peut pas dépasser ${MAX_WINDOW_HOURS} heures.`,
+      );
+      return;
+    }
+
     // Branch 1 — a candidate was already resolved in-form: POST its coordinates.
     // GeoJSON order [lng, lat]: LONGITUDE FIRST (inverting would send the request
     // to the wrong hemisphere; at Québec, lng is negative, lat positive).
@@ -365,6 +513,7 @@ export function CreateRequestForm({
         // Stated where the coordinate is built: this point comes from the
         // address the client typed, geocoded, and picked from the candidates.
         'GEOCODED',
+        desiredWindow,
       );
       return;
     }
@@ -430,6 +579,19 @@ export function CreateRequestForm({
   function submitAnyway() {
     if (pending || geocoding) return;
 
+    // ⚠️ NE PAS y dupliquer la validation de la période — ce n'est pas un trou.
+    // Ce bouton n'est atteignable que depuis le panneau `unresolved`, que SEUL
+    // `handleSubmit` produit, et qui vient donc APRÈS la validation. Les deux
+    // états n'ont pas pu changer entre-temps (le panneau est rendu à partir des
+    // mêmes valeurs). On relit la fenêtre plutôt que de la refaire valider ; le
+    // `null` ci-dessous est inatteignable par construction, et il vaut mieux un
+    // message qu'un écran blanc si un jour un autre appelant apparaît.
+    const desiredWindow = readDesiredWindow();
+    if (!desiredWindow) {
+      setError('La période souhaitée est invalide.');
+      return;
+    }
+
     // Same [lng, lat] order as every other branch — longitude first.
     // The existing coordinate fork is ENRICHED, not rewritten: each arm now
     // yields the PAIR (point + where it came from), so the provenance cannot be
@@ -441,7 +603,7 @@ export function CreateRequestForm({
             precision: 'SEARCH_AREA' as const,
           }
         : { location: QUEBEC_SERVICE_LOCATION, precision: 'UNKNOWN' as const };
-    void postRequest(location, precision);
+    void postRequest(location, precision, desiredWindow);
   }
 
   /**
@@ -472,6 +634,11 @@ export function CreateRequestForm({
               {tradeLabel} · {serviceLabel}
             </Row>
             <Row label="Montant estimé">{priceLabel}</Row>
+            {/* Le dernier écran où le client relit ce qu'il vient d'envoyer —
+                un récapitulatif de réservation sans sa date se remarque. */}
+            <Row label="Période souhaitée">
+              {formatDateTimeRange(desiredStart, desiredEnd)}
+            </Row>
             <Row label="Adresse">{serviceAddress.trim()}</Row>
           </dl>
 
@@ -670,6 +837,59 @@ export function CreateRequestForm({
             Localisé&nbsp;: {locationState.label}
           </p>
         )}
+
+        {/* D2/D5a — la période souhaitée. Les deux champs sont requis ICI (le
+            client ne réserve pas « un jour »), alors que l'API les garde
+            facultatifs : la contrainte serveur arrive avec la PR qui corrige
+            aussi le seeder. `required` est doublé par le contrôle JS, parce que
+            le formulaire porte `noValidate`. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="desiredStart" className={labelClass}>
+              Début souhaité
+            </label>
+            <input
+              id="desiredStart"
+              name="desiredStart"
+              ref={desiredStartRef}
+              type="datetime-local"
+              required
+              value={desiredStart}
+              onChange={(e) => handleDesiredStartChange(e.target.value)}
+              aria-describedby="desiredStart-hint"
+              className={fieldClass}
+            />
+            <p
+              id="desiredStart-hint"
+              className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
+            >
+              Dans au moins {MIN_LEAD_TIME_HOURS} heures.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="desiredEnd" className={labelClass}>
+              Fin souhaitée
+            </label>
+            <input
+              id="desiredEnd"
+              name="desiredEnd"
+              ref={desiredEndRef}
+              type="datetime-local"
+              required
+              value={desiredEnd}
+              onChange={(e) => setDesiredEnd(e.target.value)}
+              aria-describedby="desiredEnd-hint"
+              className={fieldClass}
+            />
+            <p
+              id="desiredEnd-hint"
+              className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
+            >
+              La marge que vous laissez au prestataire.
+            </p>
+          </div>
+        </div>
 
         {error && (
           <p
