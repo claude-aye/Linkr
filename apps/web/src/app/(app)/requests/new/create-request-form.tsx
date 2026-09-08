@@ -88,6 +88,23 @@ const QUEBEC_SERVICE_LOCATION = { type: 'Point', coordinates: [-71.21, 46.81] };
 const MIN_LEAD_TIME_HOURS = 2;
 /** D5b — window length pre-filled when the client only picks a start. */
 const DEFAULT_WINDOW_HOURS = 2;
+/**
+ * D5d — largeur MAXIMALE de la fenêtre souhaitée.
+ *
+ * ⚠️ CE PLAFOND EXISTE À CAUSE DE LA RÈGLE DE RÉSOLUTION D8, pas par goût de la
+ * contrainte. À l'acceptation, l'API retient le DÉBUT de la fenêtre et
+ * `desired_end_at_utc` ne décide plus rien. Une plage d'un mois — observée au
+ * smoke de la PR 2, le sélecteur natif rend le défilement du mois trop facile —
+ * n'est donc pas une disponibilité large : c'est un « quand vous voulez » que le
+ * système écrase silencieusement en retenant le premier instant. Mieux vaut
+ * refuser franchement que d'accepter une donnée qu'on trahit ensuite.
+ *
+ * Au-delà d'une journée, une fenêtre cesse d'exprimer la souplesse du client sur
+ * une journée de travail. ⚠️ Contrôle CLIENT UNIQUEMENT pour l'instant : l'API ne
+ * vérifie que `fin > début`. Le miroir côté service part avec la PR 3, en même
+ * temps que le passage des bornes à obligatoire.
+ */
+const MAX_WINDOW_HOURS = 24;
 const MS_PER_HOUR = 60 * 60 * 1000;
 
 /**
@@ -474,6 +491,12 @@ export function CreateRequestForm({
     if (desiredWindow.startMs < Date.now() + MIN_LEAD_TIME_HOURS * MS_PER_HOUR) {
       setError(
         `Le début souhaité doit être dans au moins ${MIN_LEAD_TIME_HOURS} heures.`,
+      );
+      return;
+    }
+    if (desiredWindow.endMs - desiredWindow.startMs > MAX_WINDOW_HOURS * MS_PER_HOUR) {
+      setError(
+        `La période souhaitée ne peut pas dépasser ${MAX_WINDOW_HOURS} heures.`,
       );
       return;
     }
