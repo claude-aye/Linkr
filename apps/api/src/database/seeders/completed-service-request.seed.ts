@@ -95,10 +95,12 @@ const CURRENCY = 'CAD';
 type PipelineStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';
 
 /** Title is the natural key of a fixture request — hence the stable prefix. */
+const TITLE_PREFIX = process.env.FIXTURE_TITLE_PREFIX ?? '[fixture]';
+
 const REQUESTS: { title: string; target: PipelineStatus }[] = [
-  { title: '[fixture] Job a demarrer', target: 'ASSIGNED' },
-  { title: '[fixture] Job en cours', target: 'IN_PROGRESS' },
-  { title: '[fixture] Job complete', target: 'COMPLETED' },
+  { title: `${TITLE_PREFIX} Job a demarrer`, target: 'ASSIGNED' },
+  { title: `${TITLE_PREFIX} Job en cours`, target: 'IN_PROGRESS' },
+  { title: `${TITLE_PREFIX} Job complete`, target: 'COMPLETED' },
 ];
 
 const ds = new DataSource({
