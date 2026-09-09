@@ -172,4 +172,14 @@ export interface ProviderServiceRequestItem {
   serviceItemNameTranslations: Record<string, string> | null;
   /** Backend already defaults to `—` when the client has no usable name. */
   clientDisplayName: string;
+  /**
+   * Status of the request's DEPOSIT — DERIVED from the schema, like
+   * `serviceLocationPrecision` above and for the same reason: the backend
+   * annotated it with a concrete enum AND `nullable`, so it generates a clean
+   * union and escapes the quirk that forces the rest of this interface to exist.
+   *
+   * A status, never an amount: the 20% rate stays backend-only. `null` means no
+   * deposit row — on an accepted job that is as much of a problem as FAILED.
+   */
+  depositStatus: components['schemas']['ProviderServiceRequestItemDto']['depositStatus'];
 }
