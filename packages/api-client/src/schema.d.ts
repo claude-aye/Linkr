@@ -927,8 +927,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Accept a DIRECT_BOOKING (INDIVIDUAL provider only). Transitions request OPEN→ASSIGNED and creates an assignment. */
+        /** Accept a DIRECT_BOOKING (INDIVIDUAL provider only). Transitions request OPEN→ASSIGNED and creates an assignment. 200 when the deposit was captured, 202 when it was not — the assignment stands either way. */
         post: operations["ServiceRequestsController_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-requests/{id}/retry-deposit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-attempt the deposit on a job already assigned to the caller. Idempotent: a settled or in-flight deposit is left alone, and a retry never creates a second PaymentIntent. */
+        post: operations["ServiceRequestsController_retryDeposit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2147,6 +2164,8 @@ export interface components {
              * @example Marie Tremblay
              */
             clientDisplayName: string;
+            /** @enum {string|null} */
+            depositStatus?: "PENDING" | "PROCESSING" | "REQUIRES_ACTION" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "REFUNDED" | "PARTIALLY_REFUNDED" | null;
         };
         ProviderServiceRequestListDto: {
             items: components["schemas"]["ProviderServiceRequestItemDto"][];
@@ -4158,6 +4177,15 @@ export interface operations {
                     "application/json": components["schemas"]["ServiceRequestResponseDto"];
                 };
             };
+            /** @description Assigned, but the deposit did not settle. The job is the provider’s; the deposit is retryable via POST :id/retry-deposit. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceRequestResponseDto"];
+                };
+            };
             /** @description Not a DIRECT_BOOKING or missing provider */
             400: {
                 headers: {
@@ -4186,8 +4214,64 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description ORGANIZATION dispatch not supported in MVP */
+            /** @description ORGANIZATION dispatch not supported, or no amount to base a deposit on */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ServiceRequestsController_retryDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceRequestResponseDto"];
+                };
+            };
+            /** @description Caller is not the assigned worker */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found or no active assignment */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request is not in a state where a deposit applies */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No amount to base a deposit on */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stripe rejected the deposit charge */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

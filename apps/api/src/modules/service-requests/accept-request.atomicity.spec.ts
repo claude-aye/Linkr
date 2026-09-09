@@ -16,6 +16,11 @@ import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { InvalidStateTransitionException } from './exceptions/service-request.exceptions';
+import {
+  DepositAmountUnavailableException,
+  DepositChargeFailedException,
+  ProviderNotChargeableException,
+} from '../payments/exceptions/payments.exceptions';
 
 /**
  * `acceptRequest` reads the status UNDER THE LOCK, never from the pre-flight read.
@@ -76,6 +81,7 @@ function record(overrides: Partial<ServiceRequestRecord> = {}): ServiceRequestRe
 interface Harness {
   service: ServiceRequestsService;
   captureDeposit: jest.Mock;
+  assertDepositBasis: jest.Mock;
   assignmentCreate: jest.Mock;
   committed: () => boolean;
   rolledBack: () => boolean;
@@ -88,6 +94,7 @@ interface Harness {
 function buildHarness(
   preflight: ServiceRequestRecord,
   locked: ServiceRequestRecord | null,
+  opts?: { captureDeposit?: jest.Mock },
 ): Harness {
   let commit = false;
   let rollback = false;
@@ -112,9 +119,11 @@ function buildHarness(
     }),
   } as unknown as ServiceProviderRepository;
 
-  const captureDeposit = jest.fn().mockResolvedValue(undefined);
+  const captureDeposit = opts?.captureDeposit ?? jest.fn().mockResolvedValue(undefined);
+  const assertDepositBasis = jest.fn();
   const paymentsService = {
     assertPayable: jest.fn().mockResolvedValue(undefined),
+    assertDepositBasis,
     captureDeposit,
   } as unknown as PaymentsService;
 
@@ -147,6 +156,7 @@ function buildHarness(
   return {
     service,
     captureDeposit,
+    assertDepositBasis,
     assignmentCreate,
     committed: () => commit,
     rolledBack: () => rollback,
@@ -245,6 +255,70 @@ describe('ServiceRequestsService.acceptRequest - locked status read', () => {
     await expect(
       h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.assignmentCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ServiceRequestsService.acceptRequest - the deposit never speaks for the assignment', () => {
+  it('keeps the assignment and reports depositSettled: false when the capture throws', async () => {
+    // The bug this replaces: the capture threw AFTER the commit, so the provider
+    // was told the accept had failed while holding a job they did not know about
+    // — and the FR copy behind that 502 invited a retry that then 409s.
+    const boom = jest.fn().mockRejectedValue(new DepositChargeFailedException('card declined'));
+    const h = buildHarness(record(), record(), { captureDeposit: boom });
+
+    const outcome = await h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID);
+
+    expect(outcome.depositSettled).toBe(false);
+    expect(outcome.request).toBeDefined();
+    expect(h.committed()).toBe(true);
+    expect(h.assignmentCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a 502 from Stripe', new DepositChargeFailedException('network')],
+    ['a 409 racing the payability guard', new ProviderNotChargeableException()],
+    ['an unexpected error', new Error('boom')],
+  ])('swallows %s rather than lie about the assignment', async (_label, err) => {
+    // ANY throw from the capture, not just Stripe's: none of them can
+    // un-commit the assignment, so none of them may be reported as its failure.
+    const h = buildHarness(record(), record(), {
+      captureDeposit: jest.fn().mockRejectedValue(err),
+    });
+
+    const outcome = await h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID);
+
+    expect(outcome.depositSettled).toBe(false);
+    expect(h.committed()).toBe(true);
+  });
+
+  it('reports depositSettled: true on the nominal path', async () => {
+    const h = buildHarness(record(), record());
+
+    const outcome = await h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID);
+
+    expect(outcome.depositSettled).toBe(true);
+    expect(h.captureDeposit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses BEFORE the commit when there is no amount to base a deposit on', async () => {
+    // The mirror image, and the reason this precondition moved inside the
+    // transaction: "no amount" is a fact about the REQUEST, so it must cost
+    // nothing. Left to the capture it produced a 422 on an already-assigned job
+    // — the same stuck state, by a second route.
+    const h = buildHarness(record(), record({ estimatedAmount: null, estimatedCurrency: null }), {
+      captureDeposit: jest.fn(),
+    });
+    h.assertDepositBasis.mockImplementation(() => {
+      throw new DepositAmountUnavailableException();
+    });
+
+    await expect(
+      h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID),
+    ).rejects.toBeInstanceOf(DepositAmountUnavailableException);
+
+    expect(h.committed()).toBe(false);
+    expect(h.rolledBack()).toBe(true);
     expect(h.assignmentCreate).not.toHaveBeenCalled();
   });
 });

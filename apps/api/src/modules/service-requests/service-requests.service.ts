@@ -28,6 +28,7 @@ import { MAX_WINDOW_HOURS, MIN_LEAD_TIME_HOURS, RESPONSE_WINDOW_HOURS } from './
 import { buildAssignmentTransition } from './service-request-assignment-state-machine';
 import {
   DirectBookingValidationException,
+  InvalidStateTransitionException,
   NotRequestOwnerException,
   OrganizationDispatchNotSupportedException,
   RequestAlreadyContestedException,
@@ -41,6 +42,18 @@ import { CaptureDepositParams, PaymentsService } from '../payments/payments.serv
 
 /** Hours → milliseconds, for the desired-window arithmetic in `create()`. */
 const MS_PER_HOUR = 60 * 60 * 1000;
+
+/**
+ * Result of an accept. Two facts, reported separately on purpose: the
+ * assignment is committed and irreversible, the deposit may not have settled.
+ * Collapsing them is what let a 502 claim the accept had failed when it had
+ * not. The controller turns `depositSettled: false` into a 202.
+ */
+export interface AcceptRequestOutcome {
+  request: ServiceRequestResponseDto;
+  /** False when the capture threw AFTER the assignment was committed. */
+  depositSettled: boolean;
+}
 
 @Injectable()
 export class ServiceRequestsService {
@@ -442,7 +455,7 @@ export class ServiceRequestsService {
   async acceptRequest(
     requestId: string,
     callerUserId: string,
-  ): Promise<ServiceRequestResponseDto> {
+  ): Promise<AcceptRequestOutcome> {
     const request = await this.requestRepo.findById(requestId);
     if (!request) throw new NotFoundException('Service request not found');
 
@@ -497,6 +510,17 @@ export class ServiceRequestsService {
       // whichever check `assignIndividualProvider` happens to run first.
       buildTransition(locked.status, ServiceRequestStatus.ASSIGNED);
 
+      // "There is no amount to take a deposit from" is a precondition of the
+      // REQUEST, not an outcome of the payment, so it is checked here — inside
+      // the transaction, where refusing still costs nothing. `estimated_amount`
+      // is optional on a service request, so this is reachable; left to the
+      // capture (which runs after the commit) it produced a 422 on an already
+      // assigned job. Sits next to `assertPayable`, which runs one call deeper.
+      this.paymentsService.assertDepositBasis(
+        locked.estimatedAmount,
+        locked.estimatedCurrency,
+      );
+
       await this.assignIndividualProvider(qr.manager, {
         requestId,
         currentStatus: locked.status,
@@ -528,11 +552,98 @@ export class ServiceRequestsService {
     // Deposit capture (Part 5) runs AFTER the assignment commits. The guard is
     // TypeScript narrowing only — reaching here means the commit succeeded, so
     // `depositParams` is set. Same shape as `QuotesService.accept`.
+    //
+    // ⚠️ NOTHING THROWN BY THE CAPTURE MAY ESCAPE, AND THAT IS THE POINT OF T4.
+    // The assignment is committed and cannot be un-committed: the job IS the
+    // provider's. Re-throwing here used to report "accept failed" for an accept
+    // that had succeeded — and the FR copy behind that 502 says "retry", which
+    // then 409s, because the request is no longer OPEN. The provider was left
+    // with a job they did not know they had.
+    //
+    // The two halves are reported separately instead: the assignment as the
+    // success it is, the deposit through `depositSettled` (the controller turns
+    // it into 202) and through `depositStatus` on the dashboard, which is where
+    // the state stays readable and retryable long after this response is gone.
+    // The failure is loud in the logs, never in the caller's face.
+    let depositSettled = true;
     if (depositParams) {
-      await this.paymentsService.captureDeposit(depositParams);
+      try {
+        await this.paymentsService.captureDeposit(depositParams);
+      } catch (err) {
+        depositSettled = false;
+        const detail = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Request ${requestId} was assigned to provider ` +
+            `${depositParams.serviceProviderId} but the deposit did NOT settle: ${detail}`,
+        );
+      }
     }
 
-    this.logger.log(`Provider ${request.requestedServiceProviderId} accepted request ${requestId}`);
+    this.logger.log(
+      `Provider ${request.requestedServiceProviderId} accepted request ${requestId}` +
+        (depositSettled ? '' : ' (deposit unsettled)'),
+    );
+    const updated = await this.requestRepo.findById(requestId);
+    if (!updated) throw new NotFoundException('Service request not found after update');
+    return { request: this.toResponseDto(updated), depositSettled };
+  }
+
+  /**
+   * Re-attempt the deposit on a job the provider already holds — the recovery
+   * path the "explicit state" decision requires. Without it, `acceptRequest`
+   * returning 202 would just be a prettier dead end.
+   *
+   * Deliberately NOT part of accept: accepting is a state transition and is
+   * over; this only moves money. Hence the asymmetry in how the two report
+   * failure. Accept refuses to fail on a capture error, because the assignment
+   * succeeded and saying otherwise is a lie. Retry does nothing BUT the capture,
+   * so a capture error IS the endpoint failing, and it surfaces as the 502 the
+   * dashboard already knows how to phrase.
+   *
+   * Idempotent by construction: it calls the same `captureDeposit`, whose
+   * short-circuit lets only a FAILED deposit through and whose retry never
+   * creates a second PaymentIntent. Clicking twice cannot charge twice.
+   */
+  async retryDeposit(
+    requestId: string,
+    callerUserId: string,
+  ): Promise<ServiceRequestResponseDto> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) throw new NotFoundException('Service request not found');
+
+    // The assignment, not the targeted provider, is what grants this: the
+    // request is no longer OPEN, so `requested_service_provider_id` has stopped
+    // being the authority. Same guard as `startRequest` / `completeRequest`.
+    const assignment = await this.assignmentRepo.findLiveByRequestId(requestId);
+    if (!assignment) throw new NotFoundException('No active assignment found for this request');
+    if (assignment.workerUserId !== callerUserId) {
+      throw new ForbiddenException('You are not the assigned worker for this request');
+    }
+
+    // A deposit is only meaningful while the job is live. Past COMPLETED the
+    // balance flow takes over and re-charging a deposit would be nonsense.
+    if (
+      request.status !== ServiceRequestStatus.ASSIGNED &&
+      request.status !== ServiceRequestStatus.IN_PROGRESS &&
+      request.status !== ServiceRequestStatus.COMPLETED
+    ) {
+      throw new InvalidStateTransitionException(request.status, ServiceRequestStatus.ASSIGNED);
+    }
+
+    if (!request.assignedServiceProviderId) {
+      throw new NotFoundException('This request has no assigned provider');
+    }
+
+    // Same basis as the accept that failed: the amount agreed on the request.
+    await this.paymentsService.captureDeposit({
+      serviceRequestId: requestId,
+      clientUserId: request.clientUserId,
+      serviceProviderId: request.assignedServiceProviderId,
+      agreedAmount: request.estimatedAmount,
+      agreedCurrency: request.estimatedCurrency,
+    });
+
+    this.logger.log(`Worker ${callerUserId} retried the deposit on request ${requestId}`);
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
     return this.toResponseDto(updated);

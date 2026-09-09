@@ -137,6 +137,37 @@ export class PaymentsService {
   }
 
   /**
+   * Deposit-basis guard, meant to run INSIDE the assignment transaction next to
+   * {@link assertPayable} — a throw here rolls the assignment back.
+   *
+   * It exists because `estimated_amount` is OPTIONAL on a service request while
+   * a deposit needs one. Left to `captureDeposit`, which runs after the commit,
+   * a request with no amount produced a 422 on a job that had ALREADY been
+   * assigned: the same stuck state the FAILED-deposit path used to produce, by
+   * a second route. "We cannot even compute a deposit" is a precondition of the
+   * request, not an outcome of the payment, so it belongs before the commit —
+   * where refusing still costs nothing.
+   *
+   * The arithmetic mirrors `captureDeposit`, which re-runs it; both go through
+   * `common/money` so they cannot disagree.
+   */
+  assertDepositBasis(agreedAmount: string | null, agreedCurrency: string | null): void {
+    if (agreedAmount === null || agreedCurrency === null) {
+      throw new DepositAmountUnavailableException();
+    }
+    const currency = agreedCurrency.toUpperCase();
+    const depositMinor = percentageOf(
+      toMinorUnits(agreedAmount, currency),
+      this.depositRatePercent,
+    );
+    if (depositMinor <= 0) {
+      throw new DepositAmountUnavailableException(
+        'The agreed amount is too small to compute a non-zero deposit',
+      );
+    }
+  }
+
+  /**
    * Capture the 20% deposit (Part 5) AFTER the assignment transaction commits.
    * Idempotent: the UNIQUE(service_request_id, payment_type) guard (and an
    * up-front existence check) make a second call a no-op. The PaymentIntent is
