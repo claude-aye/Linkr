@@ -37,7 +37,7 @@ import {
 } from './exceptions/service-request.exceptions';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { SystemRole } from '../users/enums/system-role.enum';
-import { PaymentsService } from '../payments/payments.service';
+import { CaptureDepositParams, PaymentsService } from '../payments/payments.service';
 
 /** Hours → milliseconds, for the desired-window arithmetic in `create()`. */
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -430,6 +430,14 @@ export class ServiceRequestsService {
   /**
    * Accept a DIRECT_BOOKING: OPEN→ASSIGNED on the request + create assignment.
    * Only the targeted INDIVIDUAL provider (caller must be provider.user_id).
+   *
+   * The status is read UNDER `SELECT … FOR UPDATE`, inside the transaction —
+   * never from the pre-flight read below. The pre-flight read only answers
+   * questions about columns nothing ever writes (`request_type`,
+   * `requested_service_provider_id`, `client_user_id`); the *status* is
+   * mutable, and validating a transition against a stale copy is how an accept
+   * used to overwrite a request the client had just cancelled, or the expiry
+   * cron had just expired, with no 409 and no trace.
    */
   async acceptRequest(
     requestId: string,
@@ -460,19 +468,55 @@ export class ServiceRequestsService {
       throw new ForbiddenException('You are not the targeted provider for this request');
     }
 
+    // Populated just before the commit; consumed AFTER the transaction releases,
+    // so the capture below reads the LOCKED row, never the pre-flight copy.
+    let depositParams: CaptureDepositParams | null = null;
+
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
     try {
+      // Serialize on the request row. A concurrent accept (double-click) or a
+      // concurrent cancel/expire blocks here and reads the COMMITTED status.
+      const locked = await this.requestRepo.findByIdForUpdate(requestId, qr.manager);
+      if (!locked) throw new NotFoundException('Service request not found');
+
+      // Defensive re-check of the authorization fact under the lock. Nothing
+      // writes `requested_service_provider_id` today (it is absent from
+      // `UpdateServiceRequestData`), so this cannot fire — it is here so that
+      // the day it becomes writable, the authorization granted above cannot be
+      // silently outlived. Same predicate, same exception as the pre-flight.
+      if (locked.requestedServiceProviderId !== provider.id) {
+        throw new ForbiddenException('You are not the targeted provider for this request');
+      }
+
+      // 409 guard on the LOCKED status, through the state machine rather than a
+      // hand-written `!== OPEN` — ALLOWED_TRANSITIONS stays the single source of
+      // truth. `assignIndividualProvider` re-runs it (harmless: pure function);
+      // doing it here first means the 409 names the state conflict rather than
+      // whichever check `assignIndividualProvider` happens to run first.
+      buildTransition(locked.status, ServiceRequestStatus.ASSIGNED);
+
       await this.assignIndividualProvider(qr.manager, {
         requestId,
-        currentStatus: request.status,
-        serviceProviderId: request.requestedServiceProviderId,
+        currentStatus: locked.status,
+        serviceProviderId: locked.requestedServiceProviderId,
         // INDIVIDUAL provider self-assigns: caller === provider.user_id (asserted above).
         workerUserId: callerUserId,
-        clientUserId: request.clientUserId,
-        scheduledAtUtc: request.desiredStartAtUtc,
+        clientUserId: locked.clientUserId,
+        scheduledAtUtc: locked.desiredStartAtUtc,
       });
+
+      // Agreed amount for a DIRECT_BOOKING lives on the request
+      // (estimated_amount/currency) — read from the locked row.
+      depositParams = {
+        serviceRequestId: requestId,
+        clientUserId: locked.clientUserId,
+        serviceProviderId: locked.requestedServiceProviderId,
+        agreedAmount: locked.estimatedAmount,
+        agreedCurrency: locked.estimatedCurrency,
+      };
+
       await qr.commitTransaction();
     } catch (err) {
       await qr.rollbackTransaction();
@@ -481,15 +525,12 @@ export class ServiceRequestsService {
       await qr.release();
     }
 
-    // Deposit capture (Part 5) runs AFTER the assignment commits. Agreed amount
-    // for a DIRECT_BOOKING lives on the request (estimated_amount/currency).
-    await this.paymentsService.captureDeposit({
-      serviceRequestId: requestId,
-      clientUserId: request.clientUserId,
-      serviceProviderId: request.requestedServiceProviderId,
-      agreedAmount: request.estimatedAmount,
-      agreedCurrency: request.estimatedCurrency,
-    });
+    // Deposit capture (Part 5) runs AFTER the assignment commits. The guard is
+    // TypeScript narrowing only — reaching here means the commit succeeded, so
+    // `depositParams` is set. Same shape as `QuotesService.accept`.
+    if (depositParams) {
+      await this.paymentsService.captureDeposit(depositParams);
+    }
 
     this.logger.log(`Provider ${request.requestedServiceProviderId} accepted request ${requestId}`);
     const updated = await this.requestRepo.findById(requestId);
