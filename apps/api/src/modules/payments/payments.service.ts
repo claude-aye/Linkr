@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
-import { StripeService } from '../stripe-connect/stripe.service';
+import { StripePaymentIntent, StripeService } from '../stripe-connect/stripe.service';
 import { StripeConnectAccountRepository } from '../stripe-connect/repositories/stripe-connect-account.repository';
 import { UsersRepository } from '../users/users.repository';
 import { ServiceRequestStatus } from '../service-requests/enums/service-request-status.enum';
@@ -147,14 +147,22 @@ export class PaymentsService {
   async captureDeposit(params: CaptureDepositParams): Promise<void> {
     const { serviceRequestId, clientUserId, serviceProviderId } = params;
 
-    // Idempotency short-circuit (one DEPOSIT per request).
+    // One DEPOSIT per request, enforced by UNIQUE(service_request_id,
+    // payment_type). A row that is NOT `FAILED` is settled, in flight, or
+    // terminal — it short-circuits exactly as before.
+    //
+    // `FAILED` is the one retryable state, and the reason this check reads the
+    // status at all (T3). It used to short-circuit on the row's mere existence,
+    // which made a failed deposit a state nothing could leave: the request stayed
+    // ASSIGNED with a dead payment row and no way to charge again, forever.
     const existing = await this.paymentRepo.findByServiceRequestAndType(
       serviceRequestId,
       PaymentType.DEPOSIT,
     );
-    if (existing) {
+    if (existing && existing.status !== PaymentStatus.FAILED) {
       this.logger.log(
-        `Deposit already recorded for request ${serviceRequestId} (payment ${existing.id}); skipping`,
+        `Deposit already recorded for request ${serviceRequestId} ` +
+          `(payment ${existing.id}, ${existing.status}); skipping`,
       );
       return;
     }
@@ -199,6 +207,35 @@ export class PaymentsService {
     const platformFeeAmount = fromMinorUnits(feeMinor, currency);
     const taxAmount = fromMinorUnits(taxMinor, currency);
     const providerNetAmount = fromMinorUnits(netMinor, currency);
+
+    // ── RETRY of a FAILED deposit (T3) ──────────────────────────────────────
+    // Never a second INSERT (the unique guard) and — the part that matters —
+    // never a second PaymentIntent when one already exists.
+    if (existing) {
+      await this.paymentRepo.prepareRetry(existing.id, {
+        paymentMethodId: pm.id,
+        grossAmount,
+        currency,
+        commissionRatePercent: this.commissionRatePercent,
+        platformFeeAmount,
+        taxAmount,
+        providerNetAmount,
+      });
+
+      await this.retryFailedDeposit(existing, {
+        serviceRequestId,
+        currency,
+        depositMinor,
+        feeMinor,
+        grossAmount,
+        platformFeeAmount,
+        providerNetAmount,
+        stripeCustomerId: client.stripeCustomerId,
+        stripePaymentMethodId: pm.stripePaymentMethodId,
+        destinationAccountId: connect.stripeAccountId,
+      });
+      return;
+    }
 
     // Persist the payment row first (status PENDING).
     let paymentId: string;
@@ -400,6 +437,200 @@ export class PaymentsService {
    * charge, persist the intent id + derived status, and on a Stripe error mark
    * the row FAILED and surface the caller's domain exception (502).
    */
+  /**
+   * Stripe PaymentIntent statuses from which we cannot usefully charge again.
+   * `requires_action` sits in this ALIVE set on purpose: off-session it means
+   * the card is asking for 3-D Secure, which only the CLIENT can clear — so
+   * retrying would not help, and re-charging would be wrong.
+   */
+  private static readonly LIVE_INTENT_STATUSES = new Set([
+    'succeeded',
+    'processing',
+    'requires_action',
+    'requires_capture',
+  ]);
+
+  /**
+   * Re-attempt a deposit whose row is FAILED, WITHOUT EVER MAKING A SECOND
+   * CHARGE POSSIBLE. Every branch below follows from measurements taken against
+   * Stripe test mode, because this guarantee cannot be reasoned out from the
+   * documentation alone:
+   *
+   *   - same key, same params, after a SUCCESS -> Stripe replays the very same
+   *     PaymentIntent. One charge, not two. This is what protects the case that
+   *     matters most: the charge went through and we never saw the response.
+   *   - same key, DIFFERENT params (a new card, i.e. the realistic retry) ->
+   *     `idempotency_error`. So the key alone cannot carry a retry.
+   *   - same key after a CARD DECLINE -> the decline is replayed verbatim, and
+   *     that decline had already created a PaymentIntent.
+   *   - same key after an `invalid_request_error` (a payment method that does
+   *     not exist — the failure every fixture in this repo produces) -> nothing
+   *     was cached, the call runs fresh.
+   *
+   * Hence the split. If a PaymentIntent exists we NEVER create another one: we
+   * either accept its verdict or confirm THAT one again, which is Stripe's own
+   * retry flow and cannot double-charge, since one PaymentIntent yields at most
+   * one successful charge. If none exists we re-issue under the SAME key, so a
+   * previous attempt that silently charged replays instead of charging twice.
+   */
+  private async retryFailedDeposit(
+    existing: PaymentRecord,
+    opts: {
+      serviceRequestId: string;
+      currency: string;
+      depositMinor: number;
+      feeMinor: number;
+      grossAmount: string;
+      platformFeeAmount: string;
+      providerNetAmount: string;
+      stripeCustomerId: string;
+      stripePaymentMethodId: string;
+      destinationAccountId: string;
+    },
+  ): Promise<void> {
+    if (!existing.stripePaymentIntentId) {
+      // Nothing is known to exist at Stripe. Reusing the FIRST attempt's key is
+      // deliberate, and is the entire double-charge guarantee on this branch.
+      this.logger.log(
+        `Retrying deposit for request ${opts.serviceRequestId} ` +
+          `(payment ${existing.id}): no PaymentIntent on file, re-issuing`,
+      );
+      await this.chargeAndPersist({
+        paymentId: existing.id,
+        serviceRequestId: opts.serviceRequestId,
+        paymentType: PaymentType.DEPOSIT,
+        amountMinor: opts.depositMinor,
+        feeMinor: opts.feeMinor,
+        currency: opts.currency,
+        stripeCustomerId: opts.stripeCustomerId,
+        stripePaymentMethodId: opts.stripePaymentMethodId,
+        destinationAccountId: opts.destinationAccountId,
+        idempotencyKey: `dep_${opts.serviceRequestId}`,
+        grossAmount: opts.grossAmount,
+        platformFeeAmount: opts.platformFeeAmount,
+        providerNetAmount: opts.providerNetAmount,
+        onStripeError: (detail) => new DepositChargeFailedException(detail),
+      });
+      return;
+    }
+
+    const intentId = existing.stripePaymentIntentId;
+    // `StripePaymentIntent`, not `Stripe.PaymentIntent`: the SDK ships two type
+    // entry points whose namespaces differ, so this repo derives every Stripe
+    // type from the client VALUE (see stripe.service.ts).
+    let intent: StripePaymentIntent;
+    try {
+      intent = await this.stripe.client.paymentIntents.retrieve(intentId);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Could not read PaymentIntent ${intentId} for request ${opts.serviceRequestId}: ${detail}`,
+      );
+      // Deliberately NOT falling through to a fresh charge: not knowing what
+      // that intent did is exactly the state in which creating a second one is
+      // how a client ends up debited twice.
+      throw new DepositChargeFailedException(detail);
+    }
+
+    if (PaymentsService.LIVE_INTENT_STATUSES.has(intent.status)) {
+      // The previous attempt did more than the local row believed. Reconcile
+      // forward and charge nothing: the row was FAILED because we lost the
+      // answer, not because the money stayed put.
+      const status = mapPaymentIntentStatus(intent.status);
+      const capturedAt = status === PaymentStatus.SUCCEEDED ? new Date() : null;
+      await this.paymentRepo.attachIntent(existing.id, intent.id, status, capturedAt);
+      this.logger.log(
+        `Deposit retry for request ${opts.serviceRequestId}: PaymentIntent ` +
+          `${intent.id} is already ${intent.status} -> reconciled to ${status}, no new charge`,
+      );
+      return;
+    }
+
+    if (intent.status === 'canceled') {
+      // A cancelled intent can never be confirmed again — and, the part that
+      // makes a fresh one safe, can never have charged anything either. It gets
+      // a key derived from the dead intent: still deterministic, so a double
+      // click on retry dedupes, without colliding with the first attempt's.
+      this.logger.log(
+        `Deposit retry for request ${opts.serviceRequestId}: PaymentIntent ` +
+          `${intent.id} is canceled, issuing a fresh one`,
+      );
+      await this.chargeAndPersist({
+        paymentId: existing.id,
+        serviceRequestId: opts.serviceRequestId,
+        paymentType: PaymentType.DEPOSIT,
+        amountMinor: opts.depositMinor,
+        feeMinor: opts.feeMinor,
+        currency: opts.currency,
+        stripeCustomerId: opts.stripeCustomerId,
+        stripePaymentMethodId: opts.stripePaymentMethodId,
+        destinationAccountId: opts.destinationAccountId,
+        idempotencyKey: `dep_${opts.serviceRequestId}_after_${intent.id}`,
+        grossAmount: opts.grossAmount,
+        platformFeeAmount: opts.platformFeeAmount,
+        providerNetAmount: opts.providerNetAmount,
+        onStripeError: (detail) => new DepositChargeFailedException(detail),
+      });
+      return;
+    }
+
+    // `requires_payment_method` (what a decline leaves behind) or
+    // `requires_confirmation`: confirm THIS intent with the client's current
+    // default card. No new intent, so no second charge is representable.
+    //
+    // The amounts are NOT recomputed here: an intent's amount is fixed at
+    // creation, so the row keeps the figures that intent was created with and
+    // the two cannot disagree. Recomputation belongs to the branch that
+    // actually creates an intent.
+    await this.confirmAndPersist({
+      paymentId: existing.id,
+      serviceRequestId: opts.serviceRequestId,
+      intentId,
+      stripePaymentMethodId: opts.stripePaymentMethodId,
+      grossAmount: existing.grossAmount,
+      currency: existing.currency,
+    });
+  }
+
+  /**
+   * Confirm an EXISTING PaymentIntent — Stripe's own "that card was declined,
+   * here is another one" flow. Mirrors {@link chargeAndPersist}'s persistence
+   * and error handling; it differs only in never creating anything.
+   */
+  private async confirmAndPersist(opts: {
+    paymentId: string;
+    serviceRequestId: string;
+    intentId: string;
+    stripePaymentMethodId: string;
+    grossAmount: string;
+    currency: string;
+  }): Promise<void> {
+    try {
+      const intent = await this.stripe.client.paymentIntents.confirm(opts.intentId, {
+        payment_method: opts.stripePaymentMethodId,
+        off_session: true,
+      });
+
+      const status = mapPaymentIntentStatus(intent.status);
+      const capturedAt = status === PaymentStatus.SUCCEEDED ? new Date() : null;
+      await this.paymentRepo.attachIntent(opts.paymentId, intent.id, status, capturedAt);
+      this.logger.log(
+        `DEPOSIT retry ${opts.grossAmount} ${opts.currency} for request ` +
+          `${opts.serviceRequestId}: re-confirmed PI ${intent.id} -> ${status}`,
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      await this.paymentRepo.recordFailure(opts.paymentId, detail, opts.intentId);
+      if (err instanceof Stripe.errors.StripeError) {
+        this.logger.error(
+          `DEPOSIT re-confirm failed for request ${opts.serviceRequestId}: ${detail}`,
+        );
+        throw new DepositChargeFailedException(detail);
+      }
+      throw err instanceof Error ? err : new Error(detail);
+    }
+  }
+
   private async chargeAndPersist(opts: {
     paymentId: string;
     serviceRequestId: string;
