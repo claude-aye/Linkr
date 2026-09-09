@@ -165,10 +165,7 @@ export function AcceptRequestAction({
     }
 
     // Both 200 and 202 mean the request migrated OPEN→ASSIGNED server-side.
-    // Refresh either way, so the dashboard behind the dialog is already correct
-    // by the time the provider closes it.
     setAssigned(true);
-    router.refresh();
 
     // 202 = assigned, deposit unsettled. Reported through ConfirmDialog's
     // rejection channel — not because anything failed in the sense the dialog
@@ -177,9 +174,26 @@ export function AcceptRequestAction({
     // physical trip; the provider should not be able to click past the fact
     // that only half of it went through. Friction proportional to risk (3.12b).
     // The status alone decides — the body is never parsed (locked in 3.12b).
+    //
+    // ⚠️ AND WE DO NOT REFRESH HERE. Refreshing re-renders the dashboard, the
+    // request leaves « En attente de réponse » for « Mes jobs », and THIS
+    // COMPONENT IS UNMOUNTED — taking the dialog, and the message, with it. The
+    // provider saw a modal blink shut on a job whose deposit had failed, which
+    // is the silence this whole change exists to remove. Measured in a browser,
+    // not reasoned about. The refresh happens on close instead (see below).
     if (response.status === 202) {
       throw new Error(DEPOSIT_UNSETTLED_MESSAGE);
     }
+
+    // Nominal path: the card can migrate now, the dialog closes on resolve.
+    router.refresh();
+  }
+
+  // Closing after an accept is what finally moves the card — deferred from
+  // handleConfirm so the 202 message survives long enough to be read.
+  function handleClose(): void {
+    setIsOpen(false);
+    if (assigned) router.refresh();
   }
 
   return (
@@ -194,7 +208,7 @@ export function AcceptRequestAction({
 
       <ConfirmDialog
         isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
+        onClose={handleClose}
         title="Accepter la demande"
         confirmLabel="Accepter"
         confirmDisabled={!hasAmount}
