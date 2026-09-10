@@ -1,0 +1,33 @@
+# Refuses a pull request where a constant mirrored across the API and the web
+# form has drifted. See scripts/check-mirrored-constants.mjs for the list and
+# the reasoning.
+#
+# Separate from migration-guard.yml on purpose: path filters apply to a whole
+# workflow, not per job, so folding this in would tie each guard to the other's
+# trigger.
+#
+# Dependency-free: Node standard library only, no install, no database.
+
+name: Mirror guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/modules/service-requests/constants.ts'
+      - 'apps/web/src/app/**/create-request-form.tsx'
+      - 'scripts/check-mirrored-constants.mjs'
+      - '.github/workflows/mirror-guard.yml'
+
+jobs:
+  check-mirrored-constants:
+    name: Mirrored constants agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: node scripts/check-mirrored-constants.mjs
