@@ -1,0 +1,29 @@
+# Refuses a pull request that drops an index in a migration's up() without
+# saying so explicitly. See apps/api/scripts/check-migration-drops.mjs for the
+# rule and the escape hatch.
+#
+# Deliberately dependency-free: no pnpm install, no database, no build. The
+# script uses only the Node standard library, so this runs in seconds.
+
+name: Migration guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/database/migrations/**'
+      - 'apps/api/scripts/check-migration-drops.mjs'
+      - '.github/workflows/migration-guard.yml'
+
+jobs:
+  check-index-drops:
+    name: No unmarked DROP INDEX
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: node apps/api/scripts/check-migration-drops.mjs
