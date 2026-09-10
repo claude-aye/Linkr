@@ -9,7 +9,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiOperation,
   ApiResponse,
@@ -88,19 +90,54 @@ export class ServiceRequestsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Accept a DIRECT_BOOKING (INDIVIDUAL provider only). Transitions request OPEN→ASSIGNED and creates an assignment.',
+      'Accept a DIRECT_BOOKING (INDIVIDUAL provider only). Transitions request OPEN→ASSIGNED and creates an assignment. 200 when the deposit was captured, 202 when it was not — the assignment stands either way.',
   })
   @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({
+    status: 202,
+    type: ServiceRequestResponseDto,
+    description:
+      'Assigned, but the deposit did not settle. The job is the provider’s; the deposit is retryable via POST :id/retry-deposit.',
+  })
   @ApiResponse({ status: 400, description: 'Not a DIRECT_BOOKING or missing provider' })
   @ApiResponse({ status: 403, description: 'Caller is not the targeted provider' })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 409, description: 'Invalid state transition' })
-  @ApiResponse({ status: 422, description: 'ORGANIZATION dispatch not supported in MVP' })
-  accept(
+  @ApiResponse({ status: 422, description: 'ORGANIZATION dispatch not supported, or no amount to base a deposit on' })
+  async accept(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    // `passthrough: true` — Nest keeps serializing the returned value; a bare
+    // @Res() would hand us the raw response and silently disable that. Used
+    // here, and only here, because the two outcomes share ONE body and differ
+    // only by status: the FR copy is mapped from the status ALONE (locked in
+    // 3.12b), so the distinction has to live in the status line.
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ServiceRequestResponseDto> {
+    const outcome = await this.service.acceptRequest(id, user.sub);
+    if (!outcome.depositSettled) {
+      res.status(HttpStatus.ACCEPTED);
+    }
+    return outcome.request;
+  }
+
+  @Post(':id/retry-deposit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Re-attempt the deposit on a job already assigned to the caller. Idempotent: a settled or in-flight deposit is left alone, and a retry never creates a second PaymentIntent.',
+  })
+  @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the assigned worker' })
+  @ApiResponse({ status: 404, description: 'Not found or no active assignment' })
+  @ApiResponse({ status: 409, description: 'Request is not in a state where a deposit applies' })
+  @ApiResponse({ status: 422, description: 'No amount to base a deposit on' })
+  @ApiResponse({ status: 502, description: 'Stripe rejected the deposit charge' })
+  retryDeposit(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ServiceRequestResponseDto> {
-    return this.service.acceptRequest(id, user.sub);
+    return this.service.retryDeposit(id, user.sub);
   }
 
   @Post(':id/decline')

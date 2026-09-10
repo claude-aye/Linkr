@@ -53,6 +53,19 @@ const UNEXPECTED_MESSAGE =
   'Une erreur inattendue est survenue. Veuillez réessayer plus tard.';
 
 /**
+ * Frozen FR copy for the 202: assigned, deposit unsettled.
+ *
+ * It leads with the half that SUCCEEDED, because that is the half the provider
+ * will act on — the job is theirs and someone is expecting them. The old
+ * behaviour said the opposite: a bare 502 whose copy invited a retry that then
+ * 409s, on a job they were holding without knowing it.
+ */
+const DEPOSIT_UNSETTLED_MESSAGE =
+  'La demande vous est assignée : le mandat est à vous. En revanche, le dépôt ' +
+  "n'a pas pu être prélevé. Fermez cette fenêtre et relancez le prélèvement " +
+  'depuis « Mes jobs ».';
+
+/**
  * Maps a relayed API status to the FROZEN French copy (see PR spec). Decision is
  * locked: mapping is by HTTP status ALONE — the response body is never parsed to
  * pick a message.
@@ -107,6 +120,12 @@ export function AcceptRequestAction({
 }: AcceptRequestActionProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  // Latches once the request has been assigned to us, deposit or no deposit.
+  // ConfirmDialog re-enables its confirm button after a rejection, and the 202
+  // path DOES reject (below) — without this latch a second click would POST an
+  // accept on a request that is no longer OPEN and answer 409, contradicting
+  // the message the provider had just been shown.
+  const [assigned, setAssigned] = useState(false);
 
   // A request with no agreed amount would be rejected 422 by the API (no deposit
   // basis). Guard it: the confirm button is disabled and, defensively, the
@@ -122,6 +141,11 @@ export function AcceptRequestAction({
     // here, at the business layer — not only in the UI.
     if (!hasAmount) {
       throw new Error(MISSING_AMOUNT_MESSAGE);
+    }
+
+    // Already ours: never post twice, just restate what happened.
+    if (assigned) {
+      throw new Error(DEPOSIT_UNSETTLED_MESSAGE);
     }
 
     let response: Response;
@@ -140,9 +164,36 @@ export function AcceptRequestAction({
       throw new Error(messageForStatus(response.status));
     }
 
-    // Success: the request migrated OPEN→ASSIGNED server-side. Refresh so the
-    // Server Component re-fetches the list; then resolve → ConfirmDialog closes.
+    // Both 200 and 202 mean the request migrated OPEN→ASSIGNED server-side.
+    setAssigned(true);
+
+    // 202 = assigned, deposit unsettled. Reported through ConfirmDialog's
+    // rejection channel — not because anything failed in the sense the dialog
+    // usually means, but because it is the one channel that KEEPS THE DIALOG
+    // OPEN and shows the sentence verbatim. Accepting commits real money and a
+    // physical trip; the provider should not be able to click past the fact
+    // that only half of it went through. Friction proportional to risk (3.12b).
+    // The status alone decides — the body is never parsed (locked in 3.12b).
+    //
+    // ⚠️ AND WE DO NOT REFRESH HERE. Refreshing re-renders the dashboard, the
+    // request leaves « En attente de réponse » for « Mes jobs », and THIS
+    // COMPONENT IS UNMOUNTED — taking the dialog, and the message, with it. The
+    // provider saw a modal blink shut on a job whose deposit had failed, which
+    // is the silence this whole change exists to remove. Measured in a browser,
+    // not reasoned about. The refresh happens on close instead (see below).
+    if (response.status === 202) {
+      throw new Error(DEPOSIT_UNSETTLED_MESSAGE);
+    }
+
+    // Nominal path: the card can migrate now, the dialog closes on resolve.
     router.refresh();
+  }
+
+  // Closing after an accept is what finally moves the card — deferred from
+  // handleConfirm so the 202 message survives long enough to be read.
+  function handleClose(): void {
+    setIsOpen(false);
+    if (assigned) router.refresh();
   }
 
   return (
@@ -157,7 +208,7 @@ export function AcceptRequestAction({
 
       <ConfirmDialog
         isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
+        onClose={handleClose}
         title="Accepter la demande"
         confirmLabel="Accepter"
         confirmDisabled={!hasAmount}

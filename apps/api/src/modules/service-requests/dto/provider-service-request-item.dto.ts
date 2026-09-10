@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ServiceRequestStatus } from '../enums/service-request-status.enum';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
+import { PaymentStatus } from '../../payments/enums/payment-status.enum';
 import type { ProviderServiceRequestRecord } from '../repositories/service-request.repository';
 
 /**
@@ -76,6 +77,24 @@ export class ProviderServiceRequestItemDto {
   clientDisplayName!: string;
 
   /**
+   * Status of this request's DEPOSIT, or null when no deposit row exists.
+   *
+   * A STATUS AND NOTHING ELSE — never the amount, never the 20% rate, which
+   * stay backend-only (the accept modal already refuses to show them). It is
+   * the readable half of the "explicit state" fix: after an accept whose
+   * capture failed, the job IS the provider's and this is what says the money
+   * is not, long after the accept response is gone. Null on a request that was
+   * never accepted; null on an accepted one means no deposit was ever recorded,
+   * which is as retryable as FAILED.
+   */
+  // `nullable: true` alongside the enum, so the generated client says
+  // `| null` instead of merely optional — the runtime really does send null.
+  // Same discipline the notifications DTOs use to stay clear of the
+  // `Record<string, never>` degradation.
+  @ApiPropertyOptional({ enum: PaymentStatus, nullable: true })
+  depositStatus!: PaymentStatus | null;
+
+  /**
    * Builds the enriched item from a label-joined record. Defensive on the
    * label fields (`?? {}` / `?? null` / `—` fallback) so a renderable item is
    * produced even if a join were unexpectedly absent.
@@ -116,6 +135,7 @@ export class ProviderServiceRequestItemDto {
     const fullName =
       `${record.clientFirstName ?? ''} ${record.clientLastName ?? ''}`.trim();
     dto.clientDisplayName = record.clientDisplayName ?? (fullName || '—');
+    dto.depositStatus = record.depositStatus;
     return dto;
   }
 }

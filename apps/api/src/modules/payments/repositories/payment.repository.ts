@@ -231,6 +231,59 @@ export class PaymentRepository {
     return rows.length ? mapRow(rows[0]) : null;
   }
 
+  /**
+   * Re-arm a FAILED payment row for a fresh capture attempt (T3).
+   *
+   * An UPDATE, never a second INSERT: `UNIQUE(service_request_id, payment_type)`
+   * allows exactly one DEPOSIT per request, and that uniqueness is the guarantee
+   * "one deposit per request" rests on. The row keeps its id — so the ledger
+   * still has one line per deposit, with its whole history — and keeps
+   * `stripe_payment_intent_id`, which the retry needs in order to decide whether
+   * a PaymentIntent already exists at Stripe (never create a second one).
+   *
+   * `failed_at_utc` / `failure_reason` are cleared: they describe the attempt
+   * being superseded, and leaving them next to a PENDING status would read as a
+   * row that is both failed and in flight.
+   */
+  async prepareRetry(
+    paymentId: string,
+    data: {
+      paymentMethodId: string;
+      grossAmount: string;
+      currency: string;
+      commissionRatePercent: string;
+      platformFeeAmount: string;
+      taxAmount: string;
+      providerNetAmount: string;
+    },
+  ): Promise<void> {
+    await this.repo.query(
+      `UPDATE payments
+         SET status = '${PaymentStatus.PENDING}',
+             payment_method_id = $2,
+             gross_amount = $3,
+             currency = $4,
+             commission_rate_percent = $5,
+             platform_fee_amount = $6,
+             tax_amount = $7,
+             provider_net_amount = $8,
+             failed_at_utc = NULL,
+             failure_reason = NULL,
+             updated_at_utc = now()
+       WHERE id = $1`,
+      [
+        paymentId,
+        data.paymentMethodId,
+        data.grossAmount,
+        data.currency,
+        data.commissionRatePercent,
+        data.platformFeeAmount,
+        data.taxAmount,
+        data.providerNetAmount,
+      ],
+    );
+  }
+
   /** Record a capture failure (and the intent id, if Stripe produced one). */
   async recordFailure(
     paymentId: string,

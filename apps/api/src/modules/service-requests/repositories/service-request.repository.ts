@@ -6,6 +6,8 @@ import { ServiceRequest } from '../entities/service-request.entity';
 import { ServiceRequestStatus } from '../enums/service-request-status.enum';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
+import { PaymentStatus } from '../../payments/enums/payment-status.enum';
+import { PaymentType } from '../../payments/enums/payment-type.enum';
 
 export interface ServiceRequestRecord {
   id: string;
@@ -80,6 +82,13 @@ export interface ProviderServiceRequestRecord {
   clientDisplayName: string | null;
   clientFirstName: string | null;
   clientLastName: string | null;
+  /**
+   * Status of this request's DEPOSIT payment, or null when no deposit row
+   * exists. A STATUS, never an amount and never the deposit rate — the 20%
+   * stays backend-only. Lets the provider dashboard say that a job is theirs
+   * but unpaid, which is the whole readable half of the "explicit state" fix.
+   */
+  depositStatus: PaymentStatus | null;
 }
 
 export interface CreateServiceRequestData {
@@ -234,7 +243,8 @@ const PROVIDER_SELECT_COLUMNS = `
   cu.display_name AS client_display_name,
   cu.first_name  AS client_first_name,
   cu.last_name   AS client_last_name,
-  cu.deleted_at_utc AS client_deleted_at_utc
+  cu.deleted_at_utc AS client_deleted_at_utc,
+  dep.status AS deposit_status
 `;
 
 interface ProviderRawRow {
@@ -268,6 +278,7 @@ interface ProviderRawRow {
   client_first_name: string | null;
   client_last_name: string | null;
   client_deleted_at_utc: Date | null;
+  deposit_status: PaymentStatus | null;
 }
 
 function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
@@ -300,6 +311,7 @@ function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
     serviceCategoryNameTranslations: row.service_category_name_translations,
     serviceItemNameTranslations: row.service_item_name_translations,
 	clientDisplayName: clientDeleted ? null : row.client_display_name,
+    depositStatus: row.deposit_status,
     clientFirstName: clientDeleted ? null : row.client_first_name,
     clientLastName: clientDeleted ? null : row.client_last_name,
   };
@@ -431,6 +443,13 @@ export class ServiceRequestRepository {
          JOIN service_categories sc ON sc.id = sr.service_category_id
          LEFT JOIN service_items si ON si.id = sr.service_item_id
          JOIN users cu ON cu.id = sr.client_user_id
+         -- At most one DEPOSIT per request (uq_payments_request_type), so this
+         -- LEFT JOIN cannot fan the result out and cannot desync the COUNT
+         -- above, which does not join it. No amount is projected: the status
+         -- alone travels (the 20% rate stays backend-only).
+         LEFT JOIN payments dep
+           ON dep.service_request_id = sr.id
+          AND dep.payment_type = '${PaymentType.DEPOSIT}'
         WHERE ${where}
         ORDER BY sr.created_at_utc DESC
         LIMIT $${i++} OFFSET $${i++}`,

@@ -22,6 +22,7 @@ import { AcceptRequestAction } from './_actions/accept-request-action';
 import { AddCategoryForm, type TradeOption } from './_actions/add-category-form';
 import { DeclineRequestAction } from './_actions/decline-request-action';
 import { JobPipelineAction } from './_actions/job-pipeline-action';
+import { RetryDepositAction } from './_actions/retry-deposit-action';
 import {
   NotificationsSection,
   type NotificationView,
@@ -414,6 +415,15 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   const badge = STATUS_BADGES[item.status];
   const showFinal = item.finalAmount != null;
   const locationNotice = providerLocationPrecisionNotice(item.serviceLocationPrecision);
+  // PENDING / PROCESSING / REQUIRES_ACTION stay silent: Stripe has the request
+  // and a retry would not help. Only the two states where nothing is under way
+  // — and where the retry call does something — raise the notice.
+  //
+  // REQUIRES_ACTION is the honest gap here: off-session it means the card wants
+  // 3-D Secure, which only the CLIENT can clear, so it is neither settled nor
+  // retryable by the provider. It shows nothing today. Tracked, not solved.
+  const depositUnsettled =
+    item.depositStatus == null || item.depositStatus === 'FAILED';
 
   return (
     <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -455,6 +465,24 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
           )}
         </Detail>
       </dl>
+
+      {/* The job is the provider's, but the money is not on its way. Shown here
+          rather than only at the moment of the accept, because that moment is
+          gone and this state can outlive it by days. `null` is treated exactly
+          like FAILED: on an assigned job, "no deposit row" is not better news
+          than "the deposit failed", and both are retryable by the same call.
+          A status only — never an amount, never the deposit rate. */}
+      {depositUnsettled && (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950">
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            Le dépôt n&rsquo;a pas été prélevé. Le mandat reste à vous ; vous
+            pouvez relancer le prélèvement.
+          </p>
+          <div className="mt-2">
+            <RetryDepositAction requestId={item.id} title={item.title} />
+          </div>
+        </div>
+      )}
 
       {/* Self-nulling: renders Démarrer (ASSIGNED) / Compléter (IN_PROGRESS) /
           nothing otherwise — the card does no status branching itself. */}
