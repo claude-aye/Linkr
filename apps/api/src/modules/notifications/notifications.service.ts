@@ -237,4 +237,57 @@ export class NotificationsService {
       );
     }
   }
+
+  /**
+   * The email half of `request.accepted` — the client learns a provider took
+   * the job.
+   *
+   * No in-app channel yet: `notifications.type` is a PostgreSQL enum and the
+   * new values are waiting on one grouped migration. This method lives here
+   * anyway, because it is where that channel will be added, and because the
+   * recipient lookup belongs to the module that knows how to reach people —
+   * not to `ServiceRequestsService`.
+   *
+   * Simpler than the direct-booking path: `clientUserId` is ON the request, so
+   * there is one lookup, no detour through a provider, and NO organization
+   * case — a client is always a person.
+   *
+   * ⚠️ NOTHING HERE MAY SPEAK FOR THE ACCEPT. The assignment is committed and
+   * cannot be un-committed; an accept that succeeded must not surface as a
+   * failure because Redis blinked. Every outcome is a log line and a return.
+   */
+  async notifyRequestAccepted(
+    serviceRequest: ServiceRequestRecord,
+  ): Promise<void> {
+    if (emailTemplateFor('request.accepted') === null) {
+      return;
+    }
+
+    try {
+      const client = await this.usersRepo.findById(serviceRequest.clientUserId);
+
+      if (!client) {
+        this.logger.warn(
+          `notifyRequestAccepted: client ${serviceRequest.clientUserId} of request ${serviceRequest.id} not found — no email sent`,
+        );
+        return;
+      }
+
+      const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+      await this.emailService.send({
+        to: client.email,
+        template: 'request-accepted',
+        vars: {
+          firstName: client.firstName,
+          requestTitle: serviceRequest.title,
+          requestsUrl: `${baseUrl}/requests`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyRequestAccepted: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+  }
 }

@@ -585,6 +585,17 @@ export class ServiceRequestsService {
     );
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
+
+    // Best-effort, detached, and AFTER the commit — same terms as the
+    // notifications in create(). Sent whether or not the deposit settled: the
+    // assignment is committed and the job IS the provider's, which is the whole
+    // point of T4. An email that fails never fails an accept that succeeded.
+    this.notificationsService.notifyRequestAccepted(updated).catch((err: unknown) => {
+      this.logger.error(
+        `notifyRequestAccepted failed for request ${requestId}: ${String(err)}`,
+      );
+    });
+
     return { request: this.toResponseDto(updated), depositSettled };
   }
 
