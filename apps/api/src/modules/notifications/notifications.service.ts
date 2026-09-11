@@ -1,6 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { EmailService } from '../../common/email/email.service';
+import { UsersRepository } from '../users/users.repository';
+import { emailTemplateFor } from './events/event-channels';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { NotificationsRepository } from './repositories/notifications.repository';
 import { NotificationItemDto } from './dto/notification-item.dto';
@@ -24,6 +28,9 @@ export class NotificationsService {
   constructor(
     private readonly notificationsRepo: NotificationsRepository,
     private readonly providerRepo: ServiceProviderRepository,
+    private readonly usersRepo: UsersRepository,
+    private readonly emailService: EmailService,
+    private readonly config: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -157,5 +164,77 @@ export class NotificationsService {
     this.logger.log(
       `notifyDirectBooking: notified provider ${providerId} of request ${serviceRequest.id}`,
     );
+
+    await this.emailDirectBooking(serviceRequest, providerId);
+  }
+
+  /**
+   * The email half of `booking.direct.created`.
+   *
+   * ⚠️ NOTHING HERE MAY SPEAK FOR THE BOOKING. The in-app row is already
+   * written when this runs, and a booking that succeeded must not surface as a
+   * failure because Redis blinked — the same rule #96 established for the
+   * capture path. Every outcome below is a log line and a return.
+   *
+   * `EmailService.send` only enqueues; the SMTP call lives in the worker. The
+   * try/catch is for the enqueue itself.
+   */
+  private async emailDirectBooking(
+    serviceRequest: ServiceRequestRecord,
+    providerId: string,
+  ): Promise<void> {
+    // The registry decides WHETHER this event emails; the typed call below
+    // decides WHAT it sends. Reading the template name back would lose the
+    // compile-time tie between a template and its vars.
+    if (emailTemplateFor('booking.direct.created') === null) {
+      return;
+    }
+
+    try {
+      const provider = await this.providerRepo.findById(providerId);
+
+      if (!provider) {
+        this.logger.warn(
+          `emailDirectBooking: provider ${providerId} not found for request ${serviceRequest.id} — no email sent`,
+        );
+        return;
+      }
+
+      // A provider can be an ORGANIZATION, and then user_id is null: no single
+      // human to write to. Documented in EVENT_CHANNELS; the arbitration
+      // between active OWNERs and an operations address is a product decision
+      // that has not been taken.
+      if (!provider.userId) {
+        this.logger.warn(
+          `emailDirectBooking: provider ${providerId} is an ORGANIZATION (request ${serviceRequest.id}) — the email channel is not open to organizations yet, in-app only`,
+        );
+        return;
+      }
+
+      const owner = await this.usersRepo.findById(provider.userId);
+
+      if (!owner) {
+        this.logger.warn(
+          `emailDirectBooking: owner ${provider.userId} of provider ${providerId} not found — no email sent`,
+        );
+        return;
+      }
+
+      const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+      await this.emailService.send({
+        to: owner.email,
+        template: 'direct-booking',
+        vars: {
+          firstName: owner.firstName,
+          requestTitle: serviceRequest.title,
+          dashboardUrl: `${baseUrl}/dashboard`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `emailDirectBooking: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
   }
 }
