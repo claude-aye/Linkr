@@ -114,7 +114,11 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'request.accepted': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo('the client learns a provider took the job'),
+    // Sent on a 202 too. The assignment is committed and the job IS the
+    // provider's whether or not the capture settled — T4, behind #96. The
+    // template says nothing about the deposit: the client cannot retry it
+    // anyway (see the product debt in CLAUDE.md).
+    email: send('request-accepted'),
   },
 
   'request.declined': {
