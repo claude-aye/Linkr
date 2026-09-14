@@ -713,6 +713,19 @@ export class ServiceRequestsService {
     this.logger.log(`Provider ${request.requestedServiceProviderId} declined request ${requestId}`);
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
+
+    // Best-effort, detached, after the update. `dto.reason` and not
+    // `updated.cancellationReason`: the latter holds the default when the
+    // provider wrote nothing, and the email must stay silent in that case
+    // rather than print a sentence that says nothing.
+    this.notificationsService
+      .notifyRequestDeclined(updated, dto.reason?.trim() || undefined)
+      .catch((err: unknown) => {
+        this.logger.error(
+          `notifyRequestDeclined failed for request ${requestId}: ${String(err)}`,
+        );
+      });
+
     return this.toResponseDto(updated);
   }
 

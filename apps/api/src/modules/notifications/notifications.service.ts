@@ -290,4 +290,53 @@ export class NotificationsService {
       );
     }
   }
+
+  /**
+   * The email half of `request.declined` — the client learns the provider they
+   * picked will not take the job.
+   *
+   * Same terms as `notifyRequestAccepted`: one lookup on `clientUserId`, no
+   * organization case, nothing here may speak for the decline.
+   *
+   * `reason` is the provider's own text and is passed ONLY when they wrote one.
+   * The caller must not forward the `'Refusé par le prestataire'` default that
+   * lands in `cancellation_reason` — under a heading that already says the
+   * request was declined, it would be noise dressed as information.
+   */
+  async notifyRequestDeclined(
+    serviceRequest: ServiceRequestRecord,
+    reason?: string,
+  ): Promise<void> {
+    if (emailTemplateFor('request.declined') === null) {
+      return;
+    }
+
+    try {
+      const client = await this.usersRepo.findById(serviceRequest.clientUserId);
+
+      if (!client) {
+        this.logger.warn(
+          `notifyRequestDeclined: client ${serviceRequest.clientUserId} of request ${serviceRequest.id} not found — no email sent`,
+        );
+        return;
+      }
+
+      const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+      await this.emailService.send({
+        to: client.email,
+        template: 'request-declined',
+        vars: {
+          firstName: client.firstName,
+          requestTitle: serviceRequest.title,
+          reason,
+          requestsUrl: `${baseUrl}/requests`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyRequestDeclined: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+  }
 }

@@ -123,7 +123,9 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'request.declined': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo('the client learns to look elsewhere; silence here reads as abandonment'),
+    // Carries the provider's own words — the only template that passes
+    // user-written prose. Escaped and capped; see the template header.
+    email: send('request-declined'),
   },
 
   'deposit.failed': {
