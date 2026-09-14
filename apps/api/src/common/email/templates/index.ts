@@ -2,6 +2,7 @@ import { directBookingEmail } from './direct-booking.template';
 import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
 import { requestAcceptedEmail } from './request-accepted.template';
+import { requestDeclinedEmail } from './request-declined.template';
 
 /**
  * The template registry.
@@ -15,6 +16,7 @@ export const EMAIL_TEMPLATES = {
   'password-reset': passwordResetEmail,
   probe: probeEmail,
   'request-accepted': requestAcceptedEmail,
+  'request-declined': requestDeclinedEmail,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;
@@ -41,3 +43,4 @@ export type { DirectBookingEmailVars } from './direct-booking.template';
 export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';
 export type { RequestAcceptedEmailVars } from './request-accepted.template';
+export type { RequestDeclinedEmailVars } from './request-declined.template';

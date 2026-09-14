@@ -38,6 +38,10 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const API_CONSTANTS = 'apps/api/src/modules/service-requests/constants.ts';
 const REQUEST_FORM = 'apps/web/src/app/(app)/requests/new/create-request-form.tsx';
+const DECLINED_TEMPLATE =
+  'apps/api/src/common/email/templates/request-declined.template.ts';
+const DECLINE_ACTION =
+  'apps/web/src/app/(app)/dashboard/_actions/decline-request-action.tsx';
 
 /**
  * Every constant that must hold the same value in more than one place.
@@ -57,6 +61,11 @@ const MIRRORS = [
     name: 'MAX_WINDOW_HOURS',
     why: 'D5d — width ceiling, strict `>` comparator on both sides',
     files: [API_CONSTANTS, REQUEST_FORM],
+  },
+  {
+    name: 'REASON_MAX_CHARS',
+    why: "decline reason — the box must not accept more than the email will print, or the provider's message reaches the client cut mid-sentence",
+    files: [DECLINED_TEMPLATE, DECLINE_ACTION],
   },
 ];
 
