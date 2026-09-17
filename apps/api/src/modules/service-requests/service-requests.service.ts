@@ -838,6 +838,17 @@ export class ServiceRequestsService {
     this.logger.log(`Worker ${callerUserId} completed request ${requestId}`);
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
+
+    // Best-effort, detached, AFTER the commit — emitting inside the
+    // transaction would announce a completion a rollback could still undo
+    // (the defect #96 fixed on the capture path). An email that fails never
+    // fails a completion that succeeded.
+    this.notificationsService.notifyJobCompleted(updated).catch((err: unknown) => {
+      this.logger.error(
+        `notifyJobCompleted failed for request ${requestId}: ${String(err)}`,
+      );
+    });
+
     return this.toResponseDto(updated);
   }
 

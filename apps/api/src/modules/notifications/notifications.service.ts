@@ -25,6 +25,13 @@ const NOTIFICATIONS_LIST_LIMIT = 50;
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
+  /**
+   * Named in the job-completed email. Read once at boot with `getOrThrow`,
+   * the same way `ServiceRequestsService` reads it for the cron — one source,
+   * two readers, no mirror. Restart the API after changing it (see §11).
+   */
+  private readonly autoReleaseHours: number;
+
   constructor(
     private readonly notificationsRepo: NotificationsRepository,
     private readonly providerRepo: ServiceProviderRepository,
@@ -32,7 +39,9 @@ export class NotificationsService {
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  ) {
+    this.autoReleaseHours = config.getOrThrow<number>('PLATFORM_AUTO_RELEASE_HOURS');
+  }
 
   /**
    * Everything addressed to this user, personally or through a provider profile
@@ -336,6 +345,52 @@ export class NotificationsService {
     } catch (err) {
       this.logger.error(
         `notifyRequestDeclined: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * The email half of `job.completed` — the client learns the provider marked
+   * the job done, and that the auto-release clock is now running.
+   *
+   * Same terms as `notifyRequestAccepted`: one lookup on `clientUserId`, no
+   * organization case, and NOTHING HERE MAY SPEAK FOR THE COMPLETION — the
+   * transition is committed; every outcome is a log line and a return.
+   *
+   * The delay passed to the template is the configured one, not the time left:
+   * this runs right after the commit, so the two are the same to within the
+   * queue latency, which "environ" in the copy already absorbs.
+   */
+  async notifyJobCompleted(serviceRequest: ServiceRequestRecord): Promise<void> {
+    if (emailTemplateFor('job.completed') === null) {
+      return;
+    }
+
+    try {
+      const client = await this.usersRepo.findById(serviceRequest.clientUserId);
+
+      if (!client) {
+        this.logger.warn(
+          `notifyJobCompleted: client ${serviceRequest.clientUserId} of request ${serviceRequest.id} not found — no email sent`,
+        );
+        return;
+      }
+
+      const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+      await this.emailService.send({
+        to: client.email,
+        template: 'job-completed',
+        vars: {
+          firstName: client.firstName,
+          requestTitle: serviceRequest.title,
+          autoReleaseHours: this.autoReleaseHours,
+          requestsUrl: `${baseUrl}/requests`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyJobCompleted: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
       );
     }
   }

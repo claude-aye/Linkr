@@ -1,4 +1,5 @@
 import { directBookingEmail } from './direct-booking.template';
+import { jobCompletedEmail } from './job-completed.template';
 import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
 import { requestAcceptedEmail } from './request-accepted.template';
@@ -13,6 +14,7 @@ import { requestDeclinedEmail } from './request-declined.template';
  */
 export const EMAIL_TEMPLATES = {
   'direct-booking': directBookingEmail,
+  'job-completed': jobCompletedEmail,
   'password-reset': passwordResetEmail,
   probe: probeEmail,
   'request-accepted': requestAcceptedEmail,
@@ -40,6 +42,7 @@ export function isEmailTemplateName(value: string): value is EmailTemplateName {
 }
 
 export type { DirectBookingEmailVars } from './direct-booking.template';
+export type { JobCompletedEmailVars } from './job-completed.template';
 export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';
 export type { RequestAcceptedEmailVars } from './request-accepted.template';

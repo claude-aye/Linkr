@@ -61,9 +61,9 @@ export const todo = (why: string): ChannelDecision<never> => ({
 /**
  * Every event worth telling somebody about.
  *
- * Only the first two emit anything today. The rest are real domain transitions
- * that currently notify NOBODY, on either channel — which is the actual size of
- * chantier A, and the reason this union is longer than the code that uses it.
+ * Every entry marked `todo` on both channels is a real domain transition that
+ * currently notifies NOBODY — which is the remaining size of chantier A, and
+ * the reason this union is longer than the code that uses it.
  */
 export type DomainEvent =
   | 'tender.matched'
@@ -137,7 +137,10 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'job.completed': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo('the client confirms, and the 72h auto-release clock starts'),
+    // The only template that names a deadline: the auto-release clock starts
+    // here, and email is the one channel that reaches a client outside the
+    // app. The delay is read from config at send time — see the template.
+    email: send('job-completed'),
   },
 
   'quote.sent': {
