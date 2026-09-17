@@ -1223,6 +1223,24 @@ Tasks should be executed sequentially. Each task must produce **something testab
 
 ---
 
+**Session du 2026-09-17 — `job.completed` (chantier A) : le quatrième courriel transactionnel, et le seul qui nomme un délai.**
+
+Le client apprend que le prestataire a marqué les travaux terminés, et que l'horloge de versement automatique tourne. Gabarit `job-completed`, même forme maigre que `request-accepted` (prénom, titre, lien `/requests`) **plus une variable** : `autoReleaseHours`.
+
+> **⚠️ SEUL GABARIT QUI NOMME UN DÉLAI — et c'est délibéré.** À l'écran, le délai reste tu (« après le délai prévu ») faute d'accès du front à `PLATFORM_AUTO_RELEASE_HOURS`. Dans le courriel, cette contrainte tombe : le rendu est côté API, la valeur est lue **au démarrage de `NotificationsService`** (`getOrThrow`, exactement comme le cron la lit dans `ServiceRequestsService`) — une source, deux lecteurs, **aucun miroir**. Le courriel est le seul canal qui atteint un client qui ne rouvre pas l'application, et c'est lui qui perdrait ses fonds par forfait de procédure. **Écart écran/courriel assumé** : dette notée, pas un défaut.
+
+**« environ » est délibéré** : le cron peut avoir du retard, donc le versement a lieu **au plus tôt** après le délai, jamais pile dessus. Formule retenue : « Vous disposez d'environ N heures pour confirmer ou signaler un problème, après quoi le paiement sera versé automatiquement. »
+
+**Accord du nom sur le nombre** (`heure`/`heures`, `hour`/`hours`) : le schéma Joi autorise **1** comme minimum, et « 1 heures » serait parti en production sans cela.
+
+`EVENT_CHANNELS['job.completed'].email` passe de `todo` à `send('job-completed')`. `inApp` reste `todo` — gel de l'enum `notifications.type` jusqu'à la migration groupée, inchangé. Appel **détaché, après le commit** dans `completeRequest`, `.catch` qui journalise : rien ici ne parle pour la complétion (règle de #96).
+
+**⚠️ Redémarrer l'API après tout changement de `PLATFORM_AUTO_RELEASE_HOURS`** — la valeur est lue au démarrage, pas à chaque envoi.
+
+Restent en `todo` côté courriel : `deposit.failed`, `quote.sent`.
+
+---
+
 ## 12. Environment Variables (Mandatory at Boot)
 
 > ⚠️ **CETTE SECTION EST DÉRIVÉE DE `apps/api/src/config/env.validation.ts`. NE PAS LA RÉDIGER À LA MAIN.**
