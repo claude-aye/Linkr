@@ -6,6 +6,7 @@ import {
   clientLocationPrecisionNotice,
 } from '@/lib/service-requests/location-precision';
 
+import { CompletionActions, ContestedNotice } from './completion-actions';
 import { ReviewSection } from './review-section';
 
 /**
@@ -141,6 +142,24 @@ export function RequestCard({
   const completedAtUtc = request.completedAtUtc as unknown as string | null;
   const isReviewable = Boolean(completedAtUtc);
 
+  /**
+   * The completion decision, and its two answers. Strictly the window the API
+   * accepts — `COMPLETED` and not contested — and NO browser clock: the
+   * auto-release cron is the authority, and a front-side `completedAtUtc + 72h`
+   * cutoff would open a no man's land whenever the cron runs late.
+   *
+   * Opposite rule to `isReviewable` above, and deliberately so. The review form
+   * must SURVIVE the flip to PAID, hence `completedAtUtc`. These buttons must
+   * VANISH on it — once the balance is captured there is nothing left to
+   * confirm, and showing the button would promise a call the API answers 409.
+   *
+   * Same nullable-JSONB cast as the fields below (CLAUDE.md §6).
+   */
+  const contestedAtUtc = request.contestedAtUtc as unknown as string | null;
+  const isContested = Boolean(contestedAtUtc);
+  const awaitingCompletionDecision =
+    request.status === 'COMPLETED' && !isContested;
+
   // `estimatedAmount` / `estimatedCurrency` are nullable decimals, but the
   // generated `ServiceRequestResponseDto` degrades every nullable to
   // `Record<string, never>` (JSONB/nullable debt, CLAUDE.md §6 — PR A typed only
@@ -194,6 +213,9 @@ export function RequestCard({
           )}
         </Detail>
       </dl>
+
+      {awaitingCompletionDecision && <CompletionActions requestId={request.id} />}
+      {isContested && <ContestedNotice />}
 
       {isReviewable && (
         <ReviewSection serviceRequestId={request.id} review={review} />
