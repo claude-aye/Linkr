@@ -91,10 +91,22 @@ export class StripeWebhookProcessor extends WorkerHost {
       }
       case 'payment_intent.payment_failed': {
         const pi = data as unknown as StripePaymentIntent;
-        await this.paymentsService.markFailed(
+        const payment = await this.paymentsService.markFailed(
           pi.id,
           pi.last_payment_error?.message ?? null,
         );
+        // Only a REAL not-FAILED → FAILED transition on a DEPOSIT tells anyone:
+        // `markFailed` returns null on a replay or an already-FAILED row, which
+        // is what keeps provider retries and Stripe redeliveries from mailing
+        // the client again. A BALANCE failure belongs to the completion flow and
+        // has no template here.
+        //
+        // The announcement lives on ServiceRequestsService for the same reason
+        // `handleRefundSync` puts the request transition here: PaymentsModule
+        // stays independent of the service-requests domain.
+        if (payment && payment.paymentType === PaymentType.DEPOSIT) {
+          this.serviceRequestsService.announceDepositFailure(payment.serviceRequestId);
+        }
         break;
       }
       case 'payment_intent.processing': {

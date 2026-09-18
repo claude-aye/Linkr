@@ -130,9 +130,15 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'deposit.failed': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo(
-      'the explicit-state decision from #96 is invisible without this: the job holds, the deposit is FAILED, and retry-deposit is the way out',
-    ),
+    // ⚠️ THIS EVENT SENDS TWO EMAILS, and this field can only name one.
+    // The registry decides WHETHER a channel speaks, not how many letters go
+    // out: the client gets `deposit-failed-client` (named here because they are
+    // the priority recipient — the only one who can fix the cause), and the
+    // assigned provider gets `deposit-failed-provider` (because they hold the
+    // ONLY retry button, and without them the request stays ASSIGNED with a
+    // FAILED deposit forever). Both are sent from
+    // `NotificationsService.notifyDepositFailed`, which names them literally.
+    email: send('deposit-failed-client'),
   },
 
   'job.completed': {

@@ -394,4 +394,112 @@ export class NotificationsService {
       );
     }
   }
+
+  /**
+   * The email half of `deposit.failed` — the ONE event that writes to two
+   * people, for two different reasons.
+   *
+   * The client is the priority recipient: they alone can fix the cause (card,
+   * funds, 3-D Secure). The assigned provider is told too, because they alone
+   * hold the retry button — `retryDeposit` is guarded by the assignment. Tell
+   * only the client and the request stays ASSIGNED with a FAILED deposit
+   * forever, which is the dead end #96 set out to remove; tell only the
+   * provider and they retry a card nobody has fixed.
+   *
+   * The two sends have their OWN try/catch on purpose: a client address that
+   * bounces must not cost the provider their warning, and vice versa. Neither
+   * may speak for the payment — the row is already FAILED and retryable, and an
+   * email that fails never changes that.
+   *
+   * NOT called from `retryDeposit`: the provider is watching their screen and
+   * already sees the 502, and a client does not need one letter per click. The
+   * `markFailed` transition guard keeps that exclusion honest on the webhook
+   * side too — re-marking an already-FAILED row is not a transition, so nothing
+   * leaks out through the asynchronous path either.
+   */
+  async notifyDepositFailed(serviceRequest: ServiceRequestRecord): Promise<void> {
+    if (emailTemplateFor('deposit.failed') === null) {
+      return;
+    }
+
+    const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+    // — Client half —
+    try {
+      const client = await this.usersRepo.findById(serviceRequest.clientUserId);
+
+      if (!client) {
+        this.logger.warn(
+          `notifyDepositFailed: client ${serviceRequest.clientUserId} of request ${serviceRequest.id} not found — no client email sent`,
+        );
+      } else {
+        await this.emailService.send({
+          to: client.email,
+          template: 'deposit-failed-client',
+          vars: {
+            firstName: client.firstName,
+            requestTitle: serviceRequest.title,
+            requestsUrl: `${baseUrl}/requests`,
+          },
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `notifyDepositFailed: could not queue the CLIENT email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+
+    // — Provider half —
+    try {
+      const providerId = serviceRequest.assignedServiceProviderId;
+
+      if (!providerId) {
+        this.logger.warn(
+          `notifyDepositFailed: request ${serviceRequest.id} has no assigned provider — no provider email sent`,
+        );
+        return;
+      }
+
+      const provider = await this.providerRepo.findById(providerId);
+
+      if (!provider) {
+        this.logger.warn(
+          `notifyDepositFailed: provider ${providerId} not found for request ${serviceRequest.id} — no provider email sent`,
+        );
+        return;
+      }
+
+      // Same limit as `emailDirectBooking`: an ORGANIZATION has no user_id, so
+      // there is no single human to warn. The client still got theirs.
+      if (!provider.userId) {
+        this.logger.warn(
+          `notifyDepositFailed: provider ${providerId} is an ORGANIZATION (request ${serviceRequest.id}) — the email channel is not open to organizations yet`,
+        );
+        return;
+      }
+
+      const owner = await this.usersRepo.findById(provider.userId);
+
+      if (!owner) {
+        this.logger.warn(
+          `notifyDepositFailed: owner ${provider.userId} of provider ${providerId} not found — no provider email sent`,
+        );
+        return;
+      }
+
+      await this.emailService.send({
+        to: owner.email,
+        template: 'deposit-failed-provider',
+        vars: {
+          firstName: owner.firstName,
+          requestTitle: serviceRequest.title,
+          dashboardUrl: `${baseUrl}/dashboard`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyDepositFailed: could not queue the PROVIDER email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+  }
 }

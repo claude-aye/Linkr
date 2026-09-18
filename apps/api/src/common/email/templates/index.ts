@@ -1,4 +1,6 @@
 import { directBookingEmail } from './direct-booking.template';
+import { depositFailedClientEmail } from './deposit-failed-client.template';
+import { depositFailedProviderEmail } from './deposit-failed-provider.template';
 import { jobCompletedEmail } from './job-completed.template';
 import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
@@ -14,6 +16,10 @@ import { requestDeclinedEmail } from './request-declined.template';
  */
 export const EMAIL_TEMPLATES = {
   'direct-booking': directBookingEmail,
+  // One failure, two recipients: EVENT_CHANNELS names only the client half
+  // (the priority recipient). See the note there.
+  'deposit-failed-client': depositFailedClientEmail,
+  'deposit-failed-provider': depositFailedProviderEmail,
   'job-completed': jobCompletedEmail,
   'password-reset': passwordResetEmail,
   probe: probeEmail,
@@ -42,6 +48,8 @@ export function isEmailTemplateName(value: string): value is EmailTemplateName {
 }
 
 export type { DirectBookingEmailVars } from './direct-booking.template';
+export type { DepositFailedClientEmailVars } from './deposit-failed-client.template';
+export type { DepositFailedProviderEmailVars } from './deposit-failed-provider.template';
 export type { JobCompletedEmailVars } from './job-completed.template';
 export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';
