@@ -147,7 +147,13 @@ function buildHarness(
     assignmentRepo,
     providerRepo,
     {} as unknown as UsersRepository,
-    {} as unknown as NotificationsService,
+    // Not `{}`: `acceptRequest` fires two detached notifications on this path
+    // (the accept email, and — on a capture failure — the deposit-failed pair).
+    // A bare object makes those calls throw before the `.catch` can attach.
+    {
+      notifyRequestAccepted: jest.fn().mockResolvedValue(undefined),
+      notifyDepositFailed: jest.fn().mockResolvedValue(undefined),
+    } as unknown as NotificationsService,
     paymentsService,
     { getOrThrow: jest.fn().mockReturnValue(72) } as unknown as ConfigService,
     dataSource,

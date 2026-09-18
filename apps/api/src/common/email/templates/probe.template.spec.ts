@@ -92,6 +92,39 @@ const TEMPLATE_FIXTURES: {
     resetUrl: 'https://linkr.test/reset-password?token=abc',
     expiresInMinutes: 60,
   },
+  'direct-booking': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    dashboardUrl: 'https://linkr.test/dashboard',
+  },
+  'request-accepted': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    requestsUrl: 'https://linkr.test/requests',
+  },
+  'request-declined': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    // Optional on purpose: the default cancellation text is never forwarded.
+    reason: undefined,
+    requestsUrl: 'https://linkr.test/requests',
+  },
+  'job-completed': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    autoReleaseHours: 72,
+    requestsUrl: 'https://linkr.test/requests',
+  },
+  'deposit-failed-client': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    requestsUrl: 'https://linkr.test/requests',
+  },
+  'deposit-failed-provider': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    dashboardUrl: 'https://linkr.test/dashboard',
+  },
 };
 
 describe('template registry', () => {
