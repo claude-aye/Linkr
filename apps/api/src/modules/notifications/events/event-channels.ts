@@ -151,7 +151,18 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'quote.sent': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo('a quote nobody is told about is a quote that expires'),
+    // ⚠️ NOT "not written yet" — DELIBERATELY WAITING ON THE FRONT.
+    // The API can submit, list and accept quotes; `apps/web` shows NONE of it
+    // (no quote screen exists at all). This email would tell a client an offer
+    // is waiting and send them to a page where they cannot see it, compare it
+    // or accept it. Every other transactional email leads to a real control.
+    // Write it when the quote screen exists — and then name `valid_until_utc`
+    // in it, formatted in DISPLAY_TIME_ZONE ('America/Toronto', a NAMED zone):
+    // a date rendered in the worker's UTC is off by a full civil day for any
+    // evening instant, which on an expiry date is not cosmetic.
+    email: todo(
+      'a quote nobody is told about is a quote that expires — but no quote screen exists in the front yet, so this email would lead nowhere',
+    ),
   },
 };
 

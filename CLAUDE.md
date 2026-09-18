@@ -1269,6 +1269,12 @@ Restent en `todo` côté courriel : `deposit.failed`, `quote.sent`.
 
 **Lancer les tests** : `pnpm --filter @linkr/api exec jest --runInBand`. Le `--` de pnpm avale les options (`ERROR Unknown option: 'runInBand'`), et Jest en parallèle épuise la mémoire sur cette machine (`Zone Allocation failed — process out of memory`, 0 test exécuté).
 
+**État du chantier A après cette session** : cinq courriels vivants (`booking.direct.created`, `request.accepted`, `request.declined`, `job.completed`, `deposit.failed`). **Un seul `todo` courriel restant, `quote.sent`, et il attend le FRONT, pas le courriel** — voir ci-dessous. Les sept `todo` in-app restent bloqués derrière la migration groupée de l'enum `notifications.type`.
+
+> **⚠️ `quote.sent` EST REPORTÉ DÉLIBÉRÉMENT — ce n'est pas un oubli.** L'API sait soumettre, lister et accepter des devis ; **`apps/web` n'en montre RIEN** : aucun fichier contenant « quote » ou « devis » sous `apps/web/src`, donc aucun écran où le client puisse consulter, comparer ou accepter une offre. Le courriel annoncerait un devis et mènerait à une impasse, alors que les cinq autres mènent tous à une commande réelle. **L'écran de devis est le travail préalable**, et c'est une décision de feuille de route, pas une session de notifications.
+>
+> Quand il se fera : `quotes.valid_until_utc` est `NOT NULL` avec `CHECK (valid_until_utc > created_at_utc)`, le statut `EXPIRED` existe et un cron horaire balaie via `idx_quotes_expiry_sweep` — la date est donc réelle et **doit être nommée** dans le courriel, avec la conséquence dans la même phrase (« garantis jusqu'au …, après quoi l'offre expirera automatiquement » : ici le client perd une **opportunité**, pas de l'argent, d'où le cadrage positif plutôt que l'urgence anxiogène). ⚠️ **Et il faudra un formateur de dates côté API** : `DISPLAY_TIME_ZONE` et `formatDate*` vivent dans `apps/web/src/lib/dates/format.ts`, **le worker n'y a pas accès** et tourne en UTC. Le contrefactuel déjà mesuré (« 02:30Z » → un **jour civil** d'écart) rend une date d'expiration fausse, pas approximative. **Décision prise** : on assumera un second module (miroir documenté), **condition de réouverture** = l'apparition d'un troisième consommateur, qui justifierait un paquet partagé.
+
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
