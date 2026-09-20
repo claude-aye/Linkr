@@ -576,6 +576,12 @@ export class ServiceRequestsService {
           `Request ${requestId} was assigned to provider ` +
             `${depositParams.serviceProviderId} but the deposit did NOT settle: ${detail}`,
         );
+        // The client is told, because the accept email that leaves a few lines
+        // below says nothing about the money (T4: it must not alarm them over a
+        // job that IS theirs). Without this, a client gets "accepted" and never
+        // learns their card was refused — and the request sits ASSIGNED with a
+        // FAILED deposit that only the provider can retry.
+        this.announceDepositFailure(requestId);
       }
     }
 
@@ -597,6 +603,39 @@ export class ServiceRequestsService {
     });
 
     return { request: this.toResponseDto(updated), depositSettled };
+  }
+
+  /**
+   * Announce a FAILED deposit to both sides, best-effort and detached.
+   *
+   * Exists here rather than in `PaymentsService` because the emails need the
+   * request's title, client and assigned provider — the service-requests domain
+   * that `PaymentsModule` deliberately does not import (see the note on
+   * `StripeWebhookProcessor.handleRefundSync`, which keeps the request
+   * transitions out of the payments module for the same reason).
+   *
+   * Callers: the post-commit capture failure in `acceptRequest`, the same in
+   * `QuotesService.accept`, and the webhook worker on a real
+   * not-FAILED → FAILED transition. NOT `retryDeposit` — see
+   * `NotificationsService.notifyDepositFailed`.
+   *
+   * Returns void and never throws: it is fired, not awaited.
+   */
+  announceDepositFailure(requestId: string): void {
+    void (async () => {
+      const request = await this.requestRepo.findById(requestId);
+      if (!request) {
+        this.logger.warn(
+          `announceDepositFailure: request ${requestId} not found — nobody notified`,
+        );
+        return;
+      }
+      await this.notificationsService.notifyDepositFailed(request);
+    })().catch((err: unknown) => {
+      this.logger.error(
+        `announceDepositFailure failed for request ${requestId}: ${String(err)}`,
+      );
+    });
   }
 
   /**
@@ -838,6 +877,17 @@ export class ServiceRequestsService {
     this.logger.log(`Worker ${callerUserId} completed request ${requestId}`);
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
+
+    // Best-effort, detached, AFTER the commit — emitting inside the
+    // transaction would announce a completion a rollback could still undo
+    // (the defect #96 fixed on the capture path). An email that fails never
+    // fails a completion that succeeded.
+    this.notificationsService.notifyJobCompleted(updated).catch((err: unknown) => {
+      this.logger.error(
+        `notifyJobCompleted failed for request ${requestId}: ${String(err)}`,
+      );
+    });
+
     return this.toResponseDto(updated);
   }
 

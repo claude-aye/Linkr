@@ -61,9 +61,9 @@ export const todo = (why: string): ChannelDecision<never> => ({
 /**
  * Every event worth telling somebody about.
  *
- * Only the first two emit anything today. The rest are real domain transitions
- * that currently notify NOBODY, on either channel — which is the actual size of
- * chantier A, and the reason this union is longer than the code that uses it.
+ * Every entry marked `todo` on both channels is a real domain transition that
+ * currently notifies NOBODY — which is the remaining size of chantier A, and
+ * the reason this union is longer than the code that uses it.
  */
 export type DomainEvent =
   | 'tender.matched'
@@ -130,19 +130,39 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'deposit.failed': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo(
-      'the explicit-state decision from #96 is invisible without this: the job holds, the deposit is FAILED, and retry-deposit is the way out',
-    ),
+    // ⚠️ THIS EVENT SENDS TWO EMAILS, and this field can only name one.
+    // The registry decides WHETHER a channel speaks, not how many letters go
+    // out: the client gets `deposit-failed-client` (named here because they are
+    // the priority recipient — the only one who can fix the cause), and the
+    // assigned provider gets `deposit-failed-provider` (because they hold the
+    // ONLY retry button, and without them the request stays ASSIGNED with a
+    // FAILED deposit forever). Both are sent from
+    // `NotificationsService.notifyDepositFailed`, which names them literally.
+    email: send('deposit-failed-client'),
   },
 
   'job.completed': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo('the client confirms, and the 72h auto-release clock starts'),
+    // The only template that names a deadline: the auto-release clock starts
+    // here, and email is the one channel that reaches a client outside the
+    // app. The delay is read from config at send time — see the template.
+    email: send('job-completed'),
   },
 
   'quote.sent': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    email: todo('a quote nobody is told about is a quote that expires'),
+    // ⚠️ NOT "not written yet" — DELIBERATELY WAITING ON THE FRONT.
+    // The API can submit, list and accept quotes; `apps/web` shows NONE of it
+    // (no quote screen exists at all). This email would tell a client an offer
+    // is waiting and send them to a page where they cannot see it, compare it
+    // or accept it. Every other transactional email leads to a real control.
+    // Write it when the quote screen exists — and then name `valid_until_utc`
+    // in it, formatted in DISPLAY_TIME_ZONE ('America/Toronto', a NAMED zone):
+    // a date rendered in the worker's UTC is off by a full civil day for any
+    // evening instant, which on an expiry date is not cosmetic.
+    email: todo(
+      'a quote nobody is told about is a quote that expires — but no quote screen exists in the front yet, so this email would lead nowhere',
+    ),
   },
 };
 

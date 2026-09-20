@@ -1223,6 +1223,60 @@ Tasks should be executed sequentially. Each task must produce **something testab
 
 ---
 
+**Session du 2026-09-17 — `job.completed` (chantier A) : le quatrième courriel transactionnel, et le seul qui nomme un délai.**
+
+Le client apprend que le prestataire a marqué les travaux terminés, et que l'horloge de versement automatique tourne. Gabarit `job-completed`, même forme maigre que `request-accepted` (prénom, titre, lien `/requests`) **plus une variable** : `autoReleaseHours`.
+
+> **⚠️ SEUL GABARIT QUI NOMME UN DÉLAI — et c'est délibéré.** À l'écran, le délai reste tu (« après le délai prévu ») faute d'accès du front à `PLATFORM_AUTO_RELEASE_HOURS`. Dans le courriel, cette contrainte tombe : le rendu est côté API, la valeur est lue **au démarrage de `NotificationsService`** (`getOrThrow`, exactement comme le cron la lit dans `ServiceRequestsService`) — une source, deux lecteurs, **aucun miroir**. Le courriel est le seul canal qui atteint un client qui ne rouvre pas l'application, et c'est lui qui perdrait ses fonds par forfait de procédure. **Écart écran/courriel assumé** : dette notée, pas un défaut.
+
+**« environ » est délibéré** : le cron peut avoir du retard, donc le versement a lieu **au plus tôt** après le délai, jamais pile dessus. Formule retenue : « Vous disposez d'environ N heures pour confirmer ou signaler un problème, après quoi le paiement sera versé automatiquement. »
+
+**Accord du nom sur le nombre** (`heure`/`heures`, `hour`/`hours`) : le schéma Joi autorise **1** comme minimum, et « 1 heures » serait parti en production sans cela.
+
+`EVENT_CHANNELS['job.completed'].email` passe de `todo` à `send('job-completed')`. `inApp` reste `todo` — gel de l'enum `notifications.type` jusqu'à la migration groupée, inchangé. Appel **détaché, après le commit** dans `completeRequest`, `.catch` qui journalise : rien ici ne parle pour la complétion (règle de #96).
+
+**⚠️ Redémarrer l'API après tout changement de `PLATFORM_AUTO_RELEASE_HOURS`** — la valeur est lue au démarrage, pas à chaque envoi.
+
+Restent en `todo` côté courriel : `deposit.failed`, `quote.sent`.
+
+---
+
+**Session du 2026-09-17 (suite) — `deposit.failed` : un événement, deux destinataires, et un garde-fou muet depuis quatre sessions.**
+
+**Deux gabarits pour un seul événement.** Le client reçoit `deposit-failed-client` : il est le seul à pouvoir corriger la cause (carte, fonds, 3DS). Le prestataire reçoit `deposit-failed-provider` : il détient le **seul** bouton de relance, `retryDeposit` étant gardé par l'assignation. N'avertir que le client laisse la demande bloquée `ASSIGNED`/`FAILED` à vie — l'impasse même que #96 visait à supprimer ; n'avertir que le prestataire le fait relancer une carte que personne n'a corrigée.
+
+> **⚠️ PLI DE REGISTRE ASSUMÉ.** `EVENT_CHANNELS['deposit.failed'].email` ne peut nommer qu'un gabarit : il nomme le client, destinataire prioritaire, et le commentaire dit que l'événement en envoie deux. **Le registre tranche le *si*, pas le *combien*** — `NotificationsService.notifyDepositFailed` nomme les deux littéralement. Chaque envoi a son propre `try` : une adresse client qui rebondit ne doit pas coûter au prestataire son avertissement.
+
+**Le courriel prestataire dit d'ATTENDRE, pas de relancer.** Les deux partent à la même seconde ; au moment où il le lit, le client n'a pas encore ouvert le sien. Une relance immédiate échoue à coup sûr, sur la même carte, et fait conclure au prestataire que la plateforme bogue. Il est aussi averti de **ne rien engager avant confirmation de l'acompte** — c'est la moitié protectrice de ce courriel, ne pas l'alléger.
+
+**Aucune raison de refus Stripe n'apparaît dans les deux courriels.** `failure_reason` est une chaîne brute, non traduite, parfois un identifiant interne (« No such PaymentMethod… ») — et côté prestataire, ce serait divulguer ce qu'a fait la banque d'un tiers.
+
+> **⚠️ `retryDeposit` N'ENVOIE RIEN, et la garde de transition rend cette exclusion étanche.** Le prestataire voit son 502 en direct ; le client n'a pas besoin d'une lettre par clic. C'est pourquoi **`markFailed` lit l'état AVANT d'écrire** et ne renvoie la ligne que sur une vraie transition : `FAILED` n'est PAS dans `TERMINAL_STATUSES` (c'est ce qui permet `FAILED → SUCCEEDED` de #96), donc l'`UPDATE` conditionnel réécrit volontiers une ligne déjà `FAILED` et la retourne. Sans cette lecture, chaque redistribution Stripe et chaque relance auraient posté un courriel — l'exclusion synchrone aurait fui par le chemin webhook.
+
+**L'émission vit sur `ServiceRequestsService.announceDepositFailure`**, pas sur `PaymentsService` : les courriels ont besoin du titre, du client et du prestataire assigné, et `PaymentsModule` reste indépendant du domaine service-requests — même raison que `handleRefundSync`. Appelants : le `catch` post-commit d'`acceptRequest`, celui de `QuotesService.accept`, et le worker webhook sur transition réelle. **Pas `retryDeposit`.**
+
+**Défaut T4 encore ouvert sur les devis** : `QuotesService.accept` relaie l'exception de capture alors que l'assignation est commitée — exactement ce que T4 a corrigé sur `acceptRequest`. **NON corrigé ici** (changer le contrat du contrôleur mérite sa PR et ses tests) ; seul le silence l'est.
+
+**Prouvé en conditions réelles** avec `pm_card_chargeCustomerFail` : acceptation → 202 + trois courriels ; webhook `payment_intent.payment_failed` sur notre propre PI → **aucun quatrième** ; deux relances refusées → **aucun courriel**. À noter : `stripe trigger payment_intent.payment_failed` ne prouve RIEN ici — il fabrique une PI qui n'existe dans aucune ligne `payments`, d'où le `no-op`. Le chemin asynchrone ne se teste qu'avec une PI née de notre propre flux.
+
+**Piège de journal** : `payment_intent.failed pi_… → payment <id>` s'affiche AUSSI quand la garde bloque l'envoi — `logSync` ignore le résultat de la garde. Ne pas lire cette ligne comme la preuve qu'un courriel est parti.
+
+**Dettes produit actées** :
+- Aucune notification quand le client régularise sa carte. Le prestataire relance de façon **asynchrone** depuis son tableau de bord ; c'est pourquoi la copie dit « quelques heures » et ne nomme aucun moment.
+- **Aucun écran de compte côté client** : pas de gestion de moyen de paiement dans le front. Le bouton « Mettre à jour mon moyen de paiement » mène à `/requests`, qui ne permet pas cette action. Le courriel demande donc une action que l'interface n'offre pas encore. Enregistrement possible seulement via `POST /payment-methods` (accepte les jetons de test, ex. `pm_card_chargeCustomerFail`).
+
+> **⚠️ `probe.template.spec.ts` ÉTAIT CASSÉ DEPUIS L'ARRIVÉE DES COURRIELS TRANSACTIONNELS.** Sa carte `TEMPLATE_FIXTURES` est exhaustive sur `EmailTemplateName` : **tout gabarit sans fixture casse la compilation de cette suite**. Il manquait `direct-booking`, `request-accepted`, `request-declined` et `job-completed`. Personne ne l'a vu parce que **`nest build` ne lance pas les tests**. Les six fixtures sont posées ; **tout nouveau gabarit doit être nourri ici**, sinon la suite ne compile plus.
+
+**Lancer les tests** : `pnpm --filter @linkr/api exec jest --runInBand`. Le `--` de pnpm avale les options (`ERROR Unknown option: 'runInBand'`), et Jest en parallèle épuise la mémoire sur cette machine (`Zone Allocation failed — process out of memory`, 0 test exécuté).
+
+**État du chantier A après cette session** : cinq courriels vivants (`booking.direct.created`, `request.accepted`, `request.declined`, `job.completed`, `deposit.failed`). **Un seul `todo` courriel restant, `quote.sent`, et il attend le FRONT, pas le courriel** — voir ci-dessous. Les sept `todo` in-app restent bloqués derrière la migration groupée de l'enum `notifications.type`.
+
+> **⚠️ `quote.sent` EST REPORTÉ DÉLIBÉRÉMENT — ce n'est pas un oubli.** L'API sait soumettre, lister et accepter des devis ; **`apps/web` n'en montre RIEN** : aucun fichier contenant « quote » ou « devis » sous `apps/web/src`, donc aucun écran où le client puisse consulter, comparer ou accepter une offre. Le courriel annoncerait un devis et mènerait à une impasse, alors que les cinq autres mènent tous à une commande réelle. **L'écran de devis est le travail préalable**, et c'est une décision de feuille de route, pas une session de notifications.
+>
+> Quand il se fera : `quotes.valid_until_utc` est `NOT NULL` avec `CHECK (valid_until_utc > created_at_utc)`, le statut `EXPIRED` existe et un cron horaire balaie via `idx_quotes_expiry_sweep` — la date est donc réelle et **doit être nommée** dans le courriel, avec la conséquence dans la même phrase (« garantis jusqu'au …, après quoi l'offre expirera automatiquement » : ici le client perd une **opportunité**, pas de l'argent, d'où le cadrage positif plutôt que l'urgence anxiogène). ⚠️ **Et il faudra un formateur de dates côté API** : `DISPLAY_TIME_ZONE` et `formatDate*` vivent dans `apps/web/src/lib/dates/format.ts`, **le worker n'y a pas accès** et tourne en UTC. Le contrefactuel déjà mesuré (« 02:30Z » → un **jour civil** d'écart) rend une date d'expiration fausse, pas approximative. **Décision prise** : on assumera un second module (miroir documenté), **condition de réouverture** = l'apparition d'un troisième consommateur, qui justifierait un paquet partagé.
+
+---
+
 ## 12. Environment Variables (Mandatory at Boot)
 
 > ⚠️ **CETTE SECTION EST DÉRIVÉE DE `apps/api/src/config/env.validation.ts`. NE PAS LA RÉDIGER À LA MAIN.**

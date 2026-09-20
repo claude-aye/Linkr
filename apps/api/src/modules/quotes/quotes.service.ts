@@ -259,8 +259,20 @@ export class QuotesService {
     }
 
     // Deposit capture (Part 5) runs AFTER the assignment commits (outside the tx).
+    //
+    // ⚠️ The throw is RELAYED here, unlike `acceptRequest`, which swallows it
+    // (T4). That asymmetry is a known defect on the quote path — the assignment
+    // is committed, so reporting "accept failed" is a lie — and it is NOT fixed
+    // in this PR: changing the controller's contract deserves its own change
+    // and its own tests. What IS fixed is the silence: both sides now learn the
+    // deposit failed, whatever the caller is told.
     if (depositParams) {
-      await this.paymentsService.captureDeposit(depositParams);
+      try {
+        await this.paymentsService.captureDeposit(depositParams);
+      } catch (err) {
+        this.serviceRequestsService.announceDepositFailure(depositParams.serviceRequestId);
+        throw err;
+      }
     }
 
     const updated = await this.quotesRepo.findById(quoteId);

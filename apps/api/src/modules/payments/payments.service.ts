@@ -734,15 +734,35 @@ export class PaymentsService {
     return row;
   }
 
+  /**
+   * Forward-only "failed" sync. Returns the payment row ONLY when this call was
+   * a REAL transition into FAILED — null on a replay, on a row that was already
+   * FAILED, and when no intent matched.
+   *
+   * That distinction is not cosmetic and cannot be read off the UPDATE alone:
+   * FAILED is deliberately NOT in `TERMINAL_STATUSES` (it is what lets #96 lift
+   * a FAILED row to SUCCEEDED), so the conditional UPDATE happily re-marks an
+   * already-FAILED row and returns it. The webhook worker uses the return value
+   * to decide whether anyone is told, so "already failed" MUST be
+   * distinguishable from "just failed" — otherwise every redelivery, and every
+   * provider retry, would mail the client again.
+   */
   async markFailed(
     stripePaymentIntentId: string,
     failureReason: string | null,
-  ): Promise<void> {
+  ): Promise<PaymentRecord | null> {
+    // Read BEFORE the write: the UPDATE cannot tell us what the status was.
+    const before = await this.paymentRepo.findByStripeIntentId(stripePaymentIntentId);
     const updated = await this.paymentRepo.markFailedByIntentId(
       stripePaymentIntentId,
       failureReason,
     );
     this.logSync('failed', stripePaymentIntentId, updated?.id ?? null);
+
+    if (!updated || before?.status === PaymentStatus.FAILED) {
+      return null;
+    }
+    return updated;
   }
 
   async markProcessing(stripePaymentIntentId: string): Promise<void> {
