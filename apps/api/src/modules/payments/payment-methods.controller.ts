@@ -15,6 +15,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PaymentMethodsService } from './payment-methods.service';
 import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 import { PaymentMethodResponseDto } from './dto/payment-method-response.dto';
+import { SetupIntentResponseDto } from './dto/setup-intent-response.dto';
 
 /**
  * User-owned payment methods. Authenticated by the global JwtAuthGuard; a user
@@ -41,6 +42,26 @@ export class PaymentMethodsController {
     @Body() dto: CreatePaymentMethodDto,
   ): Promise<PaymentMethodResponseDto> {
     return this.service.create(user.sub, dto);
+  }
+
+  /**
+   * Declared BEFORE `:id/default` and `:id` on purpose. `setup-intent` is a
+   * literal one-segment path and cannot be mistaken for `:id/...` (two
+   * segments), but keeping literals above parameters is the habit that stops
+   * the next route from being shadowed.
+   */
+  @Post('setup-intent')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Open a SetupIntent to collect and authenticate a card for later off-session charges. Saves nothing — POST /payment-methods does.',
+  })
+  @ApiResponse({ status: 201, type: SetupIntentResponseDto })
+  @ApiResponse({ status: 502, description: 'Stripe API call failed' })
+  createSetupIntent(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<SetupIntentResponseDto> {
+    return this.service.createSetupIntent(user.sub);
   }
 
   @Get()

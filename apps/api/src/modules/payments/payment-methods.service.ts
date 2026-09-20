@@ -6,6 +6,7 @@ import { PaymentMethodRepository } from './repositories/payment-method.repositor
 import { PaymentMethodType } from './enums/payment-method-type.enum';
 import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 import { PaymentMethodResponseDto } from './dto/payment-method-response.dto';
+import { SetupIntentResponseDto } from './dto/setup-intent-response.dto';
 import {
   NotPaymentMethodOwnerException,
   PaymentMethodAlreadyExistsException,
@@ -48,6 +49,51 @@ export class PaymentMethodsService {
     private readonly pmRepo: PaymentMethodRepository,
     private readonly usersRepo: UsersRepository,
   ) {}
+
+  /**
+   * Open a SetupIntent so the browser can collect a card AND obtain the
+   * cardholder's mandate for later off-session charges.
+   *
+   * ⚠️ `usage: 'off_session'` IS THE WHOLE POINT OF THIS ENDPOINT. The deposit
+   * is not charged while the client watches: it is charged later, by the
+   * provider pressing retry (`retryDeposit`), with nobody in front of the
+   * screen. An `on_session` mandate does not authorize that — the bank is
+   * entitled to refuse the charge for want of authentication, which is exactly
+   * the failure the whole payment-methods screen exists to end. Downgrade this
+   * and the 3-D Secure step disappears from the modal: the card still saves,
+   * the deposit still fails, and nothing on screen says why.
+   *
+   * ⚠️ IT DOES NOT SAVE ANYTHING. No row is written here. The SetupIntent
+   * authenticates; `create()` above remains the only write path, called by the
+   * browser once the intent is confirmed. Two write paths would mean two places
+   * to get the default flag, the 409 and the type mapping right.
+   */
+  async createSetupIntent(userId: string): Promise<SetupIntentResponseDto> {
+    const customerId = await this.ensureCustomer(userId);
+
+    try {
+      const intent = await this.stripe.client.setupIntents.create({
+        customer: customerId,
+        usage: 'off_session',
+        payment_method_types: ['card'],
+      });
+
+      if (!intent.client_secret) {
+        // Typed `string | null` by the SDK (it is absent on a SetupIntent read
+        // back from another key). Never null on create — but a null reaching
+        // the browser would surface as an inert modal, so it fails loudly here.
+        throw new StripePaymentMethodOperationFailedException(
+          'SetupIntent created without a client secret',
+        );
+      }
+
+      this.logger.log(`Opened SetupIntent ${intent.id} for user ${userId}`);
+      return { clientSecret: intent.client_secret };
+    } catch (err) {
+      if (err instanceof StripePaymentMethodOperationFailedException) throw err;
+      this.wrapStripeError(err);
+    }
+  }
 
   async create(
     userId: string,
@@ -127,7 +173,9 @@ export class PaymentMethodsService {
       );
     }
 
-    await this.pmRepo.softDelete(pmId);
+    // Transactional: the removal also promotes the most recent surviving method
+    // when the deleted one was the default (see the repository).
+    await this.pmRepo.softDeleteAndPromoteDefault(pmId);
     this.logger.log(`User ${userId} removed payment method ${pmId}`);
     return PaymentMethodResponseDto.from({ ...pm, deletedAtUtc: new Date() });
   }

@@ -2822,6 +2822,31 @@
         ]
       }
     },
+    "/payment-methods/setup-intent": {
+      "post": {
+        "operationId": "PaymentMethodsController_createSetupIntent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupIntentResponseDto"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Stripe API call failed"
+          }
+        },
+        "summary": "Open a SetupIntent to collect and authenticate a card for later off-session charges. Saves nothing — POST /payment-methods does.",
+        "tags": [
+          "payment-methods"
+        ]
+      }
+    },
     "/payment-methods/{id}/default": {
       "post": {
         "operationId": "PaymentMethodsController_setDefault",
@@ -5316,7 +5341,8 @@
             ]
           },
           "brand": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "description": "Card brand, e.g. visa / mastercard."
           },
           "last4": {
@@ -5324,11 +5350,13 @@
             "description": "Last 4 digits for display."
           },
           "expMonth": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "description": "Card expiry month (1-12)."
           },
           "expYear": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "description": "Card expiry year (4-digit)."
           },
           "isDefault": {
@@ -5339,7 +5367,9 @@
             "type": "string"
           },
           "deletedAtUtc": {
-            "type": "object",
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
             "description": "Set when the method has been removed."
           }
         },
@@ -5350,6 +5380,19 @@
           "last4",
           "isDefault",
           "createdAtUtc"
+        ]
+      },
+      "SetupIntentResponseDto": {
+        "type": "object",
+        "properties": {
+          "clientSecret": {
+            "type": "string",
+            "description": "Client secret of the SetupIntent, consumed by Stripe.js to collect and authenticate the card.",
+            "example": "seti_1234_secret_5678"
+          }
+        },
+        "required": [
+          "clientSecret"
         ]
       },
       "CreateRefundDto": {

@@ -24,8 +24,18 @@ export type DepositFailedClientEmailVars = {
   firstName: string;
   /** The request title, so the message is recognisable at a glance. */
   requestTitle: string;
-  /** Absolute URL of the client's requests list, built from WEB_APP_BASE_URL. */
-  requestsUrl: string;
+  /**
+   * Absolute URL of the client's payment-methods screen, built from
+   * WEB_APP_BASE_URL + `/account/payment-methods`.
+   *
+   * ⚠️ IT POINTED AT `/requests` UNTIL 5.1, AND THAT WAS THE BUG. The message
+   * asks for exactly one thing — update the payment method — and the button
+   * under it opened a list of requests, on which nothing about a card can be
+   * done. The one action the client is able to take must land on the screen
+   * that performs it; anything else turns the only useful email of the deposit
+   * failure into a dead end.
+   */
+  paymentMethodsUrl: string;
 };
 
 type DepositFailedClientCopy = {
@@ -105,12 +115,12 @@ export const depositFailedClientEmail = (
     '',
     copy.action,
     '',
-    vars.requestsUrl,
+    vars.paymentMethodsUrl,
     '',
     copy.signoff,
   ].join('\n');
 
-  const safeUrl = escapeHtml(vars.requestsUrl);
+  const safeUrl = escapeHtml(vars.paymentMethodsUrl);
 
   const html = [
     '<!doctype html>',

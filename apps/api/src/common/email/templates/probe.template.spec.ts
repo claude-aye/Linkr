@@ -118,7 +118,8 @@ const TEMPLATE_FIXTURES: {
   'deposit-failed-client': {
     firstName: 'Camille',
     requestTitle: 'Reparation de robinet',
-    requestsUrl: 'https://linkr.test/requests',
+    // Not `/requests`: this email's one action is fixing the card (5.1).
+    paymentMethodsUrl: 'https://linkr.test/account/payment-methods',
   },
   'deposit-failed-provider': {
     firstName: 'Camille',

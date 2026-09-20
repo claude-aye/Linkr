@@ -439,7 +439,9 @@ export class NotificationsService {
           vars: {
             firstName: client.firstName,
             requestTitle: serviceRequest.title,
-            requestsUrl: `${baseUrl}/requests`,
+            // The ONLY email of this pair that links somewhere actionable: the
+            // client can fix the card, and this is the screen that does it.
+            paymentMethodsUrl: `${baseUrl}/account/payment-methods`,
           },
         });
       }

@@ -195,12 +195,89 @@ export class PaymentMethodRepository {
     return this.findLiveById(pmId);
   }
 
-  /** Soft-delete a live method (idempotent). */
-  async softDelete(id: string): Promise<void> {
-    await this.repo.query(
-      `UPDATE payment_methods SET deleted_at_utc = now()
-       WHERE id = $1 AND deleted_at_utc IS NULL`,
-      [id],
-    );
+  /**
+   * Soft-delete a live method and, when it was the owner's default, promote the
+   * most recent surviving one in its place. Idempotent: a row already deleted
+   * returns nothing and promotes nothing.
+   *
+   * ⚠️ WHY THE PROMOTION IS NOT OPTIONAL. `ClientPaymentMethodRequiredException`
+   * blocks OPEN→ASSIGNED on the absence of a **default** method, not on the
+   * absence of a method — so a client holding three cards who deletes the
+   * default would be told they have no payment method at all, with a full
+   * wallet on screen. Deleting one card must not disarm the other two.
+   *
+   * ⚠️ AND WHY IT IS ONE TRANSACTION. The partial index
+   * `uq_pm_default_user ON (owner_user_id) WHERE is_default AND deleted_at_utc
+   * IS NULL` tolerates exactly one live default per owner. The soft-delete is
+   * what takes the old default OUT of that index's scope, so the promotion is
+   * only legal after it — and a crash between the two would leave an owner with
+   * cards and no default, i.e. the state this method exists to prevent.
+   *
+   * Zero survivor is a valid outcome, not a failure: the owner simply has no
+   * default any more, which is exactly what an empty wallet means.
+   *
+   * ⚠️ THE TARGET IS READ WITH A `SELECT … FOR UPDATE`, NOT WITH AN
+   * `UPDATE … RETURNING`, AND THAT IS NOT A STYLE PREFERENCE. TypeORM's
+   * `query()` does NOT return the same shape for both: an `INSERT … RETURNING`
+   * hands back the rows (which is why `createForUser` above reads `rows[0]`),
+   * while an `UPDATE … RETURNING` hands back **`[rows, affectedCount]`** — a
+   * two-element array whose `[0]` is itself an array. Measured on this stack:
+   * `[[{owner_user_id: …, is_default: true}], 1]`. Read like rows, it makes
+   * `deleted[0].is_default` `undefined`, the promotion silently never runs, and
+   * the wallet loses its default with every card removed — a bug that leaves no
+   * error anywhere and only shows up as a booking refused for want of a payment
+   * method. Found exactly that way on the real stack, not in review.
+   *
+   * The `FOR UPDATE` is not decoration either: it locks the target row for the
+   * length of the transaction, so a concurrent promotion cannot elect a second
+   * default between the read and the write.
+   */
+  async softDeleteAndPromoteDefault(id: string): Promise<void> {
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const target: Array<
+        Pick<RawRow, 'owner_user_id' | 'owner_organization_id' | 'is_default'>
+      > = await qr.manager.query(
+        `SELECT owner_user_id, owner_organization_id, is_default
+         FROM payment_methods
+         WHERE id = $1 AND deleted_at_utc IS NULL
+         FOR UPDATE`,
+        [id],
+      );
+
+      await qr.manager.query(
+        `UPDATE payment_methods SET deleted_at_utc = now()
+         WHERE id = $1 AND deleted_at_utc IS NULL`,
+        [id],
+      );
+
+      // Nothing deleted (already gone), or the deleted row was not the default:
+      // the owner's default — if any — is untouched and still valid.
+      if (target.length > 0 && target[0].is_default) {
+        // `IS NOT DISTINCT FROM` on BOTH owner columns: the XOR constraint
+        // guarantees one is NULL, and `= NULL` would match no row at all.
+        await qr.manager.query(
+          `UPDATE payment_methods SET is_default = true
+           WHERE id = (
+             SELECT id FROM payment_methods
+             WHERE deleted_at_utc IS NULL
+               AND owner_user_id IS NOT DISTINCT FROM $1
+               AND owner_organization_id IS NOT DISTINCT FROM $2
+             ORDER BY created_at_utc DESC
+             LIMIT 1
+           )`,
+          [target[0].owner_user_id, target[0].owner_organization_id],
+        );
+      }
+
+      await qr.commitTransaction();
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
   }
 }
