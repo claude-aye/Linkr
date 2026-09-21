@@ -25,9 +25,14 @@
  * AFTER the assignment transaction commits and makes a REAL synchronous call to
  * api.stripe.com. With the placeholder identifiers below — the default — Stripe
  * rejects them in ANY environment; in a sandbox with no route to Stripe the SDK
- * cannot connect at all. Either way: HTTP 502, the DEPOSIT row is marked FAILED,
+ * cannot connect at all. Either way: HTTP 202, the DEPOSIT row is marked FAILED,
  * and the request is ASSIGNED regardless, because the transaction had already
  * committed. The state machine advances; the money does not.
+ *
+ * (Before #96 the same situation came back as a 502. Since then the accept
+ * reports its two halves separately — assignment committed, deposit unsettled —
+ * and the status line carrying that is 202. No accept path produces 502 any
+ * more; see `accept()` below.)
  *
  * To get a SUCCEEDED deposit you need three REAL test-mode Stripe objects (a
  * connected account with charges_enabled, a customer, and a payment method
@@ -438,8 +443,22 @@ async function createRequest(
 
 /**
  * OPEN→ASSIGNED. The one step that touches Stripe — and it touches it AFTER the
- * transaction has committed, which is why a 502 here still leaves the request
- * ASSIGNED. We re-read the row rather than trusting the status code.
+ * transaction has committed, which is why a failed capture still leaves the
+ * request ASSIGNED. We re-read the row rather than trusting the status code.
+ *
+ * What each status means, read from `ServiceRequestsController.accept` and
+ * `ServiceRequestsService.acceptRequest` (not assumed):
+ *   200 — assigned, deposit captured.
+ *   202 — assigned, deposit NOT settled. The capture threw after the commit and
+ *         `acceptRequest` swallowed it into `depositSettled: false`. With the
+ *         placeholder Stripe ids this is the fixture's NORMAL path.
+ *   409 — the payability guard (or the state machine) refused, inside the
+ *         transaction: nothing was assigned.
+ *   502 — produced by NO accept path since #96. Pre-commit refusals are
+ *         400/403/404/409/422, and the capture can no longer escape. A 502 here
+ *         means the API answering is not the code in this checkout (a build from
+ *         before #96 still running), or something between us and it. Either way
+ *         the fixture would be exercising code nobody is reviewing, so it stops.
  */
 async function accept(providerToken: string, requestId: string): Promise<void> {
   const res = await api<any>('POST', `/service-requests/${requestId}/accept`, {
@@ -448,6 +467,11 @@ async function accept(providerToken: string, requestId: string): Promise<void> {
 
   if (res.status === 200) {
     console.log('    → ASSIGNED (deposit captured)');
+    return;
+  }
+
+  if (res.status === 202) {
+    await reportUnsettledDeposit(requestId, res);
     return;
   }
 
@@ -463,25 +487,53 @@ async function accept(providerToken: string, requestId: string): Promise<void> {
     const [row] = await ds.query(`SELECT status FROM service_requests WHERE id = $1`, [
       requestId,
     ]);
-    if (row?.status !== 'ASSIGNED') {
-      fail(`accept → 502 and the request is ${row?.status}, not ASSIGNED: ${JSON.stringify(res.body)}`);
-    }
-    const [payment] = await ds.query(
-      `SELECT status, left(failure_reason, 120) AS reason FROM payments
-        WHERE service_request_id = $1 AND payment_type = 'DEPOSIT'`,
-      [requestId],
+    fail(
+      `accept → 502 ${JSON.stringify(res.body)} (request is now ${row?.status ?? 'missing'})\n` +
+        `  Since #96 no accept path returns 502: an unsettled deposit is a 202. The API on ` +
+        `${API} is most likely a build from before #96 — rebuild and restart it from ` +
+        `this checkout. Re-running the fixture afterwards resumes from the row's ` +
+        `current status; it does not create a duplicate.`,
     );
-    console.log('    → ASSIGNED, but the deposit FAILED (expected — see the file header)');
-    console.log(`      deposit: ${payment?.status} · ${payment?.reason ?? 'no reason recorded'}`);
-    if (USING_REAL_STRIPE) {
-      console.log(
-        '      ⚠️ You passed real Stripe ids and capture still failed — that is worth reading.',
-      );
-    }
-    return;
   }
 
   fail(`accept → ${res.status} ${JSON.stringify(res.body)}`);
+}
+
+/**
+ * The 202 path: the assignment committed, the capture did not settle. Same
+ * checks the pre-#96 502 branch ran — the situation is identical, only the
+ * status line carrying it changed. The code alone is not trusted: the row must
+ * really be ASSIGNED, and the DEPOSIT row is read back so the output says what
+ * Stripe actually objected to.
+ */
+async function reportUnsettledDeposit(
+  requestId: string,
+  res: ApiResult<any>,
+): Promise<void> {
+  const [row] = await ds.query(`SELECT status FROM service_requests WHERE id = $1`, [
+    requestId,
+  ]);
+  if (row?.status !== 'ASSIGNED') {
+    fail(
+      `accept → ${res.status} and the request is ${row?.status}, not ASSIGNED: ` +
+        JSON.stringify(res.body),
+    );
+  }
+  const [payment] = await ds.query(
+    `SELECT status, left(failure_reason, 120) AS reason FROM payments
+      WHERE service_request_id = $1 AND payment_type = 'DEPOSIT'`,
+    [requestId],
+  );
+  console.log('    → ASSIGNED, but the deposit did not settle (expected — see the file header)');
+  console.log(
+    `      deposit: ${payment?.status ?? 'no DEPOSIT row'} · ` +
+      `${payment?.reason ?? 'no reason recorded'}`,
+  );
+  if (USING_REAL_STRIPE) {
+    console.log(
+      '      ⚠️ You passed real Stripe ids and capture still failed — that is worth reading.',
+    );
+  }
 }
 
 async function advance(
