@@ -124,7 +124,8 @@ const TEMPLATE_FIXTURES: {
   'deposit-failed-provider': {
     firstName: 'Camille',
     requestTitle: 'Reparation de robinet',
-    dashboardUrl: 'https://linkr.test/dashboard',
+    // The tab matters: the retry button only exists on « Mes jobs » (5.3).
+    dashboardUrl: 'https://linkr.test/dashboard?onglet=jobs',
   },
 };
 

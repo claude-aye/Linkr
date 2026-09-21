@@ -31,6 +31,11 @@ import type { ProviderReviewList } from '@/lib/reviews/types';
 
 import { ReviewsReceivedSection } from './_components/reviews-received-section';
 import {
+  DashboardTabs,
+  type DashboardTab,
+  parseDashboardTab,
+} from './_components/dashboard-tabs';
+import {
   ConnectStatusBand,
   connectBandPlacement,
 } from './connect-status-band';
@@ -410,20 +415,34 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
   );
 }
 
+/**
+ * Is this job's deposit neither settled nor under way — i.e. is there something
+ * the retry call can actually do?
+ *
+ * PENDING / PROCESSING / REQUIRES_ACTION stay silent: Stripe has the request
+ * and a retry would not help. Only the two states where nothing is under way
+ * raise the notice. `null` is treated exactly like FAILED: on an assigned job,
+ * "no deposit row" is not better news than "the deposit failed", and both are
+ * retryable by the same call.
+ *
+ * REQUIRES_ACTION is the honest gap here: off-session it means the card wants
+ * 3-D Secure, which only the CLIENT can clear, so it is neither settled nor
+ * retryable by the provider. It shows nothing today. Tracked, not solved.
+ *
+ * ⚠️ ONE function, TWO call sites — {@link JobCard}'s amber notice and the
+ * « Mes jobs » tab marker. Never a second copy of the predicate: the marker
+ * would then be free to promise a retry button the card does not show.
+ */
+function isDepositUnsettled(item: ProviderServiceRequestItem): boolean {
+  return item.depositStatus == null || item.depositStatus === 'FAILED';
+}
+
 /** Pipeline card: a request assigned to this provider, whatever its status. */
 function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   const badge = STATUS_BADGES[item.status];
   const showFinal = item.finalAmount != null;
   const locationNotice = providerLocationPrecisionNotice(item.serviceLocationPrecision);
-  // PENDING / PROCESSING / REQUIRES_ACTION stay silent: Stripe has the request
-  // and a retry would not help. Only the two states where nothing is under way
-  // — and where the retry call does something — raise the notice.
-  //
-  // REQUIRES_ACTION is the honest gap here: off-session it means the card wants
-  // 3-D Secure, which only the CLIENT can clear, so it is neither settled nor
-  // retryable by the provider. It shows nothing today. Tracked, not solved.
-  const depositUnsettled =
-    item.depositStatus == null || item.depositStatus === 'FAILED';
+  const depositUnsettled = isDepositUnsettled(item);
 
   return (
     <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -468,10 +487,9 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
 
       {/* The job is the provider's, but the money is not on its way. Shown here
           rather than only at the moment of the accept, because that moment is
-          gone and this state can outlive it by days. `null` is treated exactly
-          like FAILED: on an assigned job, "no deposit row" is not better news
-          than "the deposit failed", and both are retryable by the same call.
-          A status only — never an amount, never the deposit rate. */}
+          gone and this state can outlive it by days. A status only — never an
+          amount, never the deposit rate. See `isDepositUnsettled` above for
+          which states qualify and why. */}
       {depositUnsettled && (
         <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950">
           <p className="text-sm text-amber-800 dark:text-amber-300">
@@ -495,7 +513,12 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  // `searchParams` is a Promise in Next 16 — awaited below.
+  searchParams: Promise<{ onglet?: string }>;
+}) {
   // Session gate — `redirect` throws, so it is called outside any try/catch.
   const user = await getCurrentUser();
   if (!user) {
@@ -702,16 +725,35 @@ export default async function DashboardPage() {
       regulated: category.regulationLevel === 'REGULATED',
     }));
 
-  // The three provider sections, each built ONCE here and merely ORDERED below.
-  // They carry stable keys because they are rendered from an array — and the
-  // keys must stay stable across the flip described further down: without them
-  // React would rebuild whatever sits at a given index instead of MOVING the
-  // sections, remounting `AddCategoryForm` and wiping the confirmation the
-  // provider just earned by declaring their first trade.
+  /**
+   * The five sections, each built ONCE here and keyed by tab slug below.
+   *
+   * ⚠️ THEY NO LONGER CARRY `key` PROPS, AND THAT IS A REAL BEHAVIOUR CHANGE —
+   * not a tidy-up. Until the tabs, all five were rendered side by side from an
+   * ARRAY that the zero-trade hoist re-ordered, and the stable keys were what
+   * made React MOVE them instead of rebuilding whatever sat at a given index.
+   * That mattered: a rebuild remounted `AddCategoryForm` and wiped the
+   * confirmation a provider had just earned, and remounted
+   * `ReviewsReceivedSection` and wiped a half-typed reply.
+   *
+   * There is no array any more — one panel is picked and returned — so keys
+   * have nothing left to protect. What the keys used to prevent now happens by
+   * design: SWITCHING TABS UNMOUNTS THE PANEL. Concretely,
+   *   - a half-typed reply in « Avis reçus » is LOST, irrecoverably (nothing
+   *     has been sent to the server). Accepted, and tracked as debt: a
+   *     sessionStorage draft is a separate PR if the loss proves annoying;
+   *   - « Notifications » loses its optimistic read marks, but repairs itself:
+   *     the PATCH is already persisted, and the tab switch re-renders this
+   *     force-dynamic page, so the true `unreadCount` and `readAtUtc` come
+   *     back from the API. State replaced by truth, not lost.
+   *
+   * Building the JSX for an inactive panel is only a `createElement` call — the
+   * component function never runs, so a single panel is genuinely mounted.
+   */
   const pendingSection = (
     // Inbox first and visually dominant: OPEN targeted bookings are
     // time-sensitive revenue opportunities.
-    <section key="pending" aria-labelledby="pending-title">
+    <section aria-labelledby="pending-title">
       <div className="mb-3 flex items-center gap-2">
         <h2
           id="pending-title"
@@ -738,7 +780,7 @@ export default async function DashboardPage() {
   );
 
   const jobsSection = (
-    <section key="jobs" aria-labelledby="jobs-title">
+    <section aria-labelledby="jobs-title">
       <div className="mb-3 flex items-center gap-2">
         <h2 id="jobs-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
           Mes jobs
@@ -765,7 +807,7 @@ export default async function DashboardPage() {
   // runs when the profile did load, but the narrowing has to be written down for
   // the id passed to the form to be sound.
   const tradesSection = provider && (
-    <section key="trades" aria-labelledby="trades-title">
+    <section aria-labelledby="trades-title">
       <div className="mb-3 flex items-center gap-2">
         <h2
           id="trades-title"
@@ -815,74 +857,97 @@ export default async function DashboardPage() {
   );
 
   /**
-   * CONDITIONAL hoist — this is NOT a reversal of inbox-first.
+   * CONDITIONAL hoist — now expressed as the DEFAULT TAB rather than as an
+   * order. The reasoning behind it is unchanged and still true.
    *
-   * A provider with ZERO declared trades is invisible to every search, so the
-   * two sections above him can only ever read « aucune demande » / « aucun job »:
-   * the one thing that can change that is the section explaining it. For him,
-   * and ONLY for him, « Mes métiers » leads.
+   * A provider with ZERO declared trades is invisible to every search, so every
+   * other tab can only ever read « aucune demande » / « aucun job »: the one
+   * thing that can change that is the section explaining it. For him, and ONLY
+   * for him, the page opens on « Mes métiers ».
    *
    * The moment a first trade is declared the list is non-empty and the locked
-   * 3.12-front order resumes — an established provider never sees his inbox
-   * demoted. Read from `trades`, already loaded above: no extra request.
+   * 3.12-front priority resumes — « En attente » is the landing tab, and an
+   * established provider never has his inbox demoted. Read from `trades`,
+   * already loaded above: no extra request.
    *
    * `trades === null` (the read failed) deliberately does NOT hoist: we do not
-   * know whether he has trades, and pushing the inbox below an error card we
-   * cannot act on would trade a certainty for a guess.
+   * know whether he has trades, and opening on a section we could not read
+   * would trade a certainty for a guess.
+   *
+   * ⚠️ This only picks the DEFAULT. An explicit `?onglet=` always wins — the
+   * tab lives in the URL, so a bookmark, a back button and an emailed link all
+   * land where they say they will.
    */
   const hoistTrades = trades !== null && trades.length === 0;
 
   /**
-   * Notifications sit LAST, in BOTH orders — a placement, not a new rule.
+   * Notifications is the fourth tab — never the default, whatever it holds.
    *
-   * It cannot go on top: above « En attente de réponse » it would demote the
-   * inbox, which is exactly what the locked 3.12-front decision forbids; and in
-   * the zero-trade case it would push « Mes métiers » off the lead, undoing the
-   * hoist above. Appending is the only position that leaves BOTH invariants
-   * untouched — `hoistTrades` is not read here and not modified.
+   * It cannot lead: ahead of « En attente » it would demote the inbox, which
+   * the locked 3.12-front decision forbids, and in the zero-trade case it would
+   * displace « Mes métiers », undoing the hoist above. It also reads right
+   * where it is: a notification about a targeted booking points at a request
+   * the inbox is ALREADY showing, actionable. This section is the log —
+   * including the tender matches the dashboard shows nowhere else (Vision B
+   * lists only requests assigned to or targeted at this provider).
    *
-   * It also reads right: a notification about a targeted booking points at a
-   * request the inbox is ALREADY showing, actionable, at the top. This section
-   * is the log — including the tender matches the dashboard shows nowhere else
-   * (Vision B lists only requests assigned to or targeted at this provider).
-   *
-   * Absent entirely when the read failed (`null`): nothing to act on here, so
-   * the dashboard simply stands without it. `.filter(Boolean)` is not needed —
-   * React skips a `false`/`null` child — but the `key` is, exactly like its
-   * three siblings, and for the same reason: the array is re-ordered by the
-   * hoist, and stable keys make React MOVE the sections instead of rebuilding
-   * whatever sits at a given index (which would wipe this island's optimistic
-   * read marks along with `AddCategoryForm`'s confirmation).
+   * ⚠️ A FAILED READ (`null`) NO LONGER MAKES IT VANISH. Before the tabs, the
+   * section simply did not render and the dashboard stood without it. A tab
+   * cannot do that without the bar shifting between loads, so the tab stays,
+   * carries NO counter, and its panel says the read failed. Silence is not an
+   * option here: an empty panel would read as « aucune notification », which is
+   * the opposite of what happened.
    */
-  const notificationsSection = notifications && (
+  const notificationsSection = notifications ? (
     <NotificationsSection
-      key="notifications"
       items={notifications.items.map(toNotificationView)}
       unreadCount={notifications.unreadCount}
       total={notifications.total}
     />
+  ) : (
+    <section aria-labelledby="notifications-title">
+      <h2
+        id="notifications-title"
+        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+      >
+        Notifications
+      </h2>
+      <StateCard title="Chargement impossible">
+        Vos notifications n’ont pas pu être récupérées. Veuillez réessayer plus tard.
+      </StateCard>
+    </section>
   );
 
   /**
-   * « Avis reçus » sits last, in BOTH orders — the same placement argument as
-   * notifications, for the same reason: appending is the only position that
-   * leaves the locked inbox-first decision AND the zero-trade hoist untouched
-   * (`hoistTrades` is neither read nor modified here).
+   * « Avis reçus » is the last tab — the same argument as notifications, plus
+   * one of its own: a review is not time-critical (nothing expires, the reply
+   * can be written a week later) whereas the inbox is.
    *
-   * It also reads right after notifications rather than before: a review is not
-   * time-critical — nothing expires, and the reply can be written a week later —
-   * whereas the inbox above it is. Absent entirely when the read failed
-   * (`null`), like its sibling; the `key` is required for the same reason too,
-   * since the array is re-ordered by the hoist and stable keys make React MOVE
-   * sections instead of rebuilding whatever sits at an index (which would wipe
-   * a half-typed reply).
+   * ⚠️ A half-typed reply in here is LOST when the provider switches tab — the
+   * panel is unmounted and nothing has reached the server. Accepted (see the
+   * note above the sections), and tracked as debt.
+   *
+   * Failed read (`null`) → the tab stays, without a counter, and says so.
+   * Same reasoning as notifications: an empty panel would read « vous n'avez
+   * pas encore reçu d'avis », which is a different, and wrong, statement.
    */
-  const reviewsSection = reviewsReceived && (
+  const reviewsSection = reviewsReceived ? (
     <ReviewsReceivedSection
-      key="reviews"
       items={reviewsReceived.items}
       reviewCount={reviewsReceived.reviewCount}
     />
+  ) : (
+    <section aria-labelledby="reviews-received-title">
+      <h2
+        id="reviews-received-title"
+        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+      >
+        Avis reçus
+      </h2>
+      <StateCard title="Chargement impossible">
+        Vos avis n’ont pas pu être récupérés. Veuillez réessayer plus tard.
+      </StateCard>
+    </section>
   );
 
   /**
@@ -891,43 +956,78 @@ export default async function DashboardPage() {
    * known state and renders « Configurez vos paiements ».
    */
   const connectSection = connect !== undefined && provider && (
-    <ConnectStatusBand
-      key="connect"
-      providerId={provider.id}
-      account={connect}
-      context="dashboard"
-    />
+    <ConnectStatusBand providerId={provider.id} account={connect} context="dashboard" />
   );
 
   /**
-   * ⚠️ A HEAD BAND OUTRANKS EVERYTHING, INCLUDING THE ZERO-TRADE HOIST.
+   * ⚠️ THE CONNECT BAND LIVES OUTSIDE THE TABS, AND IS ALWAYS VISIBLE.
    *
-   * Both hoists answer « what is the one thing that unblocks this provider ? »,
-   * and when both fire, being unable to be paid wins: declaring one more trade
-   * earns a provider nothing while the money cannot reach him. So the band goes
-   * first and the rest of the order — hoisted or locked — follows underneath,
-   * untouched.
+   * It answers « puis-je être payé ? », which is true of the whole Espace pro
+   * and not of one section — hiding it behind a tab would let a provider who
+   * cannot be paid work for days without ever meeting it. So it frames the
+   * tabs: `head` above the bar, `foot` under the active panel.
+   *
+   * `head` also outranks the zero-trade hoist, and that is deliberate: both ask
+   * « what is the one thing that unblocks this provider ? », and being unable
+   * to be paid wins — declaring one more trade earns him nothing while the
+   * money cannot reach him. Being above the BAR (not merely above a panel) is
+   * how that priority survives the tabs.
    *
    * Placement comes from `connectBandPlacement`, the SAME function the band
    * renders from, never from a second copy of the predicate here.
    *
-   * A failed read deliberately does NOT hoist anything: we do not know whether
-   * he can be paid, and demoting his inbox under a guess is the trade the
-   * `trades === null` branch above already refuses to make.
+   * A failed read (`undefined`) renders nothing at all, exactly as before: we
+   * do not know whether he can be paid, and a guess is worse than silence.
    */
   const connectPlacement =
     connect === undefined ? null : connectBandPlacement(connect);
 
-  const ordered = hoistTrades
-    ? [tradesSection, pendingSection, jobsSection, notificationsSection, reviewsSection]
-    : [pendingSection, jobsSection, tradesSection, notificationsSection, reviewsSection];
+  /**
+   * One panel per tab. All five are BUILT (the counters need every read anyway)
+   * but only the active one is returned, so only it is mounted.
+   */
+  const panels: Record<DashboardTab, React.ReactNode> = {
+    'en-attente': pendingSection,
+    jobs: jobsSection,
+    metiers: tradesSection,
+    notifications: notificationsSection,
+    avis: reviewsSection,
+  };
 
-  const sections =
-    connectPlacement === 'head'
-      ? [connectSection, ...ordered]
-      : connectPlacement === 'foot'
-        ? [...ordered, connectSection]
-        : ordered;
+  /**
+   * Counters. `null` means « the read failed » — the tab still shows, without a
+   * number. Never a zero standing in for an unknown: « Mes métiers 0 » would
+   * assert something we did not manage to find out.
+   *
+   * `unreadCount` for notifications, NOT `total`: the badge counts what still
+   * needs attention. It comes straight from the envelope, which is also why it
+   * is not recomputed from `items` (the API caps that list at 50).
+   */
+  const counts: Record<DashboardTab, number | null> = {
+    'en-attente': pending.length,
+    jobs: jobs.length,
+    metiers: trades === null ? null : trades.length,
+    notifications: notifications === null ? null : notifications.unreadCount,
+    avis: reviewsReceived === null ? null : reviewsReceived.reviewCount,
+  };
+
+  /**
+   * ⚠️ THE MARKER DOES NOT MOVE THE DEFAULT TAB, ON PURPOSE.
+   *
+   * An unsettled deposit is worth flagging — the job is his, the money is not
+   * on its way — but `deposit-failed-provider` tells the provider to WAIT for
+   * the client to fix their card before retrying. Opening the page on the retry
+   * button would push him to do the opposite of what we just wrote to him.
+   *
+   * Same predicate as {@link JobCard}'s amber notice, from the one function.
+   */
+  const depositUnsettledCount = jobs.filter(isDepositUnsettled).length;
+
+  const defaultTab: DashboardTab = hoistTrades ? 'metiers' : 'en-attente';
+  const { onglet } = await searchParams;
+  // Unknown, absent, or repeated (`?onglet=a&onglet=b` arrives as an array and
+  // matches no slug) → the default. Never an error, never an empty page.
+  const activeTab = parseDashboardTab(onglet) ?? defaultTab;
 
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
@@ -950,10 +1050,22 @@ export default async function DashboardPage() {
         ) : notPro ? (
           <BecomeProviderCard />
         ) : (
-          // Order decided above; the sections themselves are built once. The
-          // fragments-free array keeps them DIRECT children of this div, so
-          // `space-y-8` still spaces them — no style change, only order.
-          <div className="space-y-8">{sections}</div>
+          // The two states above keep their current rendering and get NO tab
+          // bar: there is nothing to navigate between.
+          <div className="space-y-8">
+            {connectPlacement === 'head' && connectSection}
+            {/* The bar and its panel are one block, spaced tighter than the
+                band is from either of them — the bar labels what is under it. */}
+            <div className="space-y-6">
+              <DashboardTabs
+                active={activeTab}
+                counts={counts}
+                depositUnsettledCount={depositUnsettledCount}
+              />
+              {panels[activeTab]}
+            </div>
+            {connectPlacement === 'foot' && connectSection}
+          </div>
         )}
       </section>
     </main>

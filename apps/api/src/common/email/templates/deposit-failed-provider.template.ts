@@ -33,7 +33,11 @@ export type DepositFailedProviderEmailVars = {
   firstName: string;
   /** The request title, so the message is recognisable at a glance. */
   requestTitle: string;
-  /** Absolute URL of the provider dashboard, built from WEB_APP_BASE_URL. */
+  /**
+   * Absolute URL of the provider dashboard, built from WEB_APP_BASE_URL.
+   * Carries `?onglet=jobs`: the retry button lives on the « Mes jobs » tab,
+   * and an ASSIGNED request is precisely what the default tab filters out.
+   */
   dashboardUrl: string;
 };
 
