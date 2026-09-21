@@ -495,7 +495,23 @@ export class NotificationsService {
         vars: {
           firstName: owner.firstName,
           requestTitle: serviceRequest.title,
-          dashboardUrl: `${baseUrl}/dashboard`,
+          /**
+           * ⚠️ THE TAB IS PART OF THE ADDRESS, AND IT IS LOAD-BEARING.
+           *
+           * The retry button lives on `JobCard`, inside the « Mes jobs » tab,
+           * behind the amber notice. Landing on the dashboard's default tab
+           * (« En attente ») would show the provider a list that does not
+           * contain their job — the deposit failed on an ASSIGNED request,
+           * which is exactly what that tab filters out.
+           *
+           * NOT `/dashboard/requests/{id}`: that page is still the Phase B
+           * stub — no data, no retry button — so pointing a « your money is
+           * not secured » email at it would be a dead end.
+           *
+           * `onglet=jobs` is therefore quasi-immutable: this email is already
+           * in inboxes. See the slug note in `_components/dashboard-tabs.tsx`.
+           */
+          dashboardUrl: `${baseUrl}/dashboard?onglet=jobs`,
         },
       });
     } catch (err) {
