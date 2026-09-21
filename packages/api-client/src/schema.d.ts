@@ -1124,6 +1124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/payment-methods/setup-intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open a SetupIntent to collect and authenticate a card for later off-session charges. Saves nothing — POST /payment-methods does. */
+        post: operations["PaymentMethodsController_createSetupIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/payment-methods/{id}/default": {
         parameters: {
             query?: never;
@@ -2195,18 +2212,28 @@ export interface components {
             /** @enum {string} */
             type: "CARD" | "BANK_ACCOUNT" | "INTERAC_DEBIT";
             /** @description Card brand, e.g. visa / mastercard. */
-            brand?: Record<string, never>;
+            brand?: string | null;
             /** @description Last 4 digits for display. */
             last4: string;
             /** @description Card expiry month (1-12). */
-            expMonth?: Record<string, never>;
+            expMonth?: number | null;
             /** @description Card expiry year (4-digit). */
-            expYear?: Record<string, never>;
+            expYear?: number | null;
             isDefault: boolean;
             /** Format: date-time */
             createdAtUtc: string;
-            /** @description Set when the method has been removed. */
-            deletedAtUtc?: Record<string, never>;
+            /**
+             * Format: date-time
+             * @description Set when the method has been removed.
+             */
+            deletedAtUtc?: string | null;
+        };
+        SetupIntentResponseDto: {
+            /**
+             * @description Client secret of the SetupIntent, consumed by Stripe.js to collect and authenticate the card.
+             * @example seti_1234_secret_5678
+             */
+            clientSecret: string;
         };
         CreateRefundDto: {
             /**
@@ -4751,6 +4778,32 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Stripe API call failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentMethodsController_createSetupIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupIntentResponseDto"];
+                };
             };
             /** @description Stripe API call failed */
             502: {

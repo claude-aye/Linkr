@@ -62,6 +62,29 @@ import { LogoutButton } from './logout-button';
  * So the provider header drops 137px → 93px at >=375px, matching the client
  * header exactly, and the wrap point moves from ~480px down to ~362px. A longer
  * label pushes it back up and costs 44px of every phone viewport again.
+ *
+ * ⚠️ 5.1 SPENDS THAT WIN BACK FOR THE PROVIDER, AND THAT IS THE KNOWN PRICE OF
+ * « Mes cartes » — not a regression to hunt down. The deposit-failure email must
+ * land on a screen the client can reach again afterwards, so the link is
+ * unconditional (any account can hold a card, a provider included). Re-measured
+ * here the same way (Chromium, fr-CA, mobile strip gap 4px; widths 107 / 112 /
+ * 84 / 87):
+ *
+ *   CLIENT   needed 311px (was ~223px) — 107 + 112 + 84 + 2x4px gap
+ *     @320 avail 272px → 2 rows, header 137px
+ *     @360 avail 312px → 1 row,  header  93px   (1px of margin — the wrap point)
+ *     @375 avail 327px → 1 row,  header  93px
+ *
+ *   PROVIDER needed 402px (was 314px) — the same three + 87 + 3x4px gap
+ *     @375 avail 327px → 2 rows, header 137px   ← G-1's 93px is gone below 450px
+ *     @414 avail 366px → 2 rows, header 137px
+ *     @450 avail 402px → 1 row,  header  93px   (the new wrap point)
+ *
+ * « Mes cartes » is already the shortest honest label: the screen only saves
+ * CARDS (the SetupIntent is opened with `payment_method_types: ['card']`), and
+ * « Moyens de paiement » measures ~165px, which would push the CLIENT wrap point
+ * past 440px too. The way out of this is a menu, not a shorter word — do not
+ * shave the label and call it fixed.
  */
 export function Nav({ isProvider }: { isProvider: boolean }) {
   // Block-level padding is what makes the target tall enough; the negative margin
@@ -95,6 +118,15 @@ export function Nav({ isProvider }: { isProvider: boolean }) {
           </Link>
           <Link href="/requests" className={linkClass}>
             Mes demandes
+          </Link>
+          {/*
+            5.1 — client-side, always shown: anyone can hold a card, a provider
+            included (they are a client of other providers). The label is the
+            SHORTEST honest one for the same reason « Espace pro » is: see the
+            measurement note in the header, which this link changes.
+          */}
+          <Link href="/account/payment-methods" className={linkClass}>
+            Mes cartes
           </Link>
           {isProvider && (
             <Link href="/dashboard" className={linkClass}>
