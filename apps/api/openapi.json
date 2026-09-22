@@ -4874,20 +4874,22 @@
           },
           "estimatedAmount": {
             "type": "number",
-            "description": "Estimated amount. Requires estimatedCurrency."
+            "description": "Estimated amount, strictly positive, at most 9999999999.99 (the column holds numeric(12,2)). Must be sent together with estimatedCurrency.",
+            "maximum": 9999999999.99
           },
           "estimatedCurrency": {
             "type": "string",
-            "description": "ISO 4217 currency. Required when estimatedAmount is set."
+            "description": "ISO 4217 currency code, three UPPERCASE letters. Must be sent together with estimatedAmount.",
+            "pattern": "^[A-Z]{3}$"
           },
           "responseDeadlineUtc": {
             "type": "string",
-            "description": "Deadline for DIRECT_BOOKING auto-expiration (timestamptz).",
+            "description": "Never honoured as sent: DIRECT_BOOKING derives it and overwrites any value, PROJECT_TENDER refuses it (400) — its deadline is quotesDeadlineUtc.",
             "format": "date-time"
           },
           "quotesDeadlineUtc": {
             "type": "string",
-            "description": "Quotes deadline for PROJECT_TENDER auto-expiration (timestamptz).",
+            "description": "REQUIRED for PROJECT_TENDER: at least 48 h and at most 30 days (30 × 24 h) from now, and at least 24 h before desiredStartAtUtc when one is given. The hourly sweep expires the tender once it has passed.",
             "format": "date-time"
           }
         },

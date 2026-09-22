@@ -42,3 +42,50 @@ export const RESPONSE_WINDOW_HOURS = 48;
  * Mieux vaut refuser franchement que d'accepter une donnée qu'on trahit ensuite.
  */
 export const MAX_WINDOW_HOURS = 24;
+
+// ---------------------------------------------------------------------------
+// Appel d'offres (PROJECT_TENDER) — règles temporelles de la date limite des
+// devis. Toutes les bornes sont INCLUSIVES : la valeur exacte passe.
+// ---------------------------------------------------------------------------
+
+/**
+ * Délai minimum entre la création d'un appel d'offres et sa date limite (R1).
+ * En dessous, un prestataire qui ne consulte la plateforme qu'une fois par jour
+ * n'a pas le temps de voir la demande, de la chiffrer et de répondre : l'appel
+ * d'offres expirerait avant d'avoir reçu un seul devis.
+ */
+export const MIN_QUOTES_DEADLINE_HOURS = 48;
+
+/**
+ * Délai maximum entre la création d'un appel d'offres et sa date limite (R1).
+ * ⚠️ Compté en durée FIXE (30 × 24 h), jamais en jours civils : un changement
+ * d'heure décalerait sinon la borne d'une heure selon la saison.
+ */
+export const MAX_QUOTES_DEADLINE_DAYS = 30;
+
+/**
+ * Marge minimale entre la date limite des devis et le début souhaité (R1),
+ * quand le client en donne un. Le client doit avoir le temps de comparer et
+ * d'accepter un devis, et le prestataire retenu celui de s'organiser, avant
+ * que les travaux commencent.
+ */
+export const QUOTES_DEADLINE_BUFFER_HOURS = 24;
+
+// ---------------------------------------------------------------------------
+// Budget estimé — règles de forme, communes aux DEUX types de demande (R4).
+// ---------------------------------------------------------------------------
+
+/**
+ * Plus grand montant que `service_requests.estimated_amount` peut contenir —
+ * `numeric(12, 2)`, soit 10 chiffres avant la virgule. Ce n'est PAS un plafond
+ * métier : il existe pour qu'un dépassement sorte en 400, et non en 500
+ * (« numeric field overflow » mesuré sur `main`). Changer la précision de la
+ * colonne oblige à changer cette valeur, dans la même migration.
+ */
+export const MAX_ESTIMATED_AMOUNT = 9_999_999_999.99;
+
+/**
+ * Forme d'un code de devise ISO 4217 : trois lettres MAJUSCULES. Vérifie la
+ * forme, pas l'appartenance à la liste ISO.
+ */
+export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
