@@ -32,6 +32,18 @@ function isUniqueViolation(err: unknown): boolean {
   return e.code === '23505' || e.driverError?.code === '23505';
 }
 
+/**
+ * Result of a quote accept — same two facts as `AcceptRequestOutcome`
+ * (service-requests), reported separately for the same reason: the assignment
+ * is committed and irreversible, the deposit may not have settled. The
+ * controller turns `depositSettled: false` into a 202.
+ */
+export interface AcceptQuoteOutcome {
+  quote: QuoteResponseDto;
+  /** False when the capture threw AFTER the assignment was committed. */
+  depositSettled: boolean;
+}
+
 @Injectable()
 export class QuotesService {
   private readonly logger = new Logger(QuotesService.name);
@@ -163,7 +175,7 @@ export class QuotesService {
    * provider (reusing the service-requests assignment path). ORG providers are
    * rejected (501) pending the worker-dispatch feature; the tx rolls back.
    */
-  async accept(quoteId: string, callerUserId: string): Promise<QuoteResponseDto> {
+  async accept(quoteId: string, callerUserId: string): Promise<AcceptQuoteOutcome> {
     // Populated on the happy path (just before commit); consumed AFTER the tx
     // releases to capture the deposit outside the transaction.
     let depositParams: {
@@ -260,24 +272,31 @@ export class QuotesService {
 
     // Deposit capture (Part 5) runs AFTER the assignment commits (outside the tx).
     //
-    // ⚠️ The throw is RELAYED here, unlike `acceptRequest`, which swallows it
-    // (T4). That asymmetry is a known defect on the quote path — the assignment
-    // is committed, so reporting "accept failed" is a lie — and it is NOT fixed
-    // in this PR: changing the controller's contract deserves its own change
-    // and its own tests. What IS fixed is the silence: both sides now learn the
-    // deposit failed, whatever the caller is told.
+    // ⚠️ NOTHING THROWN BY THE CAPTURE MAY ESCAPE — same rule, same reasons as
+    // T4 in `ServiceRequestsService.acceptRequest` (read the comment there; it
+    // is not duplicated here). The assignment is committed: the job IS the
+    // provider's, whatever the card did. The deposit is reported through
+    // `depositSettled` (→ 202) and stays retryable from the provider dashboard.
+    // `assertDepositBasis` is not needed on this path: `quotes.amount` and
+    // `quotes.currency` are NOT NULL in the schema.
+    let depositSettled = true;
     if (depositParams) {
       try {
         await this.paymentsService.captureDeposit(depositParams);
       } catch (err) {
+        depositSettled = false;
+        const detail = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Quote ${quoteId} accepted: request ${depositParams.serviceRequestId} was assigned to ` +
+            `provider ${depositParams.serviceProviderId} but the deposit did NOT settle: ${detail}`,
+        );
         this.serviceRequestsService.announceDepositFailure(depositParams.serviceRequestId);
-        throw err;
       }
     }
 
     const updated = await this.quotesRepo.findById(quoteId);
     if (!updated) throw new NotFoundException('Quote not found after update');
-    return this.toResponseDto(updated);
+    return { quote: this.toResponseDto(updated), depositSettled };
   }
 
   /**

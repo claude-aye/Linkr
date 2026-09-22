@@ -7,8 +7,10 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -87,15 +89,28 @@ export class QuotesController {
       'rejects sibling quotes and self-assigns the INDIVIDUAL provider.',
   })
   @ApiResponse({ status: 200, type: QuoteResponseDto })
+  @ApiResponse({
+    status: 202,
+    type: QuoteResponseDto,
+    description:
+      'Quote accepted and provider assigned, but the deposit did not settle. The assignment stands; the deposit is retryable by the provider via POST service-requests/:id/retry-deposit.',
+  })
   @ApiResponse({ status: 403, description: 'Caller is not the request owner' })
   @ApiResponse({ status: 404, description: 'Quote, request or provider not found' })
   @ApiResponse({ status: 409, description: 'Request not OPEN, quote not SUBMITTED, or quote expired' })
   @ApiResponse({ status: 501, description: 'Accepting an ORGANIZATION provider quote is not yet implemented' })
-  accept(
+  async accept(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
+    // `passthrough: true` — see service-requests.controller `accept`: same
+    // body, the deposit outcome lives in the status line only.
+    @Res({ passthrough: true }) res: Response,
   ): Promise<QuoteResponseDto> {
-    return this.service.accept(id, user.sub);
+    const outcome = await this.service.accept(id, user.sub);
+    if (!outcome.depositSettled) {
+      res.status(HttpStatus.ACCEPTED);
+    }
+    return outcome.quote;
   }
 
   @Post('admin/quotes/run-expiry-check')
