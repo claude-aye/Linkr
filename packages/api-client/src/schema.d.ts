@@ -2048,18 +2048,18 @@ export interface components {
              * @description End of the desired service window. REQUIRED for DIRECT_BOOKING (with desiredStartAtUtc); optional for PROJECT_TENDER.
              */
             desiredEndAtUtc?: string;
-            /** @description Estimated amount. Requires estimatedCurrency. */
+            /** @description Estimated amount, strictly positive, at most 9999999999.99 (the column holds numeric(12,2)). Must be sent together with estimatedCurrency. */
             estimatedAmount?: number;
-            /** @description ISO 4217 currency. Required when estimatedAmount is set. */
+            /** @description ISO 4217 currency code, three UPPERCASE letters. Must be sent together with estimatedAmount. */
             estimatedCurrency?: string;
             /**
              * Format: date-time
-             * @description Deadline for DIRECT_BOOKING auto-expiration (timestamptz).
+             * @description Never honoured as sent: DIRECT_BOOKING derives it and overwrites any value, PROJECT_TENDER refuses it (400) — its deadline is quotesDeadlineUtc.
              */
             responseDeadlineUtc?: string;
             /**
              * Format: date-time
-             * @description Quotes deadline for PROJECT_TENDER auto-expiration (timestamptz).
+             * @description REQUIRED for PROJECT_TENDER: at least 48 h and at most 30 days (30 × 24 h) from now, and at least 24 h before desiredStartAtUtc when one is given. The hourly sweep expires the tender once it has passed.
              */
             quotesDeadlineUtc?: string;
         };

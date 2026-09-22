@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { ServiceRequestsService } from './service-requests.service';
@@ -16,10 +17,17 @@ import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
-import { DirectBookingValidationException } from './exceptions/service-request.exceptions';
 import {
+  DirectBookingValidationException,
+  TenderValidationException,
+} from './exceptions/service-request.exceptions';
+import {
+  MAX_ESTIMATED_AMOUNT,
+  MAX_QUOTES_DEADLINE_DAYS,
   MAX_WINDOW_HOURS,
   MIN_LEAD_TIME_HOURS,
+  MIN_QUOTES_DEADLINE_HOURS,
+  QUOTES_DEADLINE_BUFFER_HOURS,
   RESPONSE_WINDOW_HOURS,
 } from './constants';
 import { plainToInstance } from 'class-transformer';
@@ -323,52 +331,437 @@ describe('ServiceRequestsService.create — response deadline derivation', () =>
   });
 });
 
-describe('ServiceRequestsService.create — non-regression: PROJECT_TENDER is untouched', () => {
-  /**
-   * The bounds became mandatory for DIRECT_BOOKING only. A tender has no
-   * appointment to schedule, so it must still be creatable without them — the
-   * case that would break if the requirement were hoisted out of the branch.
-   */
-  it('leaves PROJECT_TENDER untouched: no bounds, no derived deadline', async () => {
+/**
+ * PROJECT_TENDER creation rules (PR 1a). The clock is FROZEN — every bound is
+ * tested at the exact value AND one millisecond beyond, which only means
+ * something if `now` cannot drift between building the DTO and the service
+ * reading its own clock. `nextTick`/`queueMicrotask`/`setImmediate` stay real:
+ * the mocked repository resolves promises, and `create()` awaits them.
+ *
+ * Comparators, and why:
+ *   • R1 floor (now + 48 h) and both ceilings (now + 30 × 24 h, start − 24 h)
+ *     are INCLUSIVE — the exact value passes. Same convention as the
+ *     DIRECT_BOOKING width cap (D5d): a rule stated as "at least 48 h" is met
+ *     by 48 h. Hence `<` against the floor, `>` against the ceilings.
+ *   • R2 end > start is STRICT — a zero-length period is no period, and it is
+ *     the comparator DIRECT_BOOKING already uses for the same fact.
+ *   • R4 amount > 0 is STRICT (a zero budget is no budget); the column cap is
+ *     INCLUSIVE (9 999 999 999,99 is the largest value numeric(12,2) holds).
+ */
+const T0 = Date.UTC(2026, 8, 22, 12, 0, 0);
+const MS_PER_DAY = 24 * MS_PER_HOUR;
+
+function at(msFromT0: number): string {
+  return new Date(T0 + msFromT0).toISOString();
+}
+
+function tenderDto(overrides: Partial<CreateServiceRequestDto> = {}): CreateServiceRequestDto {
+  return baseDto({
+    requestType: ServiceRequestType.PROJECT_TENDER,
+    serviceItemId: undefined,
+    requestedServiceProviderId: undefined,
+    desiredStartAtUtc: undefined,
+    desiredEndAtUtc: undefined,
+    quotesDeadlineUtc: at(72 * MS_PER_HOUR),
+    ...overrides,
+  });
+}
+
+/** Asserts the rejection's class AND which rule fired — not just "it threw". */
+async function expectRejection(
+  promise: Promise<unknown>,
+  cls: new (...args: never[]) => Error,
+  fragment: string,
+): Promise<void> {
+  await expect(promise).rejects.toBeInstanceOf(cls);
+  await expect(promise).rejects.toThrow(fragment);
+}
+
+function freezeClock(): void {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0, doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+}
+
+describe('ServiceRequestsService.create — PROJECT_TENDER (R1-R3)', () => {
+  freezeClock();
+
+  it('accepts a minimal tender: quotes deadline only, no period, no budget', async () => {
+    const { service, created } = buildService();
+
+    await service.create(CLIENT_ID, tenderDto());
+
+    expect(created().status).toBe(ServiceRequestStatus.OPEN);
+    expect(created().quotesDeadlineUtc?.toISOString()).toBe(at(72 * MS_PER_HOUR));
+    expect(created().responseDeadlineUtc).toBeNull();
+    expect(created().desiredStartAtUtc).toBeNull();
+    expect(created().desiredEndAtUtc).toBeNull();
+    expect(created().estimatedAmount).toBeNull();
+    expect(created().estimatedCurrency).toBeNull();
+  });
+
+  it('accepts a complete tender: period, budget and a deadline before the start', async () => {
     const { service, created } = buildService();
 
     await service.create(
       CLIENT_ID,
-      baseDto({
-        requestType: ServiceRequestType.PROJECT_TENDER,
-        serviceItemId: undefined,
-        requestedServiceProviderId: undefined,
-        desiredStartAtUtc: undefined,
-        desiredEndAtUtc: undefined,
+      tenderDto({
+        serviceItemId: ITEM_ID,
+        desiredStartAtUtc: at(10 * MS_PER_DAY),
+        desiredEndAtUtc: at(12 * MS_PER_DAY),
+        quotesDeadlineUtc: at(5 * MS_PER_DAY),
+        estimatedAmount: 2500,
+        estimatedCurrency: 'CAD',
       }),
     );
 
-    expect(created().status).toBe(ServiceRequestStatus.OPEN);
+    expect(created().desiredStartAtUtc?.toISOString()).toBe(at(10 * MS_PER_DAY));
+    expect(created().desiredEndAtUtc?.toISOString()).toBe(at(12 * MS_PER_DAY));
+    expect(created().quotesDeadlineUtc?.toISOString()).toBe(at(5 * MS_PER_DAY));
+    expect(created().estimatedAmount).toBe('2500');
+    expect(created().estimatedCurrency).toBe('CAD');
+    // Never derived for a tender: its period is not an appointment.
     expect(created().responseDeadlineUtc).toBeNull();
   });
 
-  /**
-   * A tender is not subject to the DIRECT_BOOKING coherence rules, and its own
-   * quotes deadline is never overwritten.
-   */
-  it('does not derive a deadline for a tender that happens to carry a start', async () => {
+  it('keeps refusing a requestedServiceProviderId (pre-existing rule)', async () => {
+    const { service } = buildService();
+
+    await expectRejection(
+      service.create(CLIENT_ID, tenderDto({ requestedServiceProviderId: PROVIDER_ID })),
+      TenderValidationException,
+      'requested_service_provider_id',
+    );
+  });
+
+  describe('R1 — quotesDeadlineUtc', () => {
+    it('is required', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(CLIENT_ID, tenderDto({ quotesDeadlineUtc: undefined })),
+        TenderValidationException,
+        'requires quotesDeadlineUtc',
+      );
+    });
+
+    it(`accepts exactly now + ${MIN_QUOTES_DEADLINE_HOURS}h (floor is inclusive)`, async () => {
+      const { service, created } = buildService();
+      const deadline = at(MIN_QUOTES_DEADLINE_HOURS * MS_PER_HOUR);
+
+      await service.create(CLIENT_ID, tenderDto({ quotesDeadlineUtc: deadline }));
+
+      expect(created().quotesDeadlineUtc?.toISOString()).toBe(deadline);
+    });
+
+    it(`rejects now + ${MIN_QUOTES_DEADLINE_HOURS}h − 1 ms`, async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({ quotesDeadlineUtc: at(MIN_QUOTES_DEADLINE_HOURS * MS_PER_HOUR - 1) }),
+        ),
+        TenderValidationException,
+        `at least ${MIN_QUOTES_DEADLINE_HOURS} hours from now`,
+      );
+    });
+
+    it(`accepts exactly now + ${MAX_QUOTES_DEADLINE_DAYS} × 24h (ceiling is inclusive)`, async () => {
+      const { service, created } = buildService();
+      const deadline = at(MAX_QUOTES_DEADLINE_DAYS * MS_PER_DAY);
+
+      await service.create(CLIENT_ID, tenderDto({ quotesDeadlineUtc: deadline }));
+
+      expect(created().quotesDeadlineUtc?.toISOString()).toBe(deadline);
+    });
+
+    it(`rejects now + ${MAX_QUOTES_DEADLINE_DAYS} × 24h + 1 ms`, async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({ quotesDeadlineUtc: at(MAX_QUOTES_DEADLINE_DAYS * MS_PER_DAY + 1) }),
+        ),
+        TenderValidationException,
+        `at most ${MAX_QUOTES_DEADLINE_DAYS} days from now`,
+      );
+    });
+
+    it(`accepts exactly desiredStart − ${QUOTES_DEADLINE_BUFFER_HOURS}h (buffer is inclusive)`, async () => {
+      const { service, created } = buildService();
+      const start = 10 * MS_PER_DAY;
+      const deadline = at(start - QUOTES_DEADLINE_BUFFER_HOURS * MS_PER_HOUR);
+
+      await service.create(
+        CLIENT_ID,
+        tenderDto({
+          desiredStartAtUtc: at(start),
+          desiredEndAtUtc: at(start + 2 * MS_PER_HOUR),
+          quotesDeadlineUtc: deadline,
+        }),
+      );
+
+      expect(created().quotesDeadlineUtc?.toISOString()).toBe(deadline);
+    });
+
+    it(`rejects desiredStart − ${QUOTES_DEADLINE_BUFFER_HOURS}h + 1 ms`, async () => {
+      const { service } = buildService();
+      const start = 10 * MS_PER_DAY;
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({
+            desiredStartAtUtc: at(start),
+            desiredEndAtUtc: at(start + 2 * MS_PER_HOUR),
+            quotesDeadlineUtc: at(start - QUOTES_DEADLINE_BUFFER_HOURS * MS_PER_HOUR + 1),
+          }),
+        ),
+        TenderValidationException,
+        `at least ${QUOTES_DEADLINE_BUFFER_HOURS} hours before desiredStartAtUtc`,
+      );
+    });
+  });
+
+  describe('R2 — optional desired period', () => {
+    it('rejects a start without an end', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(CLIENT_ID, tenderDto({ desiredStartAtUtc: at(10 * MS_PER_DAY) })),
+        TenderValidationException,
+        'or neither',
+      );
+    });
+
+    it('rejects an end without a start', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(CLIENT_ID, tenderDto({ desiredEndAtUtc: at(10 * MS_PER_DAY) })),
+        TenderValidationException,
+        'or neither',
+      );
+    });
+
+    it('rejects an end equal to the start (strict)', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({
+            desiredStartAtUtc: at(10 * MS_PER_DAY),
+            desiredEndAtUtc: at(10 * MS_PER_DAY),
+          }),
+        ),
+        TenderValidationException,
+        'strictly after',
+      );
+    });
+
+    it('accepts an end 1 ms after the start, and no width cap applies', async () => {
+      const { service, created } = buildService();
+
+      await service.create(
+        CLIENT_ID,
+        tenderDto({
+          desiredStartAtUtc: at(10 * MS_PER_DAY),
+          desiredEndAtUtc: at(10 * MS_PER_DAY + 1),
+        }),
+      );
+      expect(created().desiredEndAtUtc?.toISOString()).toBe(at(10 * MS_PER_DAY + 1));
+
+      // Far wider than the DIRECT_BOOKING cap (D5d): nothing is retained from
+      // a tender's period, so there is nothing for a wide period to betray.
+      const second = buildService();
+      await second.service.create(
+        CLIENT_ID,
+        tenderDto({
+          desiredStartAtUtc: at(10 * MS_PER_DAY),
+          desiredEndAtUtc: at(40 * MS_PER_DAY),
+        }),
+      );
+      expect(second.created().desiredEndAtUtc?.toISOString()).toBe(at(40 * MS_PER_DAY));
+    });
+  });
+
+  describe('R3 — responseDeadlineUtc', () => {
+    it('is refused on a tender, never silently kept', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({ responseDeadlineUtc: at(72 * MS_PER_HOUR) }),
+        ),
+        TenderValidationException,
+        'must not specify responseDeadlineUtc',
+      );
+    });
+  });
+});
+
+describe('ServiceRequestsService.create — budget shape (R4), both request types', () => {
+  freezeClock();
+
+  it('rejects an amount without a currency', async () => {
+    const { service } = buildService();
+
+    await expectRejection(
+      service.create(CLIENT_ID, tenderDto({ estimatedAmount: 500 })),
+      BadRequestException,
+      'must be sent together',
+    );
+  });
+
+  it('rejects a currency without an amount (was a 500 on the pair CHECK)', async () => {
+    const { service } = buildService();
+
+    await expectRejection(
+      service.create(CLIENT_ID, tenderDto({ estimatedCurrency: 'CAD' })),
+      BadRequestException,
+      'must be sent together',
+    );
+  });
+
+  it('treats null as absent, as the column does', async () => {
     const { service, created } = buildService();
-    const quotesDeadline = hoursFromNow(24 * 5);
+
+    await service.create(
+      CLIENT_ID,
+      tenderDto({
+        estimatedAmount: null as unknown as number,
+        estimatedCurrency: null as unknown as string,
+      }),
+    );
+
+    expect(created().estimatedAmount).toBeNull();
+    expect(created().estimatedCurrency).toBeNull();
+  });
+
+  it('rejects an amount of 0 (strict), accepts 0.01', async () => {
+    const { service } = buildService();
+    await expectRejection(
+      service.create(CLIENT_ID, tenderDto({ estimatedAmount: 0, estimatedCurrency: 'CAD' })),
+      BadRequestException,
+      'strictly greater than 0',
+    );
+
+    const second = buildService();
+    await second.service.create(
+      CLIENT_ID,
+      tenderDto({ estimatedAmount: 0.01, estimatedCurrency: 'CAD' }),
+    );
+    expect(second.created().estimatedAmount).toBe('0.01');
+  });
+
+  it(`accepts exactly ${MAX_ESTIMATED_AMOUNT} (column cap is inclusive)`, async () => {
+    const { service, created } = buildService();
+
+    await service.create(
+      CLIENT_ID,
+      tenderDto({ estimatedAmount: MAX_ESTIMATED_AMOUNT, estimatedCurrency: 'CAD' }),
+    );
+
+    // The string numeric(12,2) receives — must round-trip without overflow.
+    expect(created().estimatedAmount).toBe('9999999999.99');
+  });
+
+  it('rejects one cent above the column cap (was a 500 "numeric field overflow")', async () => {
+    const { service } = buildService();
+
+    await expectRejection(
+      service.create(
+        CLIENT_ID,
+        tenderDto({ estimatedAmount: 10_000_000_000, estimatedCurrency: 'CAD' }),
+      ),
+      BadRequestException,
+      'cannot exceed',
+    );
+  });
+
+  it('rejects a currency that is not three uppercase letters', async () => {
+    for (const currency of ['cad', 'CA', 'CADX', 'C4D']) {
+      const { service } = buildService();
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({ estimatedAmount: 100, estimatedCurrency: currency }),
+        ),
+        BadRequestException,
+        'ISO 4217',
+      );
+    }
+  });
+
+  /**
+   * The margin this PR touches on DIRECT_BOOKING: a malformed budget that used
+   * to reach SQL and fail in 500 is now a 400 there too — same guard, same
+   * exception, because the guard runs before the type is looked at.
+   */
+  it('applies to DIRECT_BOOKING too: a currency without an amount is a 400', async () => {
+    const { service } = buildService();
+
+    await expectRejection(
+      service.create(
+        CLIENT_ID,
+        baseDto({
+          desiredStartAtUtc: at(3 * MS_PER_HOUR),
+          desiredEndAtUtc: at(5 * MS_PER_HOUR),
+          estimatedCurrency: 'CAD',
+        }),
+      ),
+      BadRequestException,
+      'must be sent together',
+    );
+  });
+
+  /**
+   * The non-regression the arbitration asked for. The WHOLE insert payload is
+   * pinned, not a field or two: a VALID direct booking must reach the
+   * repository exactly as it did before this PR. This test also passes on
+   * `main` (checked by running it there) — it is a fixed point, not a new rule.
+   */
+  it('stores a VALID DIRECT_BOOKING exactly as before', async () => {
+    const { service, created } = buildService();
 
     await service.create(
       CLIENT_ID,
       baseDto({
-        requestType: ServiceRequestType.PROJECT_TENDER,
-        serviceItemId: undefined,
-        requestedServiceProviderId: undefined,
-        desiredStartAtUtc: hoursFromNow(24 * 10),
-        desiredEndAtUtc: undefined,
-        quotesDeadlineUtc: quotesDeadline,
+        desiredStartAtUtc: at(3 * MS_PER_HOUR),
+        desiredEndAtUtc: at(5 * MS_PER_HOUR),
+        estimatedAmount: 150,
+        estimatedCurrency: 'CAD',
+        serviceLocationPrecision: ServiceRequestLocationPrecision.GEOCODED,
       }),
     );
 
-    expect(created().responseDeadlineUtc).toBeNull();
-    expect(created().quotesDeadlineUtc?.toISOString()).toBe(new Date(quotesDeadline).toISOString());
+    expect(created()).toEqual({
+      clientUserId: CLIENT_ID,
+      requestType: ServiceRequestType.DIRECT_BOOKING,
+      status: ServiceRequestStatus.OPEN,
+      serviceCategoryId: CATEGORY_ID,
+      serviceItemId: ITEM_ID,
+      requestedServiceProviderId: PROVIDER_ID,
+      title: 'Coloration',
+      description: 'Une coloration complète.',
+      serviceAddress: '1 rue de Test, Québec, QC',
+      serviceLocation: { type: 'Point', coordinates: [-71.21, 46.81] },
+      serviceLocationPrecision: ServiceRequestLocationPrecision.GEOCODED,
+      desiredStartAtUtc: new Date(at(3 * MS_PER_HOUR)),
+      desiredEndAtUtc: new Date(at(5 * MS_PER_HOUR)),
+      estimatedAmount: '150',
+      estimatedCurrency: 'CAD',
+      // min(start, now + 48 h) = the start, 3 h away.
+      responseDeadlineUtc: new Date(at(3 * MS_PER_HOUR)),
+      quotesDeadlineUtc: null,
+    });
   });
 });
 
@@ -418,6 +811,9 @@ describe('CreateServiceRequestDto — conditional validation (D9)', () => {
     requestedServiceProviderId: undefined,
     desiredStartAtUtc: undefined,
     desiredEndAtUtc: undefined,
+    // Required on a tender since PR 1a (R1) — without it every tender case
+    // below would fail for the wrong reason.
+    quotesDeadlineUtc: hoursFromNow(72),
   };
 
   it('accepts a well-formed DIRECT_BOOKING (the control)', () => {
@@ -444,7 +840,7 @@ describe('CreateServiceRequestDto — conditional validation (D9)', () => {
     ).toEqual(['desiredEndAtUtc', 'desiredStartAtUtc']);
   });
 
-  it('accepts a PROJECT_TENDER with none of the conditional fields', () => {
+  it('accepts a PROJECT_TENDER with none of the conditional fields but its deadline', () => {
     expect(errorsFor(tenderBase)).toEqual([]);
   });
 
@@ -453,5 +849,135 @@ describe('CreateServiceRequestDto — conditional validation (D9)', () => {
       'desiredStartAtUtc',
     );
     expect(errorsFor({ ...tenderBase, serviceItemId: 'nope' })).toContain('serviceItemId');
+  });
+});
+
+/**
+ * The HTTP door for PR 1a. Only the rules the DTO CAN express live here:
+ * quotesDeadlineUtc required on a tender (R1, presence only — its bounds
+ * depend on `now`) and the budget's shape (R4). Same options as `main.ts`.
+ *
+ * ⚠️ The DIRECT_BOOKING controls are the point, not padding: R4 is enforced
+ * for BOTH types, and a valid direct booking must come through with zero
+ * errors exactly as before.
+ */
+describe('CreateServiceRequestDto — tender deadline (R1) & budget shape (R4)', () => {
+  function errorsFor(payload: Record<string, unknown>): string[] {
+    const dto = plainToInstance(CreateServiceRequestDto, payload);
+    return validateSync(dto as object, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    })
+      .map((e) => e.property)
+      .sort();
+  }
+
+  const directBase = {
+    requestType: ServiceRequestType.DIRECT_BOOKING,
+    serviceCategoryId: CATEGORY_ID,
+    serviceItemId: ITEM_ID,
+    requestedServiceProviderId: PROVIDER_ID,
+    title: 'Coloration',
+    description: 'Une coloration complète.',
+    serviceAddress: '1 rue de Test, Québec, QC',
+    serviceLocation: { type: 'Point', coordinates: [-71.21, 46.81] },
+    desiredStartAtUtc: hoursFromNow(3),
+    desiredEndAtUtc: hoursFromNow(5),
+  };
+
+  const tenderBase = {
+    ...directBase,
+    requestType: ServiceRequestType.PROJECT_TENDER,
+    serviceItemId: undefined,
+    requestedServiceProviderId: undefined,
+    desiredStartAtUtc: undefined,
+    desiredEndAtUtc: undefined,
+    quotesDeadlineUtc: hoursFromNow(72),
+  };
+
+  it('rejects a tender without quotesDeadlineUtc', () => {
+    expect(errorsFor({ ...tenderBase, quotesDeadlineUtc: undefined })).toEqual([
+      'quotesDeadlineUtc',
+    ]);
+  });
+
+  it('checks the FORMAT of quotesDeadlineUtc on either type', () => {
+    expect(errorsFor({ ...tenderBase, quotesDeadlineUtc: 'nope' })).toEqual(['quotesDeadlineUtc']);
+    expect(errorsFor({ ...directBase, quotesDeadlineUtc: 'nope' })).toEqual(['quotesDeadlineUtc']);
+  });
+
+  it('treats null as missing on a tender', () => {
+    expect(errorsFor({ ...tenderBase, quotesDeadlineUtc: null })).toEqual(['quotesDeadlineUtc']);
+  });
+
+  it('does not require quotesDeadlineUtc on a DIRECT_BOOKING, null included (as before)', () => {
+    expect(errorsFor(directBase)).toEqual([]);
+    expect(errorsFor({ ...directBase, quotesDeadlineUtc: null })).toEqual([]);
+  });
+
+  it('names the pairing rule when one half of the budget is missing', () => {
+    const messages = (payload: Record<string, unknown>): string[] =>
+      validateSync(plainToInstance(CreateServiceRequestDto, payload) as object, {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }).flatMap((e) => Object.values(e.constraints ?? {}));
+
+    expect(messages({ ...tenderBase, estimatedCurrency: 'CAD' })).toContain(
+      'estimatedAmount must be sent together with estimatedCurrency',
+    );
+    expect(messages({ ...tenderBase, estimatedAmount: 500 })).toContain(
+      'estimatedCurrency must be sent together with estimatedAmount',
+    );
+  });
+
+  it('accepts a VALID DIRECT_BOOKING with a budget, exactly as before', () => {
+    expect(errorsFor({ ...directBase, estimatedAmount: 150, estimatedCurrency: 'CAD' })).toEqual(
+      [],
+    );
+  });
+
+  it('rejects an amount without a currency', () => {
+    expect(errorsFor({ ...tenderBase, estimatedAmount: 500 })).toEqual(['estimatedCurrency']);
+  });
+
+  it('rejects a currency without an amount — on both types', () => {
+    expect(errorsFor({ ...tenderBase, estimatedCurrency: 'CAD' })).toEqual(['estimatedAmount']);
+    expect(errorsFor({ ...directBase, estimatedCurrency: 'CAD' })).toEqual(['estimatedAmount']);
+  });
+
+  it('accepts neither, and null as neither', () => {
+    expect(errorsFor(tenderBase)).toEqual([]);
+    expect(
+      errorsFor({ ...tenderBase, estimatedAmount: null, estimatedCurrency: null }),
+    ).toEqual([]);
+  });
+
+  it('rejects 0 and a negative amount, accepts 0.01', () => {
+    expect(errorsFor({ ...tenderBase, estimatedAmount: 0, estimatedCurrency: 'CAD' })).toEqual([
+      'estimatedAmount',
+    ]);
+    expect(errorsFor({ ...tenderBase, estimatedAmount: -5, estimatedCurrency: 'CAD' })).toEqual([
+      'estimatedAmount',
+    ]);
+    expect(errorsFor({ ...tenderBase, estimatedAmount: 0.01, estimatedCurrency: 'CAD' })).toEqual(
+      [],
+    );
+  });
+
+  it(`accepts exactly ${MAX_ESTIMATED_AMOUNT}, rejects above it`, () => {
+    expect(
+      errorsFor({ ...tenderBase, estimatedAmount: MAX_ESTIMATED_AMOUNT, estimatedCurrency: 'CAD' }),
+    ).toEqual([]);
+    expect(
+      errorsFor({ ...tenderBase, estimatedAmount: 10_000_000_000, estimatedCurrency: 'CAD' }),
+    ).toEqual(['estimatedAmount']);
+  });
+
+  it('rejects a currency that is not three uppercase letters', () => {
+    for (const currency of ['cad', 'CA', 'CADX', 'C4D']) {
+      expect(
+        errorsFor({ ...tenderBase, estimatedAmount: 100, estimatedCurrency: currency }),
+      ).toEqual(['estimatedCurrency']);
+    }
   });
 });

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -24,7 +25,16 @@ import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestAssignmentStatus } from './enums/service-request-assignment-status.enum';
 import { buildTransition } from './service-request-state-machine';
-import { MAX_WINDOW_HOURS, MIN_LEAD_TIME_HOURS, RESPONSE_WINDOW_HOURS } from './constants';
+import {
+  CURRENCY_CODE_PATTERN,
+  MAX_ESTIMATED_AMOUNT,
+  MAX_QUOTES_DEADLINE_DAYS,
+  MAX_WINDOW_HOURS,
+  MIN_LEAD_TIME_HOURS,
+  MIN_QUOTES_DEADLINE_HOURS,
+  QUOTES_DEADLINE_BUFFER_HOURS,
+  RESPONSE_WINDOW_HOURS,
+} from './constants';
 import { buildAssignmentTransition } from './service-request-assignment-state-machine';
 import {
   DirectBookingValidationException,
@@ -42,6 +52,49 @@ import { CaptureDepositParams, PaymentsService } from '../payments/payments.serv
 
 /** Hours → milliseconds, for the desired-window arithmetic in `create()`. */
 const MS_PER_HOUR = 60 * 60 * 1000;
+
+/**
+ * R4 — the budget's SHAPE, for BOTH request types. Mirrors the DTO rather than
+ * trusting it, for the same reason the DIRECT_BOOKING checks do: every test of
+ * `create()` runs past the ValidationPipe. Without this mirror, the two 500s
+ * measured on `main` (a currency with no amount violating
+ * `chk_service_requests_estimated_pair`, an amount overflowing numeric(12,2))
+ * would be guarded by the DTO alone, where no service test can see them.
+ *
+ * `BadRequestException` and not one of the two domain exceptions: those are
+ * named after a request TYPE, and this guard runs before the type is looked at.
+ * A budget error logged as "DirectBookingValidation" on a tender would lie. It
+ * is also the class the ValidationPipe throws for the very same rules, so a
+ * malformed budget is the same 400 whichever layer catches it.
+ *
+ * "Present" means non-null, as for the column: `null` and absence are one.
+ */
+function assertBudgetShape(dto: CreateServiceRequestDto): void {
+  const hasAmount = dto.estimatedAmount != null;
+  const hasCurrency = dto.estimatedCurrency != null;
+  if (hasAmount !== hasCurrency) {
+    throw new BadRequestException(
+      'estimatedAmount and estimatedCurrency must be sent together, or not at all',
+    );
+  }
+  if (!hasAmount) return;
+
+  const amount = dto.estimatedAmount;
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+    throw new BadRequestException('estimatedAmount must be a number strictly greater than 0');
+  }
+  if (amount > MAX_ESTIMATED_AMOUNT) {
+    throw new BadRequestException(`estimatedAmount cannot exceed ${MAX_ESTIMATED_AMOUNT}`);
+  }
+  if (
+    typeof dto.estimatedCurrency !== 'string' ||
+    !CURRENCY_CODE_PATTERN.test(dto.estimatedCurrency)
+  ) {
+    throw new BadRequestException(
+      'estimatedCurrency must be an ISO 4217 code of three uppercase letters',
+    );
+  }
+}
 
 /**
  * Result of an accept. Two facts, reported separately on purpose: the
@@ -85,11 +138,16 @@ export class ServiceRequestsService {
 
     const desiredStartAtUtc = dto.desiredStartAtUtc ? new Date(dto.desiredStartAtUtc) : null;
     const desiredEndAtUtc = dto.desiredEndAtUtc ? new Date(dto.desiredEndAtUtc) : null;
+    const quotesDeadlineUtc = dto.quotesDeadlineUtc ? new Date(dto.quotesDeadlineUtc) : null;
 
-    // Starts as the caller-supplied value — which is what a PROJECT_TENDER and
-    // a windowless DIRECT_BOOKING keep. The DIRECT_BOOKING block below
-    // OVERWRITES it as soon as a desired start is offered (D5/D7).
-    let responseDeadlineUtc = dto.responseDeadlineUtc ? new Date(dto.responseDeadlineUtc) : null;
+    // Never taken from the caller any more, on either path: the DIRECT_BOOKING
+    // block below DERIVES it (D5/D7), and a PROJECT_TENDER that sends one is
+    // refused (R3). Reading dto.responseDeadlineUtc here would reopen the one
+    // door R3 closes.
+    let responseDeadlineUtc: Date | null = null;
+
+    // R4 — before either branch: the budget's shape does not depend on the type.
+    assertBudgetShape(dto);
 
     if (dto.requestType === ServiceRequestType.DIRECT_BOOKING) {
       if (!dto.serviceItemId) {
@@ -156,10 +214,10 @@ export class ServiceRequestsService {
       // its own expiry and a request that never expires would be trivial to
       // forge. min(desired start, now + window): the provider can neither
       // answer after the appointment hour, nor sit on the request longer than
-      // the window. PROJECT_TENDER keeps its own quotes_deadline_utc: another
-      // column, another lifecycle, not this branch's business — and it is the
-      // only path where a caller-supplied responseDeadlineUtc now survives,
-      // since a direct booking always has a start to derive from.
+      // the window. PROJECT_TENDER has its own quotes_deadline_utc: another
+      // column, another lifecycle, not this branch's business. A caller-supplied
+      // responseDeadlineUtc survives on NO path: this branch overwrites it, and
+      // the PROJECT_TENDER branch refuses it outright (R3).
       //
       // No `if (desiredStartAtUtc)` guard any more: the check above throws when
       // either bound is missing, so reaching this line means both are present.
@@ -173,6 +231,75 @@ export class ServiceRequestsService {
     if (dto.requestType === ServiceRequestType.PROJECT_TENDER) {
       if (dto.requestedServiceProviderId) {
         throw new TenderValidationException();
+      }
+
+      // R1-R3 MIRROR the DTO where it has a rule (quotesDeadlineUtc required),
+      // and are the ONLY guard where it cannot have one: every time bound below
+      // depends on `now`, the same instant captured at the top of create().
+
+      // R3 — a tender's deadline is quotesDeadlineUtc. The expiry cron reads
+      // response_deadline_utc for DIRECT_BOOKING only, so a stored value would
+      // mean nothing, and keeping it silently would lie about what governs the
+      // request. Refused, not dropped: the caller learns it was ignored.
+      if (dto.responseDeadlineUtc != null) {
+        throw new TenderValidationException(
+          'PROJECT_TENDER must not specify responseDeadlineUtc; its deadline is quotesDeadlineUtc',
+        );
+      }
+
+      // R2 — the desired period is optional; if one bound is given, both are,
+      // and the end is STRICTLY after the start (same comparator as
+      // DIRECT_BOOKING: a zero-length period is no period). No lead time of its
+      // own (it follows from R1: a start is at least 48 h + 24 h away) and no
+      // width cap (D5d exists because accepting a DIRECT_BOOKING retains the
+      // start; nothing is retained from a tender's period).
+      if ((desiredStartAtUtc === null) !== (desiredEndAtUtc === null)) {
+        throw new TenderValidationException(
+          'PROJECT_TENDER desired period requires both desiredStartAtUtc and desiredEndAtUtc, or neither',
+        );
+      }
+      if (
+        desiredStartAtUtc &&
+        desiredEndAtUtc &&
+        desiredEndAtUtc.getTime() <= desiredStartAtUtc.getTime()
+      ) {
+        throw new TenderValidationException(
+          'desiredEndAtUtc must be strictly after desiredStartAtUtc',
+        );
+      }
+
+      // R1 — the quotes deadline. All three bounds are INCLUSIVE: the exact
+      // value passes, one millisecond beyond does not. Hence `<` against the
+      // floor and `>` against the two ceilings.
+      if (!quotesDeadlineUtc) {
+        throw new TenderValidationException('PROJECT_TENDER requires quotesDeadlineUtc');
+      }
+      if (
+        quotesDeadlineUtc.getTime() <
+        now.getTime() + MIN_QUOTES_DEADLINE_HOURS * MS_PER_HOUR
+      ) {
+        throw new TenderValidationException(
+          `quotesDeadlineUtc must be at least ${MIN_QUOTES_DEADLINE_HOURS} hours from now`,
+        );
+      }
+      // 30 × 24 h FIXED, never calendar days: a DST change would otherwise move
+      // the ceiling by an hour depending on the season.
+      if (
+        quotesDeadlineUtc.getTime() >
+        now.getTime() + MAX_QUOTES_DEADLINE_DAYS * 24 * MS_PER_HOUR
+      ) {
+        throw new TenderValidationException(
+          `quotesDeadlineUtc must be at most ${MAX_QUOTES_DEADLINE_DAYS} days from now`,
+        );
+      }
+      if (
+        desiredStartAtUtc &&
+        quotesDeadlineUtc.getTime() >
+          desiredStartAtUtc.getTime() - QUOTES_DEADLINE_BUFFER_HOURS * MS_PER_HOUR
+      ) {
+        throw new TenderValidationException(
+          `quotesDeadlineUtc must be at least ${QUOTES_DEADLINE_BUFFER_HOURS} hours before desiredStartAtUtc`,
+        );
       }
     }
 
@@ -197,9 +324,10 @@ export class ServiceRequestsService {
       desiredEndAtUtc,
       estimatedAmount: dto.estimatedAmount != null ? String(dto.estimatedAmount) : null,
       estimatedCurrency: dto.estimatedCurrency ?? null,
-      // Derived above for a windowed DIRECT_BOOKING, caller-supplied otherwise.
+      // Derived above for a DIRECT_BOOKING; always null for a PROJECT_TENDER,
+      // which is refused if it sends one (R3).
       responseDeadlineUtc,
-      quotesDeadlineUtc: dto.quotesDeadlineUtc ? new Date(dto.quotesDeadlineUtc) : null,
+      quotesDeadlineUtc,
     });
 
     // Best-effort broadcast: notify eligible providers when a PROJECT_TENDER
