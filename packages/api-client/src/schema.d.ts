@@ -5287,6 +5287,15 @@ export interface operations {
                     "application/json": components["schemas"]["QuoteResponseDto"];
                 };
             };
+            /** @description Quote accepted and provider assigned, but the deposit did not settle. The assignment stands; the deposit is retryable by the provider via POST service-requests/:id/retry-deposit. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponseDto"];
+                };
+            };
             /** @description Caller is not the request owner */
             403: {
                 headers: {
