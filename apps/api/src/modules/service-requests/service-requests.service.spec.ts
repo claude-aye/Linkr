@@ -29,6 +29,7 @@ import {
   MIN_QUOTES_DEADLINE_HOURS,
   QUOTES_DEADLINE_BUFFER_HOURS,
   RESPONSE_WINDOW_HOURS,
+  TENDER_SELECTION_WINDOW_DAYS,
 } from './constants';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -363,6 +364,11 @@ function tenderDto(overrides: Partial<CreateServiceRequestDto> = {}): CreateServ
     desiredStartAtUtc: undefined,
     desiredEndAtUtc: undefined,
     quotesDeadlineUtc: at(72 * MS_PER_HOUR),
+    // GEOCODED is part of the BASE since R5 — a tender without it is refused,
+    // so a base lacking it would make every unrelated case fail for the wrong
+    // reason. The R5 cases override it explicitly. Same device as the window
+    // in `baseDto`.
+    serviceLocationPrecision: ServiceRequestLocationPrecision.GEOCODED,
     ...overrides,
   });
 }
@@ -603,6 +609,92 @@ describe('ServiceRequestsService.create — PROJECT_TENDER (R1-R3)', () => {
         TenderValidationException,
         'must not specify responseDeadlineUtc',
       );
+    });
+  });
+
+  /**
+   * R5 — a tender must carry a GEOCODED location. Its reach is decided by the
+   * coordinate ALONE (geographic fan-out), unlike a direct booking which names
+   * its provider. The asymmetry with DIRECT_BOOKING is the point of the last
+   * case here: that path still degrades on purpose, and R5 must not touch it.
+   */
+  describe('R5 — geocoded service location', () => {
+    it('accepts a tender whose location is GEOCODED', async () => {
+      const { service, created } = buildService();
+
+      await service.create(CLIENT_ID, tenderDto());
+
+      expect(created().serviceLocationPrecision).toBe(
+        ServiceRequestLocationPrecision.GEOCODED,
+      );
+    });
+
+    it('rejects a tender whose location is only a SEARCH_AREA', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({
+            serviceLocationPrecision: ServiceRequestLocationPrecision.SEARCH_AREA,
+          }),
+        ),
+        TenderValidationException,
+        'requires a geocoded service location',
+      );
+    });
+
+    it('rejects a tender whose location is UNKNOWN', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({
+            serviceLocationPrecision: ServiceRequestLocationPrecision.UNKNOWN,
+          }),
+        ),
+        TenderValidationException,
+        'requires a geocoded service location',
+      );
+    });
+
+    it('rejects a tender that omits the field entirely (stored as UNKNOWN)', async () => {
+      const { service } = buildService();
+
+      await expectRejection(
+        service.create(
+          CLIENT_ID,
+          tenderDto({ serviceLocationPrecision: undefined }),
+        ),
+        TenderValidationException,
+        'requires a geocoded service location',
+      );
+    });
+
+    it('leaves DIRECT_BOOKING untouched: an UNKNOWN location is still accepted', async () => {
+      const { service, created } = buildService();
+
+      await service.create(
+        CLIENT_ID,
+        baseDto({
+          serviceLocationPrecision: ServiceRequestLocationPrecision.UNKNOWN,
+        }),
+      );
+
+      expect(created().status).toBe(ServiceRequestStatus.OPEN);
+      expect(created().serviceLocationPrecision).toBe(
+        ServiceRequestLocationPrecision.UNKNOWN,
+      );
+    });
+
+    it('leaves DIRECT_BOOKING untouched: an omitted field is still accepted', async () => {
+      const { service, created } = buildService();
+
+      await service.create(CLIENT_ID, baseDto());
+
+      expect(created().status).toBe(ServiceRequestStatus.OPEN);
+      expect(created().serviceLocationPrecision).toBeUndefined();
     });
   });
 });
@@ -979,5 +1071,93 @@ describe('CreateServiceRequestDto — tender deadline (R1) & budget shape (R4)',
         errorsFor({ ...tenderBase, estimatedAmount: 100, estimatedCurrency: currency }),
       ).toEqual(['estimatedCurrency']);
     }
+  });
+});
+
+/**
+ * R7 — the selection window. The RULE itself lives in SQL (a `CASE` over an
+ * `EXISTS` on `quotes`), which is deliberate: it is a set operation over two
+ * tables, and mirroring it in TypeScript would create a second source of truth
+ * free to drift — the same reasoning that keeps the three-review threshold
+ * inside its query rather than in a component.
+ *
+ * ⚠️ WHAT THIS BLOCK DOES AND DOES NOT PROVE. It proves the WIRING: the cron
+ * hands the repository the configured window, and transitions whatever comes
+ * back. It does NOT prove the predicate — no mock can, since the predicate is
+ * evaluated by Postgres. The truth table (before the deadline / after it with
+ * and without an acceptable quote / at +7 days + 1 / a quote merely withdrawn,
+ * expired or rejected / DIRECT_BOOKING unchanged) is exercised against a real
+ * database in the PR's smoke, case by case.
+ */
+describe('ServiceRequestsService.runExpiryCheck — selection window wiring (R7)', () => {
+  function buildExpiryService(expired: ServiceRequestRecord[]): {
+    service: ServiceRequestsService;
+    findExpiredOpen: jest.Mock;
+    update: jest.Mock;
+  } {
+    const findExpiredOpen = jest.fn().mockResolvedValue(expired);
+    const update = jest.fn().mockResolvedValue(undefined);
+    const requestRepo = { findExpiredOpen, update } as unknown as ServiceRequestRepository;
+
+    const queryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {},
+    };
+    const dataSource = {
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+    } as unknown as DataSource;
+
+    const service = new ServiceRequestsService(
+      requestRepo,
+      {} as unknown as ServiceRequestAssignmentRepository,
+      {} as unknown as ServiceProviderRepository,
+      {} as unknown as UsersRepository,
+      {} as unknown as NotificationsService,
+      {} as unknown as PaymentsService,
+      { getOrThrow: jest.fn().mockReturnValue(72) } as unknown as ConfigService,
+      dataSource,
+    );
+
+    return { service, findExpiredOpen, update };
+  }
+
+  function openTender(): ServiceRequestRecord {
+    return recordFrom({
+      clientUserId: CLIENT_ID,
+      requestType: ServiceRequestType.PROJECT_TENDER,
+      status: ServiceRequestStatus.OPEN,
+      serviceCategoryId: CATEGORY_ID,
+      title: 'Appel d’offres',
+      description: 'Description.',
+      serviceAddress: '1 rue de Test, Québec, QC',
+      serviceLocation: { type: 'Point', coordinates: [-71.21, 46.81] },
+      serviceLocationPrecision: ServiceRequestLocationPrecision.GEOCODED,
+    } as CreateServiceRequestData);
+  }
+
+  it('passes the configured selection window to the repository', async () => {
+    const { service, findExpiredOpen } = buildExpiryService([]);
+
+    await service.runExpiryCheck();
+
+    expect(findExpiredOpen).toHaveBeenCalledWith(TENDER_SELECTION_WINDOW_DAYS);
+  });
+
+  it('expires exactly what the repository returns, and nothing when it returns none', async () => {
+    const empty = buildExpiryService([]);
+    await expect(empty.service.runExpiryCheck()).resolves.toEqual({ expired: 0 });
+    expect(empty.update).not.toHaveBeenCalled();
+
+    const one = buildExpiryService([openTender()]);
+    await expect(one.service.runExpiryCheck()).resolves.toEqual({ expired: 1 });
+    expect(one.update).toHaveBeenCalledWith(
+      expect.any(String),
+      { status: ServiceRequestStatus.EXPIRED },
+      expect.anything(),
+    );
   });
 });

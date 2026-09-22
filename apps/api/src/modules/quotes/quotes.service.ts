@@ -13,6 +13,7 @@ import {
   ProviderNotEligibleForCategoryException,
   ProviderProfileRequiredException,
   QuoteExpiredException,
+  QuotesDeadlinePassedException,
   QuoteValidUntilInPastException,
   RequestNotOpenForQuotingException,
 } from './exceptions/quote.exceptions';
@@ -66,6 +67,10 @@ export class QuotesService {
     callerUserId: string,
     dto: SubmitQuoteDto,
   ): Promise<QuoteResponseDto> {
+    // Captured ONCE: the deadline check below and the validity check further
+    // down must speak of the same instant.
+    const now = new Date();
+
     const request = await this.serviceRequestsService.getRequestRecord(requestId);
     if (!request) throw new NotFoundException('Service request not found');
 
@@ -74,6 +79,31 @@ export class QuotesService {
       request.status !== ServiceRequestStatus.OPEN
     ) {
       throw new RequestNotOpenForQuotingException();
+    }
+
+    // R6 — no quote once the deadline is reached. OPEN is no longer enough:
+    // since R7 a tender stays OPEN through the selection window, precisely so
+    // the client can still accept one of the quotes already in. Without this
+    // guard, a provider could quote for another seven days on a call that the
+    // copy says is closed, and the client would be handed offers that arrived
+    // after everyone else's.
+    //
+    // ⚠️ GUARD AGAINST NULL EXPLICITLY. `now >= null` is `true` in JS (null
+    // coerces to 0), so the shorthand would 409 every legacy tender whose
+    // deadline is null — R1 makes the column mandatory at creation, but rows
+    // predating it are not rewritten. Reached ⇒ refused: `now < deadline` is
+    // the only accepting case, so the exact millisecond of the deadline is
+    // already too late.
+    //
+    // `submit` WRITES NOTHING here: it does not flip the request to EXPIRED.
+    // The cron stays the sole writer of that transition — a read path that
+    // mutates state would expire a tender as a side effect of someone merely
+    // trying to quote on it.
+    if (
+      request.quotesDeadlineUtc !== null &&
+      now.getTime() >= new Date(request.quotesDeadlineUtc).getTime()
+    ) {
+      throw new QuotesDeadlinePassedException();
     }
 
     const provider = await this.providerRepo.findByUserId(callerUserId);
@@ -86,7 +116,7 @@ export class QuotesService {
     if (!eligible) throw new ProviderNotEligibleForCategoryException();
 
     const validUntil = new Date(dto.validUntilUtc);
-    if (validUntil.getTime() <= Date.now()) {
+    if (validUntil.getTime() <= now.getTime()) {
       throw new QuoteValidUntilInPastException();
     }
 

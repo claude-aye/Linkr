@@ -5198,7 +5198,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Request not an OPEN tender, or an active quote already exists */
+            /** @description Request not an OPEN tender, its quotes deadline has passed, or an active quote already exists */
             409: {
                 headers: {
                     [name: string]: unknown;

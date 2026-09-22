@@ -3187,7 +3187,7 @@
             "description": "Service request not found"
           },
           "409": {
-            "description": "Request not an OPEN tender, or an active quote already exists"
+            "description": "Request not an OPEN tender, its quotes deadline has passed, or an active quote already exists"
           }
         },
         "summary": "Submit a quote on an OPEN PROJECT_TENDER. Caller must own an individual provider profile eligible (VERIFIED/NOT_REQUIRED) for the request category.",

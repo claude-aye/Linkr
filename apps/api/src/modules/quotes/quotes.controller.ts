@@ -35,7 +35,11 @@ export class QuotesController {
   @ApiResponse({ status: 400, description: 'Validation error or validUntilUtc not in the future' })
   @ApiResponse({ status: 403, description: 'No individual provider profile, or not eligible for the category' })
   @ApiResponse({ status: 404, description: 'Service request not found' })
-  @ApiResponse({ status: 409, description: 'Request not an OPEN tender, or an active quote already exists' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Request not an OPEN tender, its quotes deadline has passed, or an active quote already exists',
+  })
   submit(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,

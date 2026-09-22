@@ -23,6 +23,7 @@ import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { ProviderServiceRequestItemDto } from './dto/provider-service-request-item.dto';
 import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
+import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
 import { ServiceRequestAssignmentStatus } from './enums/service-request-assignment-status.enum';
 import { buildTransition } from './service-request-state-machine';
 import {
@@ -34,6 +35,7 @@ import {
   MIN_QUOTES_DEADLINE_HOURS,
   QUOTES_DEADLINE_BUFFER_HOURS,
   RESPONSE_WINDOW_HOURS,
+  TENDER_SELECTION_WINDOW_DAYS,
 } from './constants';
 import { buildAssignmentTransition } from './service-request-assignment-state-machine';
 import {
@@ -231,6 +233,26 @@ export class ServiceRequestsService {
     if (dto.requestType === ServiceRequestType.PROJECT_TENDER) {
       if (dto.requestedServiceProviderId) {
         throw new TenderValidationException();
+      }
+
+      // R5 — un appel d'offres doit porter une adresse GÉOCODÉE. Sa diffusion
+      // est un fan-out GÉOGRAPHIQUE (`broadcastTenderMatch`) : contrairement à
+      // une réservation directe, qui vise un prestataire nommé, c'est la
+      // coordonnée SEULE qui décide à qui la demande est envoyée. Un point
+      // dégradé — secteur de recherche, ou placeholder Québec quand rien n'a
+      // été dit — l'enverrait aux mauvais prestataires sans aucun symptôme à
+      // l'écran, ni pour le client ni pour eux.
+      //
+      // Le champ est optionnel dans le DTO et le dépôt défaute un champ absent
+      // à UNKNOWN : tester `!== GEOCODED` couvre donc l'absence du champ sans
+      // avoir à la distinguer. DIRECT_BOOKING est INCHANGÉ — il dégrade
+      // sciemment (adresse géocodée › zone de recherche › placeholder) parce
+      // qu'un client bloqué est un client perdu ; ici personne n'attend à
+      // l'autre bout, et l'appel d'offres peut être reformulé.
+      if (dto.serviceLocationPrecision !== ServiceRequestLocationPrecision.GEOCODED) {
+        throw new TenderValidationException(
+          'PROJECT_TENDER requires a geocoded service location (serviceLocationPrecision must be GEOCODED)',
+        );
       }
 
       // R1-R3 MIRROR the DTO where it has a rule (quotesDeadlineUtc required),
@@ -1194,7 +1216,9 @@ export class ServiceRequestsService {
   }
 
   async runExpiryCheck(): Promise<{ expired: number }> {
-    const expiredRecords = await this.requestRepo.findExpiredOpen();
+    const expiredRecords = await this.requestRepo.findExpiredOpen(
+      TENDER_SELECTION_WINDOW_DAYS,
+    );
     if (expiredRecords.length === 0) return { expired: 0 };
 
     const qr = this.dataSource.createQueryRunner();

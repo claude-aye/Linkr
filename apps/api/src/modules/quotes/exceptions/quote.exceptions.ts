@@ -70,3 +70,18 @@ export class OrganizationQuoteDispatchNotImplementedException extends HttpExcept
     super(message, HttpStatus.NOT_IMPLEMENTED);
   }
 }
+
+/**
+ * 409 — the tender's quotes deadline has been reached; no further quote is
+ * accepted. DISTINCT from `RequestNotOpenForQuotingException`: the request is
+ * still OPEN and may stay so for the whole selection window (R7), so "not
+ * open" would be a lie. The provider is told the deadline closed, not that the
+ * request vanished.
+ */
+export class QuotesDeadlinePassedException extends HttpException {
+  constructor(
+    message = 'The deadline for submitting quotes on this request has passed',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
