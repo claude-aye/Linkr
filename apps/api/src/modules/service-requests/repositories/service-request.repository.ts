@@ -550,21 +550,63 @@ export class ServiceRequestRepository {
     }
   }
 
-  /** Find all OPEN requests whose applicable deadline has passed. */
-  async findExpiredOpen(manager?: EntityManager): Promise<ServiceRequestRecord[]> {
+  /**
+   * Find all OPEN requests whose applicable deadline has passed.
+   *
+   * DIRECT_BOOKING is UNCHANGED: its response deadline is its whole story.
+   *
+   * PROJECT_TENDER gets a selection window (R7). The quotes deadline closes
+   * SUBMISSION, not SELECTION — expiring a tender the moment it stops taking
+   * quotes would destroy the client's offers at the exact instant they became
+   * complete. So the effective expiry is:
+   *   • at least one still-acceptable quote  → quotes_deadline_utc + N days;
+   *   • none                                 → quotes_deadline_utc, as before.
+   * No quote means nothing to choose from, so there is nothing to grant a
+   * reprieve for.
+   *
+   * "Still acceptable" is SUBMITTED, and SUBMITTED only. WITHDRAWN, REJECTED
+   * and EXPIRED are dead by definition; ACCEPTED cannot coexist with an OPEN
+   * request (acceptance flips OPEN→ASSIGNED in the same transaction), so
+   * listing it would describe a state that cannot occur. `quotes` carries no
+   * `deleted_at_utc`, so there is no soft-delete predicate to mirror.
+   *
+   * ⚠️ Status only — the quote's own `valid_until_utc` is NOT consulted here.
+   * That column belongs to the quotes cron, which runs hourly and flips a
+   * stale SUBMITTED quote to EXPIRED; the tender then becomes eligible on the
+   * next 5-minute sweep. The lag is bounded by one hour and is the designed
+   * interlock between two deliberately independent crons — adding the validity
+   * check here would give this query a second opinion on quote lifecycle.
+   *
+   * `make_interval` keeps the window a BOUND PARAMETER rather than string
+   * interpolation into the SQL.
+   */
+  async findExpiredOpen(
+    tenderSelectionWindowDays: number,
+    manager?: EntityManager,
+  ): Promise<ServiceRequestRecord[]> {
     const sql = `
-      SELECT ${SELECT_COLUMNS} FROM service_requests
-      WHERE status = 'OPEN'
-        AND deleted_at_utc IS NULL
+      SELECT ${SELECT_COLUMNS} FROM service_requests sr
+      WHERE sr.status = 'OPEN'
+        AND sr.deleted_at_utc IS NULL
         AND (
-          (request_type = 'DIRECT_BOOKING' AND response_deadline_utc IS NOT NULL AND response_deadline_utc < NOW())
+          (sr.request_type = 'DIRECT_BOOKING' AND sr.response_deadline_utc IS NOT NULL AND sr.response_deadline_utc < NOW())
           OR
-          (request_type = 'PROJECT_TENDER' AND quotes_deadline_utc IS NOT NULL AND quotes_deadline_utc < NOW())
+          (sr.request_type = 'PROJECT_TENDER' AND sr.quotes_deadline_utc IS NOT NULL AND
+            CASE
+              WHEN EXISTS (
+                SELECT 1 FROM quotes q
+                 WHERE q.service_request_id = sr.id
+                   AND q.status = 'SUBMITTED'
+              )
+              THEN sr.quotes_deadline_utc + make_interval(days => $1)
+              ELSE sr.quotes_deadline_utc
+            END < NOW())
         )
     `;
+    const params = [tenderSelectionWindowDays];
     const rows: RawRow[] = manager
-      ? await manager.query(sql)
-      : await this.repo.query(sql);
+      ? await manager.query(sql, params)
+      : await this.repo.query(sql, params);
     return rows.map(mapRow);
   }
 

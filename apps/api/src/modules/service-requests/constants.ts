@@ -89,3 +89,15 @@ export const MAX_ESTIMATED_AMOUNT = 9_999_999_999.99;
  * forme, pas l'appartenance à la liste ISO.
  */
 export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
+
+/**
+ * Sursis laissé au client APRÈS la date limite des devis pour en accepter un
+ * (R7). La date limite ferme la RÉCEPTION des devis (R6), elle ne ferme pas la
+ * SÉLECTION : sans ce sursis, un client qui reçoit un devis à la dernière heure
+ * verrait sa demande expirer avant d'avoir pu comparer quoi que ce soit.
+ *
+ * ⚠️ Le sursis n'est accordé qu'à un appel d'offres qui a QUELQUE CHOSE À
+ * CHOISIR (au moins un devis encore acceptable). Sans devis, il n'y a rien à
+ * sélectionner : la demande expire à sa date limite, comme avant.
+ */
+export const TENDER_SELECTION_WINDOW_DAYS = 7;
