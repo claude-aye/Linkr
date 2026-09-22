@@ -16,6 +16,7 @@ on:
     paths:
       - 'apps/api/src/modules/service-requests/constants.ts'
       - 'apps/web/src/app/**/create-request-form.tsx'
+      - 'apps/web/src/lib/service-requests/tender-rules.ts'
       - 'apps/api/src/common/email/templates/request-declined.template.ts'
       - 'apps/web/src/app/**/decline-request-action.tsx'
       - 'scripts/check-mirrored-constants.mjs'
