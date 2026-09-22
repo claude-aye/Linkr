@@ -3320,6 +3320,16 @@
               }
             }
           },
+          "202": {
+            "description": "Quote accepted and provider assigned, but the deposit did not settle. The assignment stands; the deposit is retryable by the provider via POST service-requests/:id/retry-deposit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponseDto"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Caller is not the request owner"
           },
