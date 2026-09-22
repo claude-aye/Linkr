@@ -1,6 +1,6 @@
 import type { components } from '@linkr/api-client';
 import type { MyReview } from '@/lib/reviews/types';
-import { formatDateLong, formatDateTimeRange } from '@/lib/dates/format';
+import { formatDateLong, formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
 import {
   LOCATION_PRECISION_NOTICE_CLASS,
   clientLocationPrecisionNotice,
@@ -175,6 +175,16 @@ export function RequestCard({
   const desiredStartAtUtc = request.desiredStartAtUtc as unknown as string | null;
   const desiredEndAtUtc = request.desiredEndAtUtc as unknown as string | null;
 
+  // PR 1b — a PROJECT_TENDER card. Its deadline is `quotesDeadlineUtc` (same
+  // nullable-JSONB debt, same surgical cast). No quote count is shown: the
+  // client DTO carries none, and a static « Aucun devis » would turn false the
+  // day the provider side can quote. No link either — the tender detail page
+  // does not exist yet (PR 4b).
+  const isTender = request.requestType === 'PROJECT_TENDER';
+  const quotesDeadlineUtc = request.quotesDeadlineUtc as unknown as string | null;
+  const receivingQuotes = isTender && request.status === 'OPEN' && Boolean(quotesDeadlineUtc);
+  const hasDesiredWindow = Boolean(desiredStartAtUtc || desiredEndAtUtc);
+
   // Exception marker: `null` on GEOCODED, so a precise request shows nothing.
   // Read NATIVELY — the field is a required string union on the DTO, no cast.
   const locationNotice = clientLocationPrecisionNotice(request.serviceLocationPrecision);
@@ -182,11 +192,20 @@ export function RequestCard({
   return (
     <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
-        >
-          {badge.label}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
+          >
+            {badge.label}
+          </span>
+          {isTender && (
+            // Neutral zinc family: a KIND of request, not a state — it must not
+            // compete with the status badge's colour.
+            <span className="inline-flex items-center rounded-full border border-zinc-300 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+              Appel d’offres
+            </span>
+          )}
+        </div>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           {formatDateLong(request.createdAtUtc)}
         </span>
@@ -194,12 +213,21 @@ export function RequestCard({
 
       <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-50">{request.title}</h3>
 
+      {receivingQuotes && (
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Reçoit des devis jusqu’au {formatDateTime(quotesDeadlineUtc)}
+        </p>
+      )}
+
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-        <Detail label="Montant estimé">
+        {/* A tender's amount is the client's optional budget, not a price. */}
+        <Detail label={isTender ? 'Budget indicatif' : 'Montant estimé'}>
           {formatMoney(estimatedAmount, estimatedCurrency)}
         </Detail>
-        <Detail label="Période souhaitée">
-          {formatDateTimeRange(desiredStartAtUtc, desiredEndAtUtc)}
+        <Detail label={isTender ? 'Démarrage souhaité' : 'Période souhaitée'}>
+          {isTender && !hasDesiredWindow
+            ? 'Dates flexibles'
+            : formatDateTimeRange(desiredStartAtUtc, desiredEndAtUtc)}
         </Detail>
         <Detail label="Adresse" wide>
           {request.serviceAddress}

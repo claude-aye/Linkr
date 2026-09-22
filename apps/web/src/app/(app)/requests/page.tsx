@@ -48,13 +48,27 @@ function Section({
   );
 }
 
-export default async function RequestsPage() {
+/**
+ * Set by the tender form after a successful publication (PR 1b). A plain query
+ * flag read by this Server Component — the list itself is the proof, the banner
+ * only says so.
+ */
+const PUBLISHED_TENDER_FLAG = 'appel-offres';
+
+export default async function RequestsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ publie?: string | string[] }>;
+}) {
   // Session gate — `redirect` throws, so it runs OUTSIDE any try/catch. The page
   // is PRIVATE (under `(app)`): an expired session must not render.
   const user = await getCurrentUser();
   if (!user) {
     redirect('/login');
   }
+
+  const { publie } = await searchParams;
+  const justPublishedTender = publie === PUBLISHED_TENDER_FLAG;
 
   const client = await getServerApiClient();
 
@@ -109,11 +123,28 @@ export default async function RequestsPage() {
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
       <section className="w-full max-w-3xl">
-        <header className="mb-6">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             Mes demandes
           </h1>
+          {/* The ONE entry to the tender form. Rendered in every state below —
+              an empty list or a failed read must not hide the way to publish. */}
+          <Link
+            href="/requests/new-tender"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+          >
+            Publier un appel d’offres
+          </Link>
         </header>
+
+        {justPublishedTender && (
+          // Plain text, no `role="alert"`: the navigation already moved the
+          // user here, this is a displayed state, not an action error.
+          <p className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+            Votre appel d’offres est publié. Les prestataires qui couvrent votre secteur en
+            sont avisés et peuvent vous envoyer un devis jusqu’à la date limite.
+          </p>
+        )}
 
         {requests === null ? (
           <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

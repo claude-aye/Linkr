@@ -38,6 +38,9 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const API_CONSTANTS = 'apps/api/src/modules/service-requests/constants.ts';
 const REQUEST_FORM = 'apps/web/src/app/(app)/requests/new/create-request-form.tsx';
+// The tender form's rules live in a pure module (tested under `node --test`),
+// not in the component — so the mirror is declared there.
+const TENDER_RULES = 'apps/web/src/lib/service-requests/tender-rules.ts';
 const DECLINED_TEMPLATE =
   'apps/api/src/common/email/templates/request-declined.template.ts';
 const DECLINE_ACTION =
@@ -61,6 +64,21 @@ const MIRRORS = [
     name: 'MAX_WINDOW_HOURS',
     why: 'D5d — width ceiling, strict `>` comparator on both sides',
     files: [API_CONSTANTS, REQUEST_FORM],
+  },
+  {
+    name: 'MIN_QUOTES_DEADLINE_HOURS',
+    why: 'R1 — the « 48 heures » option and the custom-date floor must be the floor the API accepts',
+    files: [API_CONSTANTS, TENDER_RULES],
+  },
+  {
+    name: 'MAX_QUOTES_DEADLINE_DAYS',
+    why: 'R1 — a custom deadline the form accepts must not be one the API refuses as too far',
+    files: [API_CONSTANTS, TENDER_RULES],
+  },
+  {
+    name: 'QUOTES_DEADLINE_BUFFER_HOURS',
+    why: 'R1 — the options greyed out next to a start date must be the ones the API would refuse',
+    files: [API_CONSTANTS, TENDER_RULES],
   },
   {
     name: 'REASON_MAX_CHARS',
