@@ -8,6 +8,12 @@ import { ServiceRequestType } from '../enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 import { PaymentStatus } from '../../payments/enums/payment-status.enum';
 import { PaymentType } from '../../payments/enums/payment-type.enum';
+import { QuoteStatus } from '../../quotes/enums/quote-status.enum';
+import {
+  ELIGIBILITY_CATEGORY_FROM_TENDER,
+  ELIGIBILITY_POINT_FROM_TENDER,
+  eligibilityFromWhere,
+} from '../../service-providers/repositories/eligibility.sql';
 
 export interface ServiceRequestRecord {
   id: string;
@@ -90,6 +96,132 @@ export interface ProviderServiceRequestRecord {
    */
   depositStatus: PaymentStatus | null;
 }
+
+/**
+ * One open PROJECT_TENDER as seen from a provider that qualifies for it
+ * ({@link ServiceRequestRepository.findOpenTendersForProvider}).
+ *
+ * Geo-safe in the same sense as {@link ProviderServiceRequestRecord}, and then
+ * some: not only is `service_location` never selected, `service_address` is not
+ * either. What crosses is `distanceMeters`, a scalar derived from a point that
+ * stays in the database.
+ */
+export interface ProviderTenderRecord {
+  id: string;
+  title: string;
+  description: string;
+  serviceCategoryId: string;
+  serviceCategoryNameTranslations: Record<string, string>;
+  desiredStartAtUtc: Date | null;
+  desiredEndAtUtc: Date | null;
+  estimatedAmount: string | null;
+  estimatedCurrency: string | null;
+  /** Non-null by construction: the query filters `> NOW()`, which drops NULL. */
+  quotesDeadlineUtc: Date;
+  createdAtUtc: Date;
+  /** Provider base → tender point, in metres. Rounded to km at the DTO. */
+  distanceMeters: number;
+  /** The caller's MOST RECENT quote on this tender (any status), or null. */
+  myQuoteId: string | null;
+  myQuoteStatus: QuoteStatus | null;
+}
+
+interface ProviderTenderRawRow {
+  id: string;
+  title: string;
+  description: string;
+  service_category_id: string;
+  service_category_name_translations: Record<string, string>;
+  desired_start_at_utc: Date | null;
+  desired_end_at_utc: Date | null;
+  estimated_amount: string | null;
+  estimated_currency: string | null;
+  quotes_deadline_utc: Date;
+  created_at_utc: Date;
+  /** PostGIS returns double precision, which the pg driver hands over as text. */
+  distance_meters: string;
+  my_quote_id: string | null;
+  my_quote_status: QuoteStatus | null;
+}
+
+function mapProviderTenderRow(row: ProviderTenderRawRow): ProviderTenderRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    serviceCategoryId: row.service_category_id,
+    serviceCategoryNameTranslations: row.service_category_name_translations,
+    desiredStartAtUtc: row.desired_start_at_utc,
+    desiredEndAtUtc: row.desired_end_at_utc,
+    estimatedAmount: row.estimated_amount,
+    estimatedCurrency: row.estimated_currency,
+    quotesDeadlineUtc: row.quotes_deadline_utc,
+    createdAtUtc: row.created_at_utc,
+    distanceMeters: parseFloat(row.distance_meters),
+    myQuoteId: row.my_quote_id,
+    myQuoteStatus: row.my_quote_status,
+  };
+}
+
+/**
+ * The provider→tenders reading of the shared eligibility predicate
+ * (`service-providers/repositories/eligibility.sql`), correlated to the
+ * enclosing `sr` row. Carries NO bound parameter of its own — both expressions
+ * are column references — so the embedding query numbers its placeholders
+ * freely.
+ */
+const TENDER_ELIGIBILITY_FROM_WHERE = eligibilityFromWhere(
+  ELIGIBILITY_POINT_FROM_TENDER,
+  ELIGIBILITY_CATEGORY_FROM_TENDER,
+);
+
+/**
+ * Everything a tender must satisfy to appear in a provider's feed, shared
+ * VERBATIM by the page query and by its COUNT so the two cannot disagree about
+ * what "matching" means. `$1` is the calling provider id, pinned onto `me`.
+ *
+ * Line by line, because none of these is incidental:
+ *
+ *  • `request_type` / `status` — a feed of open calls for quotes, nothing else.
+ *
+ *  • `quotes_deadline_utc > NOW()` — and NOT merely `OPEN`. Since R7 an expired
+ *    tender STAYS `OPEN` for up to seven more days so the client can still pick
+ *    among the quotes he received; `QuotesService.submit` answers 409 for that
+ *    whole window. Showing those would be advertising a door that is already
+ *    shut. NULL is excluded by the same comparison, which is the wanted answer
+ *    for the legacy rows that predate R1: the expiry sweep skips them too
+ *    (`quotes_deadline_utc IS NOT NULL`), so they sit OPEN forever and a feed
+ *    built around a closing date has nothing to say about them.
+ *
+ *  • `service_location_precision = 'GEOCODED'` — same reason R5 refuses to create
+ *    one otherwise. A tender is distributed by GEOGRAPHIC fan-out, so its
+ *    coordinate is the only thing deciding who sees it; a degraded point would
+ *    quietly put it in front of the wrong providers, and `distanceKm` would
+ *    report a confident number about a place nobody vouched for.
+ *
+ *  • `IS DISTINCT FROM`, NEVER `<>` — a provider must not be shown his own
+ *    tender (`SelfQuoteForbiddenException` would 403 the quote anyway). `me.user_id`
+ *    is NULL on an ORGANIZATION provider, and `NULL <> x` is NULL, not true — so
+ *    `<>` would not merely mis-handle the self case, it would empty the feed of
+ *    EVERY organization provider, silently.
+ *
+ *  • the EXISTS — the shared coverage predicate, restricted to the caller. It
+ *    also subsumes the caller's own liveness (`sp.is_active`,
+ *    `sp.deleted_at_utc IS NULL` applied to `sp.id = me.id`), which is why no
+ *    condition on `me` appears above. A PAUSED provider therefore sees an empty
+ *    feed: he is not discoverable, so nothing would have matched him. That is
+ *    the predicate being read consistently in both directions, not an oversight
+ *    — `loadOwnedProvider` still lets him through with a 200 and an empty list.
+ */
+const TENDER_FEED_WHERE = `
+      sr.deleted_at_utc IS NULL
+      AND sr.request_type = '${ServiceRequestType.PROJECT_TENDER}'
+      AND sr.status = '${ServiceRequestStatus.OPEN}'
+      AND sr.quotes_deadline_utc > NOW()
+      AND sr.service_location_precision = '${ServiceRequestLocationPrecision.GEOCODED}'
+      AND sr.client_user_id IS DISTINCT FROM me.user_id
+      AND EXISTS (SELECT 1 ${TENDER_ELIGIBILITY_FROM_WHERE} AND sp.id = me.id)
+`;
 
 export interface CreateServiceRequestData {
   clientUserId: string;
@@ -458,6 +590,87 @@ export class ServiceRequestRepository {
 
     return {
       items: rows.map(mapProviderRow),
+      total: parseInt(countRows[0].count, 10),
+    };
+  }
+
+  /**
+   * Tender feed: the open PROJECT_TENDERs this provider qualifies for, computed
+   * LIVE from the shared coverage predicate ({@link TENDER_FEED_WHERE}).
+   *
+   * Live, and that is the point: NEW_TENDER_MATCH notifications are a snapshot
+   * taken at publication, so a provider who adds a zone or claims a trade
+   * afterwards stays invisible to every tender already open. This asks the
+   * question again, at read time, with the same predicate discovery uses.
+   *
+   * ⚠️ THE LATERAL IS NOT A STYLE CHOICE.
+   * uq_quote_one_live_per_provider_per_request is PARTIAL (WHERE status =
+   * SUBMITTED), so a (provider, tender) couple may carry several rows — a
+   * withdrawal followed by a re-submission is exactly that. A plain LEFT JOIN
+   * quotes would therefore emit the same tender once per historical quote, and
+   * the COUNT below — which does not join it — would disagree with the page it
+   * is supposed to describe. The LATERAL collapses the history to its most
+   * recent row before it can fan anything out.
+   *
+   * The COUNT reuses TENDER_FEED_WHERE verbatim and omits only the projection
+   * joins: service_categories is an INNER JOIN on a NOT NULL, RESTRICTed FK (it
+   * cannot drop a row) and the LATERAL is LEFT ... ON true (it cannot either),
+   * so leaving both out of the count is safe.
+   */
+  async findOpenTendersForProvider(
+    providerId: string,
+    opts: { page: number; limit: number },
+  ): Promise<{ items: ProviderTenderRecord[]; total: number }> {
+    const offset = (opts.page - 1) * opts.limit;
+
+    const countRows: Array<{ count: string }> = await this.repo.query(
+      `SELECT COUNT(*) AS count
+         FROM service_requests sr
+         JOIN service_providers me ON me.id = $1
+        WHERE ${TENDER_FEED_WHERE}`,
+      [providerId],
+    );
+
+    const rows: ProviderTenderRawRow[] = await this.repo.query(
+      `SELECT
+         sr.id,
+         sr.title,
+         sr.description,
+         sr.service_category_id,
+         sc.name_translations AS service_category_name_translations,
+         sr.desired_start_at_utc,
+         sr.desired_end_at_utc,
+         sr.estimated_amount,
+         sr.estimated_currency,
+         sr.quotes_deadline_utc,
+         sr.created_at_utc,
+         -- Metres, from the provider base to a point that is never projected.
+         -- Same geography cast the predicate uses, from the same constant.
+         ST_Distance(me.service_base_location, ${ELIGIBILITY_POINT_FROM_TENDER})
+           AS distance_meters,
+         mq.id     AS my_quote_id,
+         mq.status AS my_quote_status
+       FROM service_requests sr
+       JOIN service_providers me ON me.id = $1
+       JOIN service_categories sc ON sc.id = sr.service_category_id
+       LEFT JOIN LATERAL (
+         SELECT q.id, q.status
+           FROM quotes q
+          WHERE q.service_request_id = sr.id
+            AND q.service_provider_id = me.id
+          ORDER BY q.created_at_utc DESC, q.id DESC
+          LIMIT 1
+       ) mq ON true
+      WHERE ${TENDER_FEED_WHERE}
+      -- Soonest closing first: the feed exists to say what to answer next.
+      -- The id breaks ties so a page boundary cannot shuffle between calls.
+      ORDER BY sr.quotes_deadline_utc ASC, sr.id ASC
+      LIMIT $2 OFFSET $3`,
+      [providerId, opts.limit, offset],
+    );
+
+    return {
+      items: rows.map(mapProviderTenderRow),
       total: parseInt(countRows[0].count, 10),
     };
   }

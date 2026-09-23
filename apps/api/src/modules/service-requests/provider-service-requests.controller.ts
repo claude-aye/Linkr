@@ -5,10 +5,14 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ServiceProvidersService } from '../service-providers/service-providers.service';
 import { ListProviderServiceRequestsDto } from './dto/list-provider-service-requests.dto';
 import { ProviderServiceRequestListDto } from './dto/provider-service-request-list.dto';
+import { ListProviderTendersDto } from './dto/list-provider-tenders.dto';
+import { ProviderTenderListDto } from './dto/provider-tender-list.dto';
 import { ServiceRequestsService } from './service-requests.service';
 
 /**
- * Provider dashboard: `GET /service-providers/:id/service-requests` (Vision B).
+ * Provider-facing reads under the `service-providers/:id` namespace:
+ *   • `GET /service-providers/:id/service-requests` — the dashboard (Vision B);
+ *   • `GET /service-providers/:id/tenders` — the open-tender feed.
  *
  * Routing note (cf. CLAUDE.md §6 — anti-circular-dependency): the URL lives
  * under the `service-providers/:id` namespace, but the handler is declared in
@@ -51,5 +55,27 @@ export class ProviderServiceRequestsController {
     // THEN delegate the listing to the service-requests domain (its data).
     await this.providersService.loadOwnedProvider(user.sub, id);
     return this.requestsService.listForProvider(id, query);
+  }
+
+  @Get(':id/tenders')
+  @ApiOperation({
+    summary:
+      "Tender feed (owner only): the open PROJECT_TENDERs this provider currently qualifies for — computed live from the same coverage predicate as discovery, so a trade or zone added after publication counts. Items carry a rounded distance and the provider's own latest quote; no address, no client identity, no coordinates.",
+  })
+  @ApiQuery({ name: 'page', type: Number, required: false })
+  @ApiQuery({ name: 'limit', type: Number, required: false })
+  @ApiResponse({ status: 200, type: ProviderTenderListDto })
+  @ApiResponse({ status: 403, description: 'You do not own this provider.' })
+  @ApiResponse({ status: 404, description: 'Service provider not found.' })
+  async listTenders(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ListProviderTendersDto,
+  ): Promise<ProviderTenderListDto> {
+    // Same two-step as the listing above: ownership on the providers side
+    // (404 if missing, 403 if not owned), then the read in the domain that owns
+    // the data. The feed itself never re-checks ownership — one judge.
+    await this.providersService.loadOwnedProvider(user.sub, id);
+    return this.requestsService.listTendersForProvider(id, query);
   }
 }
