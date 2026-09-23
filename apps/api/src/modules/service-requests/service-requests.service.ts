@@ -21,6 +21,8 @@ import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
 import { ListProviderServiceRequestsDto } from './dto/list-provider-service-requests.dto';
 import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { ProviderServiceRequestItemDto } from './dto/provider-service-request-item.dto';
+import { ListProviderTendersDto } from './dto/list-provider-tenders.dto';
+import { ProviderTenderItemDto } from './dto/provider-tender-item.dto';
 import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
@@ -554,6 +556,40 @@ export class ServiceRequestsService {
 
     return {
       items: items.map((r) => ProviderServiceRequestItemDto.fromWithLabels(r)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  /**
+   * Tender feed for a provider: the open PROJECT_TENDERs it qualifies for right
+   * now. Pure data read — the caller (ProviderServiceRequestsController) has
+   * already enforced ownership of providerId via loadOwnedProvider.
+   *
+   * Everything that decides membership lives in the repository query, because
+   * it is one predicate shared with discovery; re-stating any part of it here
+   * would be a second opinion free to drift from the first.
+   */
+  async listTendersForProvider(
+    providerId: string,
+    dto: ListProviderTendersDto,
+  ): Promise<{
+    items: ProviderTenderItemDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+
+    const { items, total } = await this.requestRepo.findOpenTendersForProvider(
+      providerId,
+      { page, limit },
+    );
+
+    return {
+      items: items.map((r) => ProviderTenderItemDto.from(r)),
       total,
       page,
       limit,

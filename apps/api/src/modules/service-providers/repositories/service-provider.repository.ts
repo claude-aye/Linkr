@@ -5,6 +5,11 @@ import { GeoJSONPoint } from '../../../common/geojson/geojson.types';
 import { ServiceProvider } from '../entities/service-provider.entity';
 import { ProviderType } from '../enums/provider-type.enum';
 import { PscVerificationStatus } from '../enums/psc-verification-status.enum';
+import {
+  ELIGIBILITY_CATEGORY_FROM_PARAM,
+  ELIGIBILITY_POINT_FROM_PARAMS,
+  eligibilityFromWhere,
+} from './eligibility.sql';
 
 export interface DiscoveryParams {
   lat: number;
@@ -87,6 +92,18 @@ interface RawProviderRow {
   created_at_utc: Date;
   updated_at_utc: Date;
 }
+
+/**
+ * The point-to-providers reading of the shared eligibility predicate
+ * ({@link eligibilityFromWhere}). Bound `$1` = lng, `$2` = lat, `$3` = categoryId.
+ *
+ * Built once at module load: the fragment is a pure function of two literals,
+ * so there is nothing per-call to recompute.
+ */
+const ELIGIBILITY_FROM_WHERE = eligibilityFromWhere(
+  ELIGIBILITY_POINT_FROM_PARAMS,
+  ELIGIBILITY_CATEGORY_FROM_PARAM,
+);
 
 const SELECT_COLUMNS = `
   id, provider_type, user_id, organization_id, business_name, headline, bio,
@@ -226,48 +243,18 @@ export class ServiceProviderRepository {
   }
 
   /**
-   * Shared hybrid-geo eligibility predicate (CLAUDE.md §5.3) — single source of
-   * truth for "which providers qualify for a given client point + category".
-   * Consumed by discovery (paginated) and tender broadcast (id-only).
-   *
-   * Placeholders: $1 = lng, $2 = lat, $3 = categoryId.
-   * Spatial columns are geography(4326): ST_DWithin / ST_Distance return metres,
-   * zone containment uses ST_Covers (ST_Contains is geometry-only).
-   * The LEFT JOIN organizations resolves the display_name fallback; it joins a
-   * single FK so it never multiplies rows — harmless in the id-only / count queries.
+   * Provider ids covering `(lng, lat)` for `categoryId` — the id-only reading
+   * of the shared predicate. Consumed by the tender fan-out and by the
+   * demand-signal verification, neither of which may drift from what
+   * `discover` returns.
    */
-  private eligibilityFromWhere(): string {
-    const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
-    return `
-      FROM service_providers sp
-      INNER JOIN professional_service_categories psc
-        ON psc.service_provider_id = sp.id
-        AND psc.service_category_id = $3
-        AND psc.verification_status IN ('VERIFIED', 'NOT_REQUIRED')
-        AND psc.is_active = true
-        AND psc.deleted_at_utc IS NULL
-      LEFT JOIN organizations o ON o.id = sp.organization_id
-      WHERE sp.is_active = true
-        AND sp.deleted_at_utc IS NULL
-        AND (
-          ST_DWithin(sp.service_base_location, ${clientPoint}, sp.service_radius_km * 1000)
-          OR EXISTS (
-            SELECT 1 FROM professional_service_zones z
-            WHERE z.service_provider_id = sp.id
-              AND z.deleted_at_utc IS NULL
-              AND ST_Covers(z.zone_polygon, ${clientPoint})
-          )
-        )
-    `;
-  }
-
   async findEligibleProviderIds(
     lng: number,
     lat: number,
     categoryId: string,
   ): Promise<string[]> {
     const rows: Array<{ id: string }> = await this.repo.query(
-      `SELECT DISTINCT sp.id ${this.eligibilityFromWhere()}`,
+      `SELECT DISTINCT sp.id ${ELIGIBILITY_FROM_WHERE}`,
       [lng, lat, categoryId],
     );
     return rows.map((r) => r.id);
@@ -289,11 +276,9 @@ export class ServiceProviderRepository {
     params: DiscoveryParams,
   ): Promise<{ items: DiscoveredProviderRecord[]; total: number }> {
     const offset = (params.page - 1) * params.limit;
-    const clientPoint = `ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`;
-    const fromWhere = this.eligibilityFromWhere();
 
     const countRows: Array<{ count: string }> = await this.repo.query(
-      `SELECT COUNT(DISTINCT sp.id) AS count ${fromWhere}`,
+      `SELECT COUNT(DISTINCT sp.id) AS count ${ELIGIBILITY_FROM_WHERE}`,
       [params.lng, params.lat, params.categoryId],
     );
     const total = parseInt(countRows[0]?.count ?? '0', 10);
@@ -302,12 +287,20 @@ export class ServiceProviderRepository {
       `SELECT
          sp.id,
          sp.provider_type,
-         COALESCE(sp.business_name, o.display_name) AS display_name,
+         -- The organization display-name fallback, as a correlated scalar on
+         -- the same FK the LEFT JOIN used to follow. organizations.id is the
+         -- PK, so this yields exactly one value or NULL: provably the same
+         -- projection, with one alias fewer to keep out of the way of queries
+         -- that embed the eligibility fragment (see its alias contract).
+         COALESCE(
+           sp.business_name,
+           (SELECT o.display_name FROM organizations o WHERE o.id = sp.organization_id)
+         ) AS display_name,
          sp.headline,
          sp.service_radius_km,
-         ST_Distance(sp.service_base_location, ${clientPoint}) AS distance_meters,
+         ST_Distance(sp.service_base_location, ${ELIGIBILITY_POINT_FROM_PARAMS}) AS distance_meters,
          psc.verification_status AS category_verification_status
-       ${fromWhere}
+       ${ELIGIBILITY_FROM_WHERE}
        ORDER BY distance_meters ASC
        LIMIT $4 OFFSET $5`,
       [params.lng, params.lat, params.categoryId, params.limit, offset],

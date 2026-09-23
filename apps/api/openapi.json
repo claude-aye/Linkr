@@ -2758,6 +2758,64 @@
         ]
       }
     },
+    "/service-providers/{id}/tenders": {
+      "get": {
+        "operationId": "ProviderServiceRequestsController_listTenders",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTenderListDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not own this provider."
+          },
+          "404": {
+            "description": "Service provider not found."
+          }
+        },
+        "summary": "Tender feed (owner only): the open PROJECT_TENDERs this provider currently qualifies for — computed live from the same coverage predicate as discovery, so a trade or zone added after publication counts. Items carry a rounded distance and the provider's own latest quote; no address, no client identity, no coordinates.",
+        "tags": [
+          "service-providers"
+        ]
+      }
+    },
     "/payment-methods": {
       "post": {
         "operationId": "PaymentMethodsController_create",
@@ -5294,6 +5352,130 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProviderServiceRequestItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Total matching rows (before pagination)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Current page (1-based)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Page size"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "ProviderTenderItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "serviceCategoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "description": "Libellés i18n du métier",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "fr-CA": "Plomberie",
+              "en-CA": "Plumbing"
+            }
+          },
+          "desiredStartAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "desiredEndAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "estimatedAmount": {
+            "type": "string",
+            "description": "Budget indicatif du client, ou null.",
+            "nullable": true,
+            "example": "1500.50"
+          },
+          "estimatedCurrency": {
+            "type": "string",
+            "nullable": true,
+            "example": "CAD"
+          },
+          "quotesDeadlineUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "distanceKm": {
+            "type": "integer",
+            "example": 12
+          },
+          "myQuoteId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "myQuoteStatus": {
+            "type": "string",
+            "enum": [
+              "SUBMITTED",
+              "WITHDRAWN",
+              "ACCEPTED",
+              "REJECTED",
+              "EXPIRED"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "serviceCategoryId",
+          "serviceCategoryNameTranslations",
+          "desiredStartAtUtc",
+          "desiredEndAtUtc",
+          "estimatedAmount",
+          "estimatedCurrency",
+          "quotesDeadlineUtc",
+          "createdAtUtc",
+          "distanceKm",
+          "myQuoteId",
+          "myQuoteStatus"
+        ]
+      },
+      "ProviderTenderListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderTenderItemDto"
             }
           },
           "total": {
