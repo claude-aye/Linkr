@@ -21,15 +21,26 @@ import Link from 'next/link';
  * provider whose deposit just failed — precisely the person who cannot afford
  * a dead end. Same reasoning as `/account/payment-methods` (§13.1 nº 19a).
  *
+ * `appels-offres` is in the same position (PR 3): every `NEW_TENDER_MATCH`
+ * notification links to `/dashboard?onglet=appels-offres`, and a notification
+ * is a link that outlives the tender it announced.
+ *
  * If one ever has to move, the old value must keep resolving here rather than
  * fall through to the default: silently landing someone on another tab is the
  * failure mode this note exists to prevent.
  *
- * The order of this array IS the order of the bar (locked): En attente · Mes
- * jobs · Mes métiers · Notifications · Avis.
+ * The order of this array IS the order of the bar (locked): En attente ·
+ * Appels d'offres · Mes jobs · Mes métiers · Notifications · Avis.
+ *
+ * « Appels d'offres » sits SECOND, right after the inbox and never before it:
+ * the inbox holds requests aimed at this provider by name, answered within
+ * hours; a tender is an open call shared with every provider in range, with a
+ * deadline counted in days. It is NEVER the default tab either — the page's
+ * default logic is unchanged.
  */
 export const DASHBOARD_TABS = [
   { slug: 'en-attente', label: 'En attente' },
+  { slug: 'appels-offres', label: 'Appels d’offres' },
   { slug: 'jobs', label: 'Mes jobs' },
   { slug: 'metiers', label: 'Mes métiers' },
   { slug: 'notifications', label: 'Notifications' },
@@ -55,6 +66,10 @@ export function parseDashboardTab(raw: string | undefined): DashboardTab | null 
  */
 const COUNTER_LABELS: Record<DashboardTab, (n: number) => string> = {
   'en-attente': (n) => (n > 1 ? `${n} demandes en attente` : `${n} demande en attente`),
+  // Counts tenders WITHOUT a live (SUBMITTED) quote — what is still to handle,
+  // not the size of the feed (`tendersToHandleCount`).
+  'appels-offres': (n) =>
+    n > 1 ? `${n} appels d’offres à traiter` : `${n} appel d’offres à traiter`,
   jobs: (n) => (n > 1 ? `${n} jobs` : `${n} job`),
   metiers: (n) => (n > 1 ? `${n} métiers déclarés` : `${n} métier déclaré`),
   notifications: (n) =>
