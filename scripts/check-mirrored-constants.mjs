@@ -81,6 +81,11 @@ const MIRRORS = [
     files: [API_CONSTANTS, TENDER_RULES],
   },
   {
+    name: 'TENDER_SELECTION_WINDOW_DAYS',
+    why: "R7 — a quote's validity is computed as deadline + this window; a drift would let quotes expire before the client can pick one (or outlive the tender)",
+    files: [API_CONSTANTS, TENDER_RULES],
+  },
+  {
     name: 'REASON_MAX_CHARS',
     why: "decline reason — the box must not accept more than the email will print, or the provider's message reaches the client cut mid-sentence",
     files: [DECLINED_TEMPLATE, DECLINE_ACTION],

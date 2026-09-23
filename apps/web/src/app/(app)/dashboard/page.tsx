@@ -23,6 +23,8 @@ import { AddCategoryForm, type TradeOption } from './_actions/add-category-form'
 import { DeclineRequestAction } from './_actions/decline-request-action';
 import { JobPipelineAction } from './_actions/job-pipeline-action';
 import { RetryDepositAction } from './_actions/retry-deposit-action';
+import { TenderQuoteAction } from './_actions/tender-quote-action';
+import { tendersToHandleCount } from '@/lib/service-requests/tender-rules';
 import {
   NotificationsSection,
   type NotificationView,
@@ -55,6 +57,20 @@ type NotificationItem = components['schemas']['NotificationItemDto'];
  * and nothing on this page reads it.
  */
 type ConnectAccount = components['schemas']['ConnectAccountResponseDto'];
+
+/**
+ * The tender feed (PR 2) is consumed NATIVELY too — envelope AND items. Every
+ * property of `ProviderTenderItemDto` is annotated with a concrete type, so none
+ * degrades to `Record<string, never>`: no mirror, no cast.
+ */
+type TenderList = components['schemas']['ProviderTenderListDto'];
+type TenderItem = components['schemas']['ProviderTenderItemDto'];
+
+/**
+ * The feed's own page-size ceiling (`ListProviderTendersDto`, `@Max(100)`).
+ * ONE call, no pagination UI — the same deferred debt as every other tab.
+ */
+const TENDER_FEED_LIMIT = 100;
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
@@ -251,8 +267,20 @@ function toNotificationView(item: NotificationItem): NotificationView {
     badge: item.serviceRequestStatus ? STATUS_BADGES[item.serviceRequestStatus] : null,
     timeLabel: formatRelative(item.createdAtUtc),
     timeTitle: formatDateTime(item.createdAtUtc),
-    href: linkable ? `/dashboard/requests/${item.serviceRequestId}` : null,
+    href: linkable ? notificationHref(item) : null,
   };
+}
+
+/**
+ * Where a notification leads. A `NEW_TENDER_MATCH` goes to the « Appels
+ * d'offres » tab — the only place a tender can be read and answered; the
+ * request-detail page is still the « Phase B » stub, and it only knows requests
+ * assigned to or targeted at this provider, which a matched tender is not.
+ * Every other type keeps its link, unchanged.
+ */
+function notificationHref(item: NotificationItem): string {
+  if (item.type === 'NEW_TENDER_MATCH') return '/dashboard?onglet=appels-offres';
+  return `/dashboard/requests/${item.serviceRequestId}`;
 }
 
 function Detail({
@@ -513,6 +541,81 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   );
 }
 
+/**
+ * « À 12 km de votre base ». `distanceKm` is rounded to the kilometre by the
+ * API from a point that never leaves the database (Loi 25 — no address, no
+ * coordinate reaches a matched provider), so a tender a few hundred metres away
+ * arrives as 0: « à moins de 1 km », never « à 0 km ».
+ */
+function distanceLabel(km: number): string {
+  return km < 1 ? 'À moins de 1 km de votre base' : `À ${km} km de votre base`;
+}
+
+/**
+ * One open tender this provider qualifies for. Server-rendered; the only
+ * interactive part — the collapsible quote form and the withdraw — is the
+ * {@link TenderQuoteAction} island.
+ *
+ * ⚠️ NO ADDRESS AND NO CLIENT IDENTITY, and do not go looking for them: the
+ * feed's DTO does not carry them (PR 2, D2). A reader of this tab is a
+ * GEOGRAPHIC match, not a named counterpart — serving each tender's street to
+ * every provider in range would be a broadcast, not a disclosure. The distance
+ * is what stands in for « where ».
+ */
+function TenderCard({ item }: { item: TenderItem }) {
+  return (
+    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          Appel d’offres
+        </span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          {distanceLabel(item.distanceKm)}
+        </span>
+      </div>
+
+      <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</h3>
+      <p
+        className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400"
+        title={item.serviceCategoryId}
+      >
+        {pickTranslation(item.serviceCategoryNameTranslations)}
+      </p>
+
+      <p className="mt-3 whitespace-pre-line text-sm text-zinc-700 dark:text-zinc-300">
+        {item.description}
+      </p>
+
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+        <Detail label="Budget indicatif">
+          {item.estimatedAmount
+            ? formatMoney(item.estimatedAmount, item.estimatedCurrency)
+            : 'Budget non précisé'}
+        </Detail>
+        {/* The window only when the client gave one — a tender's dates are
+            optional (R2), and « Dates flexibles » is already what its absence
+            means on the client's own card. */}
+        {item.desiredStartAtUtc && (
+          <Detail label="Démarrage souhaité">
+            {formatDateTimeRange(item.desiredStartAtUtc, item.desiredEndAtUtc)}
+          </Detail>
+        )}
+        <Detail label="Date limite" wide>
+          Reçoit des devis jusqu’au {formatDateTime(item.quotesDeadlineUtc)}
+        </Detail>
+      </dl>
+
+      <TenderQuoteAction
+        tenderId={item.id}
+        title={item.title}
+        quotesDeadlineUtc={item.quotesDeadlineUtc}
+        myQuoteId={item.myQuoteId}
+        myQuoteStatus={item.myQuoteStatus}
+      />
+    </li>
+  );
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -675,6 +778,36 @@ export default async function DashboardPage({
   }
 
   /**
+   * « Appels d'offres » (PR 3) — the open PROJECT_TENDERs this provider
+   * qualifies for, computed LIVE by the API from the same coverage predicate as
+   * discovery (so a trade or zone added after publication counts, which the
+   * notification snapshot cannot).
+   *
+   * Same shape as every other section read: inside the `provider` branch, its
+   * own try/catch, `null` on failure, and it NEVER touches the page-wide
+   * `failed` — a feed outage must not blank the inbox. ONE call at the DTO's
+   * ceiling; pagination is deferred like everywhere else.
+   *
+   * A paused provider (`isActive === false`) is still read: the API answers 200
+   * with an empty list (the pause is part of the coverage predicate). The panel
+   * tells that emptiness apart from « nothing matches » below.
+   */
+  let tenders: TenderList | null = null;
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET('/service-providers/{id}/tenders', {
+        params: { path: { id: provider.id }, query: { limit: TENDER_FEED_LIMIT } },
+      });
+      if (!error && response.ok && data && Array.isArray(data.items)) {
+        tenders = data;
+      }
+    } catch {
+      tenders = null;
+    }
+  }
+
+  /**
    * Stripe Connect state — « puis-je être payé ? ».
    *
    * ⚠️ THE 404 IS A STATE, NOT A FAILURE. `ConnectAccountNotFoundException`
@@ -726,7 +859,7 @@ export default async function DashboardPage({
     }));
 
   /**
-   * The five sections, each built ONCE here and keyed by tab slug below.
+   * The six sections, each built ONCE here and keyed by tab slug below.
    *
    * ⚠️ THEY NO LONGER CARRY `key` PROPS, AND THAT IS A REAL BEHAVIOUR CHANGE —
    * not a tidy-up. Until the tabs, all five were rendered side by side from an
@@ -776,6 +909,88 @@ export default async function DashboardPage({
           ))}
         </ul>
       )}
+    </section>
+  );
+
+  /**
+   * Non-blocking payment warning at the head of the tenders panel (Q6).
+   *
+   * Keyed on `chargesEnabled` ALONE, because that is the one flag
+   * `assertPayable` reads when a quote is accepted: without it the deposit
+   * cannot be taken, whatever else the account says. `connect === undefined`
+   * (the read failed) shows NOTHING — we do not know, and a guess is worse than
+   * silence (same rule as the band itself). No read is added for this: it
+   * reuses the Connect state the band already loaded.
+   *
+   * ⚠️ IT NEVER BLOCKS. Quoting stays open: a provider may well finish his
+   * Stripe onboarding before the client picks, and gating the form on it would
+   * be a decision this PR does not take.
+   */
+  const tenderPaymentWarning = connect !== undefined && (connect === null || !connect.chargesEnabled);
+
+  const tendersSection = (
+    <section aria-labelledby="tenders-title">
+      {/* No counter next to this heading, unlike its siblings: the tab counts
+          what is still TO HANDLE, the list shows every tender — two different
+          numbers side by side would read as a bug. The tab's number is the one
+          that means something. */}
+      <h2
+        id="tenders-title"
+        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+      >
+        Appels d’offres
+      </h2>
+
+      <div className="space-y-4">
+        {tenderPaymentWarning && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950">
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Vous pouvez soumettre un devis, mais l’acompte ne pourra être prélevé
+              qu’une fois vos paiements configurés.{' '}
+              <Link
+                href="/dashboard/paiements"
+                className="font-medium underline underline-offset-2"
+              >
+                Configurer mes paiements
+              </Link>
+            </p>
+          </div>
+        )}
+
+        {tenders === null ? (
+          <StateCard title="Chargement impossible">
+            Les appels d’offres n’ont pas pu être récupérés. Veuillez réessayer plus tard.
+          </StateCard>
+        ) : provider && !provider.isActive ? (
+          // Checked BEFORE emptiness, and a different sentence on purpose: the
+          // pause is WHY the list is empty (the API keeps a paused provider out
+          // of the coverage predicate), and « nothing matches your trades » would
+          // send him to fix trades and zones that are fine.
+          <EmptyHint>
+            Vous êtes en pause&nbsp;: les appels d’offres ne vous sont pas proposés tant
+            que votre profil est en pause.
+          </EmptyHint>
+        ) : tenders.items.length === 0 ? (
+          <EmptyHint>
+            Aucun appel d’offres ne correspond à vos métiers et à votre zone pour le moment.
+          </EmptyHint>
+        ) : (
+          <>
+            <ul className="space-y-4">
+              {tenders.items.map((item) => (
+                <TenderCard key={item.id} item={item} />
+              ))}
+            </ul>
+            {/* Said out loud when the ceiling bites, rather than letting the
+                list pass for complete — no pagination (deferred debt). */}
+            {tenders.total > tenders.items.length && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Les {tenders.items.length} appels d’offres les plus urgents sur {tenders.total}.
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 
@@ -881,7 +1096,7 @@ export default async function DashboardPage({
   const hoistTrades = trades !== null && trades.length === 0;
 
   /**
-   * Notifications is the fourth tab — never the default, whatever it holds.
+   * Notifications is the fifth tab — never the default, whatever it holds.
    *
    * It cannot lead: ahead of « En attente » it would demote the inbox, which
    * the locked 3.12-front decision forbids, and in the zero-trade case it would
@@ -983,11 +1198,12 @@ export default async function DashboardPage({
     connect === undefined ? null : connectBandPlacement(connect);
 
   /**
-   * One panel per tab. All five are BUILT (the counters need every read anyway)
+   * One panel per tab. All six are BUILT (the counters need every read anyway)
    * but only the active one is returned, so only it is mounted.
    */
   const panels: Record<DashboardTab, React.ReactNode> = {
     'en-attente': pendingSection,
+    'appels-offres': tendersSection,
     jobs: jobsSection,
     metiers: tradesSection,
     notifications: notificationsSection,
@@ -1005,6 +1221,8 @@ export default async function DashboardPage({
    */
   const counts: Record<DashboardTab, number | null> = {
     'en-attente': pending.length,
+    // What is still TO HANDLE (no live quote), not the size of the feed.
+    'appels-offres': tenders === null ? null : tendersToHandleCount(tenders.items),
     jobs: jobs.length,
     metiers: trades === null ? null : trades.length,
     notifications: notifications === null ? null : notifications.unreadCount,

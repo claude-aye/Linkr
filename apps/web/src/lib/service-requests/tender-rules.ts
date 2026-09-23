@@ -1,5 +1,6 @@
 /**
- * Règles client du formulaire « Publier un appel d'offres » (PR 1b).
+ * Règles client du formulaire « Publier un appel d'offres » (PR 1b), et — en fin
+ * de fichier — celles du devis qu'un prestataire y répond (PR 3).
  *
  * Pure, sans React et SANS AUCUN IMPORT : ce module est chargé tel quel par
  * `node --test --experimental-strip-types` (`tender-rules.test.mjs`), qui ne
@@ -429,5 +430,210 @@ export function assembleTender(draft: TenderDraft, nowMs: number): TenderAssembl
     body.estimatedAmount = budget.amount;
     body.estimatedCurrency = TENDER_CURRENCY;
   }
+  return { kind: 'ready', body };
+}
+
+// ===========================================================================
+// PR 3 — RÉPONDRE à un appel d'offres (devis du prestataire)
+//
+// Même contrat que tout ce qui précède : pur, sans import, testé sous
+// `node --test` (`tender-quote.test.mjs`). Le composant ne fait que brancher
+// l'état ; les conversions (heures → minutes, date → midi UTC, validité) et la
+// décision « peut-on envoyer ? » vivent ICI.
+// ===========================================================================
+
+/**
+ * R7 — MIROIR de `apps/api/src/modules/service-requests/constants.ts`.
+ * ⚠️ Comparé par `scripts/check-mirrored-constants.mjs`.
+ *
+ * La date limite ferme la RÉCEPTION des devis, pas la SÉLECTION : un tender qui
+ * a reçu un devis reste `OPEN` jusqu'à sept jours de plus pour que le client
+ * choisisse. Un devis doit donc rester valide jusqu'à la FIN de cette période —
+ * s'il expirait avant, le client ne pourrait plus retenir l'offre qu'il est en
+ * train de comparer. Si la valeur divergeait de l'API, la validité calculée ici
+ * ne couvrirait plus (ou dépasserait) la fenêtre réelle, sans aucun symptôme.
+ */
+export const TENDER_SELECTION_WINDOW_DAYS = 7;
+
+const MS_PER_DAY = 24 * MS_PER_HOUR;
+
+/**
+ * Capacité de la colonne `quotes.estimated_duration_minutes` (`integer`, int4).
+ * Pas un plafond métier : juste de quoi transformer un dépassement en message
+ * au champ plutôt qu'en 500 au cast SQL.
+ */
+export const MAX_DURATION_MINUTES = 2147483647;
+
+/**
+ * `validUntilUtc` n'est PAS un champ du formulaire : il est calculé À LA
+ * SOUMISSION = date limite des devis + {@link TENDER_SELECTION_WINDOW_DAYS},
+ * c'est-à-dire la fin exacte de la période de sélection (R7). `null` sur une
+ * date illisible — ne jamais fabriquer un instant.
+ */
+export function quoteValidUntil(quotesDeadlineUtc: string): string | null {
+  const deadlineMs = Date.parse(quotesDeadlineUtc);
+  if (!Number.isFinite(deadlineMs)) return null;
+  return new Date(deadlineMs + TENDER_SELECTION_WINDOW_DAYS * MS_PER_DAY).toISOString();
+}
+
+export type DurationViolation = 'empty' | 'format' | 'not-positive' | 'step' | 'too-large';
+
+export type DurationParse =
+  | { kind: 'ok'; minutes: number }
+  | { kind: 'invalid'; reason: DurationViolation };
+
+/**
+ * Durée estimée saisie en HEURES, par pas d'une demi-heure (virgule québécoise
+ * acceptée) → minutes ENTIÈRES strictement positives, comme `@IsInt()
+ * @IsPositive()` du DTO. « 0,5 » → 30 ; « 0 » et le négatif sont refusés.
+ */
+export function parseDurationHours(raw: string): DurationParse {
+  const compact = raw.replace(/[\s  ]/g, '');
+  if (compact === '') return { kind: 'invalid', reason: 'empty' };
+  // Aucun signe accepté : « -1 » est un format invalide, jamais un nombre
+  // négatif qu'on corrigerait en silence.
+  if (!/^\d+(?:[.,]\d+)?$/.test(compact)) return { kind: 'invalid', reason: 'format' };
+  const hours = Number(compact.replace(',', '.'));
+  if (!Number.isFinite(hours)) return { kind: 'invalid', reason: 'format' };
+  if (hours <= 0) return { kind: 'invalid', reason: 'not-positive' };
+  // Pas d'une demi-heure : le double d'une durée valide est un entier.
+  if (!Number.isInteger(hours * 2)) return { kind: 'invalid', reason: 'step' };
+  const minutes = hours * 60;
+  if (minutes > MAX_DURATION_MINUTES) return { kind: 'invalid', reason: 'too-large' };
+  return { kind: 'ok', minutes };
+}
+
+const DATE_INPUT_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Valeur d'un `<input type="date">` (`YYYY-MM-DD`) → MIDI UTC ce jour-là.
+ *
+ * Midi et non minuit : un jour civil ne porte pas d'heure, et minuit UTC se
+ * relit LA VEILLE à Toronto (même famille que le contrefactuel « 02:30Z » du
+ * §13.1 nº 17). Midi UTC tombe le même jour civil sur tout le continent.
+ *
+ * `null` si le champ est vide. Une valeur qui n'a pas la forme du champ, ou une
+ * date impossible (« 2026-02-30 »), vaut `'invalid'` plutôt que de devenir en
+ * silence un autre jour.
+ */
+export function proposedStartToUtc(value: string): string | null | 'invalid' {
+  if (value === '') return null;
+  const m = DATE_INPUT_RE.exec(value);
+  if (!m) return 'invalid';
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) {
+    return 'invalid';
+  }
+  return d.toISOString();
+}
+
+/**
+ * Le compteur de l'onglet « Appels d'offres » : ce qui reste À TRAITER, c'est-à-
+ * dire tout tender sur lequel le prestataire n'a PAS de devis vivant. Un devis
+ * `SUBMITTED` est traité (il attend le client) ; `null`, `WITHDRAWN` et
+ * `EXPIRED` laissent la porte ouverte et comptent.
+ */
+export function tendersToHandleCount(
+  items: ReadonlyArray<{ myQuoteStatus: string | null }>,
+): number {
+  return items.filter((item) => item.myQuoteStatus !== 'SUBMITTED').length;
+}
+
+export type QuoteField = 'amount' | 'duration' | 'description' | 'proposedStart';
+
+/** L'ordre des champs à l'écran — le focus va au premier en faute. */
+export const QUOTE_FIELD_ORDER: readonly QuoteField[] = [
+  'amount',
+  'duration',
+  'description',
+  'proposedStart',
+];
+
+export type QuoteErrors = Partial<Record<QuoteField, string>>;
+
+export interface QuoteDraft {
+  amount: string;
+  durationHours: string;
+  description: string;
+  /** Valeur brute du `<input type="date">`, `''` si vide. */
+  proposedStartDate: string;
+}
+
+/**
+ * Le corps envoyé au relais BFF. ⚠️ SANS devise : `CAD` est FIGÉE côté serveur,
+ * dans le relais (`app/api/service-requests/[id]/quotes/route.ts`) — un seul
+ * endroit, jamais pilotable depuis le navigateur.
+ */
+export interface QuoteBody {
+  amount: number;
+  estimatedDurationMinutes: number;
+  description: string;
+  proposedStartAtUtc?: string;
+  validUntilUtc: string;
+}
+
+export type QuoteAssembly =
+  | { kind: 'invalid'; errors: QuoteErrors }
+  /** La date limite du tender est illisible : aucune validité ne peut être calculée. */
+  | { kind: 'no-deadline' }
+  | { kind: 'ready'; body: QuoteBody };
+
+const AMOUNT_MESSAGES: Record<'format' | 'not-positive' | 'too-large', string> = {
+  format: 'Indiquez un montant en dollars, par exemple 850 ou 850,50.',
+  'not-positive': 'Le montant doit être supérieur à 0 $.',
+  'too-large': 'Ce montant est trop élevé.',
+};
+
+const DURATION_MESSAGES: Record<DurationViolation, string> = {
+  empty: 'Indiquez la durée estimée des travaux.',
+  format: 'Indiquez une durée en heures, par exemple 3 ou 1,5.',
+  'not-positive': 'La durée doit être supérieure à 0 heure.',
+  step: 'Indiquez la durée par demi-heure, par exemple 1,5 ou 2.',
+  'too-large': 'Cette durée est trop longue.',
+};
+
+/**
+ * La seule porte vers le POST de devis. Aucune règle sur la date de début
+ * proposée au-delà de sa FORME : l'API n'en a aucune, et en inventer une ici
+ * ferait refuser par le navigateur ce que le serveur accepte (le `min` du champ
+ * n'est qu'une courtoisie côté navigateur).
+ *
+ * Le montant réutilise {@link parseBudget} : même capacité `numeric(12, 2)`,
+ * même virgule québécoise, deux décimales au plus (`maxDecimalPlaces: 2`) — mais
+ * ici un champ vide est une ERREUR, le montant d'un devis n'est pas facultatif.
+ */
+export function assembleQuote(draft: QuoteDraft, quotesDeadlineUtc: string): QuoteAssembly {
+  const errors: QuoteErrors = {};
+
+  const amount = parseBudget(draft.amount);
+  if (amount.kind === 'empty') errors.amount = 'Indiquez le montant de votre devis.';
+  else if (amount.kind === 'invalid') errors.amount = AMOUNT_MESSAGES[amount.reason];
+
+  const duration = parseDurationHours(draft.durationHours);
+  if (duration.kind === 'invalid') errors.duration = DURATION_MESSAGES[duration.reason];
+
+  const description = draft.description.trim();
+  if (!description) errors.description = 'Décrivez ce que comprend votre devis.';
+
+  const proposedStart = proposedStartToUtc(draft.proposedStartDate);
+  if (proposedStart === 'invalid') errors.proposedStart = 'Indiquez une date valide.';
+
+  if (amount.kind !== 'ok' || duration.kind !== 'ok' || proposedStart === 'invalid' || !description) {
+    return { kind: 'invalid', errors };
+  }
+
+  const validUntilUtc = quoteValidUntil(quotesDeadlineUtc);
+  if (validUntilUtc === null) return { kind: 'no-deadline' };
+
+  const body: QuoteBody = {
+    amount: amount.amount,
+    estimatedDurationMinutes: duration.minutes,
+    description,
+    validUntilUtc,
+  };
+  if (proposedStart !== null) body.proposedStartAtUtc = proposedStart;
   return { kind: 'ready', body };
 }
