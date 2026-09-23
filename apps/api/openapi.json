@@ -3181,7 +3181,7 @@
             "description": "Validation error or validUntilUtc not in the future"
           },
           "403": {
-            "description": "No individual provider profile, or not eligible for the category"
+            "description": "No individual provider profile, not eligible for the category, or the caller published this request"
           },
           "404": {
             "description": "Service request not found"

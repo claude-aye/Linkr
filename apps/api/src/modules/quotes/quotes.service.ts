@@ -16,6 +16,7 @@ import {
   QuotesDeadlinePassedException,
   QuoteValidUntilInPastException,
   RequestNotOpenForQuotingException,
+  SelfQuoteForbiddenException,
 } from './exceptions/quote.exceptions';
 import { ServiceRequestsService } from '../service-requests/service-requests.service';
 import { ServiceRequestStatus } from '../service-requests/enums/service-request-status.enum';
@@ -104,6 +105,24 @@ export class QuotesService {
       now.getTime() >= new Date(request.quotesDeadlineUtc).getTime()
     ) {
       throw new QuotesDeadlinePassedException();
+    }
+
+    // No quoting on your own tender. Without this, a client who also holds a
+    // provider profile could quote on their own call for tenders, then accept
+    // that quote: the job assigned to themselves, a deposit captured from their
+    // own card to their own Connect account.
+    //
+    // Compared on the USER, not the provider: `findByUserId` resolves the
+    // caller's INDIVIDUAL profile, so caller and profile owner are the same
+    // person by construction — and the check needs no read to run. Placed
+    // BEFORE the profile lookup for that reason: the answer is known from the
+    // request alone.
+    //
+    // ORGANIZATION quoting is deferred (`accept` answers 501 on it), so the
+    // "member of the org that published the tender" case cannot arise here yet.
+    // It is tracked as debt, not solved: no path resolves user → org providers.
+    if (request.clientUserId === callerUserId) {
+      throw new SelfQuoteForbiddenException();
     }
 
     const provider = await this.providerRepo.findByUserId(callerUserId);

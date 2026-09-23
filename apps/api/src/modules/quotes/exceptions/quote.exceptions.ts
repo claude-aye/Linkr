@@ -28,6 +28,22 @@ export class ProviderNotEligibleForCategoryException extends HttpException {
   }
 }
 
+/**
+ * 403 — the caller is the client who published this tender. A person cannot
+ * answer their own call for tenders: they would be able to accept their own
+ * quote, which assigns the job to themselves and captures a deposit from their
+ * own card to their own Connect account.
+ *
+ * DISTINCT from `ProviderNotEligibleForCategoryException`: the caller may be
+ * perfectly eligible for the trade. Reusing it would send them looking for a
+ * verification problem that does not exist.
+ */
+export class SelfQuoteForbiddenException extends HttpException {
+  constructor(message = 'You cannot submit a quote on your own request') {
+    super(message, HttpStatus.FORBIDDEN);
+  }
+}
+
 /** 400 — `validUntilUtc` must be in the future at submission time. */
 export class QuoteValidUntilInPastException extends HttpException {
   constructor(message = 'validUntilUtc must be in the future') {
