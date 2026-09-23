@@ -1106,6 +1106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-providers/{id}/tenders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tender feed (owner only): the open PROJECT_TENDERs this provider currently qualifies for — computed live from the same coverage predicate as discovery, so a trade or zone added after publication counts. Items carry a rounded distance and the provider's own latest quote; no address, no client identity, no coordinates. */
+        get: operations["ProviderServiceRequestsController_listTenders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/payment-methods": {
         parameters: {
             query?: never;
@@ -2186,6 +2203,54 @@ export interface components {
         };
         ProviderServiceRequestListDto: {
             items: components["schemas"]["ProviderServiceRequestItemDto"][];
+            /** @description Total matching rows (before pagination) */
+            total: number;
+            /** @description Current page (1-based) */
+            page: number;
+            /** @description Page size */
+            limit: number;
+        };
+        ProviderTenderItemDto: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string;
+            /** Format: uuid */
+            serviceCategoryId: string;
+            /**
+             * @description Libellés i18n du métier
+             * @example {
+             *       "fr-CA": "Plomberie",
+             *       "en-CA": "Plumbing"
+             *     }
+             */
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            desiredStartAtUtc: string | null;
+            /** Format: date-time */
+            desiredEndAtUtc: string | null;
+            /**
+             * @description Budget indicatif du client, ou null.
+             * @example 1500.50
+             */
+            estimatedAmount: string | null;
+            /** @example CAD */
+            estimatedCurrency: string | null;
+            /** Format: date-time */
+            quotesDeadlineUtc: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** @example 12 */
+            distanceKm: number;
+            /** Format: uuid */
+            myQuoteId: string | null;
+            /** @enum {string|null} */
+            myQuoteStatus: "SUBMITTED" | "WITHDRAWN" | "ACCEPTED" | "REJECTED" | "EXPIRED" | null;
+        };
+        ProviderTenderListDto: {
+            items: components["schemas"]["ProviderTenderItemDto"][];
             /** @description Total matching rows (before pagination) */
             total: number;
             /** @description Current page (1-based) */
@@ -4707,6 +4772,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderServiceRequestListDto"];
+                };
+            };
+            /** @description You do not own this provider. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service provider not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProviderServiceRequestsController_listTenders: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderTenderListDto"];
                 };
             };
             /** @description You do not own this provider. */
