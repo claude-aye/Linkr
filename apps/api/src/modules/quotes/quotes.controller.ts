@@ -33,7 +33,11 @@ export class QuotesController {
   })
   @ApiResponse({ status: 201, type: QuoteResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error or validUntilUtc not in the future' })
-  @ApiResponse({ status: 403, description: 'No individual provider profile, or not eligible for the category' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'No individual provider profile, not eligible for the category, or the caller published this request',
+  })
   @ApiResponse({ status: 404, description: 'Service request not found' })
   @ApiResponse({
     status: 409,

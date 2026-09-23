@@ -5184,7 +5184,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description No individual provider profile, or not eligible for the category */
+            /** @description No individual provider profile, not eligible for the category, or the caller published this request */
             403: {
                 headers: {
                     [name: string]: unknown;
