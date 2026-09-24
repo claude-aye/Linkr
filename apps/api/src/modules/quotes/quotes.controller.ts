@@ -18,11 +18,16 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { SubmitQuoteDto } from './dto/submit-quote.dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
 import { QuotesService } from './quotes.service';
+import { ReceivedQuotesService } from './received-quotes.service';
+import { ReceivedQuoteItemDto } from './dto/received-quote-item.dto';
 
 @ApiTags('quotes')
 @Controller()
 export class QuotesController {
-  constructor(private readonly service: QuotesService) {}
+  constructor(
+    private readonly service: QuotesService,
+    private readonly receivedQuotes: ReceivedQuotesService,
+  ) {}
 
   @Post('service-requests/:id/quotes')
   @HttpCode(HttpStatus.CREATED)
@@ -66,6 +71,24 @@ export class QuotesController {
     return this.service.listForRequest(id, user.sub);
   }
 
+  @Get('service-requests/:id/received-quotes')
+  @ApiOperation({
+    summary:
+      'Quotes received on a PROJECT_TENDER, comparable (request owner only). ' +
+      'Every status but WITHDRAWN; live offers first, then arrival order — never ' +
+      'ranked by price or rating. `acceptable` is decided by the same rule as accept.',
+  })
+  @ApiResponse({ status: 200, type: ReceivedQuoteItemDto, isArray: true })
+  @ApiResponse({ status: 400, description: 'The request is not a PROJECT_TENDER' })
+  @ApiResponse({ status: 403, description: 'Caller is not the request owner' })
+  @ApiResponse({ status: 404, description: 'Service request not found' })
+  listReceived(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ReceivedQuoteItemDto[]> {
+    return this.receivedQuotes.listForClient(id, user.sub);
+  }
+
   @Get('quotes/mine')
   @ApiOperation({ summary: "List the caller's own quotes (as a provider)." })
   @ApiResponse({ status: 200, type: QuoteResponseDto, isArray: true })
@@ -105,7 +128,10 @@ export class QuotesController {
   })
   @ApiResponse({ status: 403, description: 'Caller is not the request owner' })
   @ApiResponse({ status: 404, description: 'Quote, request or provider not found' })
-  @ApiResponse({ status: 409, description: 'Request not OPEN, quote not SUBMITTED, or quote expired' })
+  @ApiResponse({
+    status: 409,
+    description: 'Request not OPEN, quote not SUBMITTED, quote expired, or the provider is paused',
+  })
   @ApiResponse({ status: 501, description: 'Accepting an ORGANIZATION provider quote is not yet implemented' })
   async accept(
     @CurrentUser() user: JwtPayload,

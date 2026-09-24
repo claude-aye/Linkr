@@ -10,6 +10,7 @@ import {
   ELIGIBILITY_POINT_FROM_PARAMS,
   eligibilityFromWhere,
 } from './eligibility.sql';
+import { PROVIDER_DISPLAY_NAME_SQL } from './display-name.sql';
 
 export interface DiscoveryParams {
   lat: number;
@@ -287,15 +288,9 @@ export class ServiceProviderRepository {
       `SELECT
          sp.id,
          sp.provider_type,
-         -- The organization display-name fallback, as a correlated scalar on
-         -- the same FK the LEFT JOIN used to follow. organizations.id is the
-         -- PK, so this yields exactly one value or NULL: provably the same
-         -- projection, with one alias fewer to keep out of the way of queries
-         -- that embed the eligibility fragment (see its alias contract).
-         COALESCE(
-           sp.business_name,
-           (SELECT o.display_name FROM organizations o WHERE o.id = sp.organization_id)
-         ) AS display_name,
+         -- The public-name rule has one SQL source (display-name.sql.ts),
+         -- shared with the client's received-quotes list.
+         ${PROVIDER_DISPLAY_NAME_SQL} AS display_name,
          sp.headline,
          sp.service_radius_km,
          ST_Distance(sp.service_base_location, ${ELIGIBILITY_POINT_FROM_PARAMS}) AS distance_meters,
