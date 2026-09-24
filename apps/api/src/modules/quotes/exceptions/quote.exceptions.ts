@@ -101,3 +101,31 @@ export class QuotesDeadlinePassedException extends HttpException {
     super(message, HttpStatus.CONFLICT);
   }
 }
+
+/**
+ * 409 — the quote's provider has paused their profile. A paused provider is
+ * out of discovery and out of the tender feed; accepting a quote he sent before
+ * the pause would assign him a job (and capture a deposit to him) that nothing
+ * else on the platform would have offered him.
+ */
+export class ProviderUnavailableException extends HttpException {
+  constructor(
+    message = 'This provider is currently unavailable; their quote cannot be accepted',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 400 — received quotes only exist on a PROJECT_TENDER. Raised AFTER the owner
+ * check on purpose: answering 400 to a stranger would let him probe the type of
+ * a request that is not his.
+ *
+ * Distinct from `TenderValidationException` (service-requests), which is about
+ * the shape of a tender being CREATED, not about which kind of request this is.
+ */
+export class RequestNotATenderException extends HttpException {
+  constructor(message = 'This request is not a project tender; it has no quotes') {
+    super(message, HttpStatus.BAD_REQUEST);
+  }
+}

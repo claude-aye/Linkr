@@ -1,9 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { QuoteRecord, QuoteRepository } from './repositories/quote.repository';
 import { QuoteStatus } from './enums/quote-status.enum';
 import { buildQuoteTransition } from './quote-state-machine';
+import {
+  QuoteAcceptabilityViolation,
+  quoteAcceptabilityViolation,
+} from './quote-acceptability';
 import { SubmitQuoteDto } from './dto/submit-quote.dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
 import {
@@ -12,6 +16,7 @@ import {
   OrganizationQuoteDispatchNotImplementedException,
   ProviderNotEligibleForCategoryException,
   ProviderProfileRequiredException,
+  ProviderUnavailableException,
   QuoteExpiredException,
   QuotesDeadlinePassedException,
   QuoteValidUntilInPastException,
@@ -21,10 +26,12 @@ import {
 import { ServiceRequestsService } from '../service-requests/service-requests.service';
 import { ServiceRequestStatus } from '../service-requests/enums/service-request-status.enum';
 import { ServiceRequestType } from '../service-requests/enums/service-request-type.enum';
-import { NotRequestOwnerException } from '../service-requests/exceptions/service-request.exceptions';
+import {
+  InvalidStateTransitionException,
+  NotRequestOwnerException,
+} from '../service-requests/exceptions/service-request.exceptions';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
-import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { PaymentsService } from '../payments/payments.service';
 
 /** Postgres unique-violation SQLSTATE — raised by the live-quote partial unique index. */
@@ -44,6 +51,36 @@ export interface AcceptQuoteOutcome {
   quote: QuoteResponseDto;
   /** False when the capture threw AFTER the assignment was committed. */
   depositSettled: boolean;
+}
+
+/**
+ * Each acceptability reason → the exception `accept` has always thrown for it.
+ * Exhaustive by construction: a new reason that is not mapped here does not
+ * compile. The only reason without a historical exception is PROVIDER_PAUSED,
+ * which is new (409).
+ */
+function acceptViolationException(
+  violation: QuoteAcceptabilityViolation,
+  quoteStatus: QuoteStatus,
+): HttpException {
+  switch (violation) {
+    case QuoteAcceptabilityViolation.REQUEST_NOT_OPEN_TENDER:
+      return new RequestNotOpenForQuotingException();
+    case QuoteAcceptabilityViolation.QUOTE_NOT_SUBMITTED:
+      // Same exception, same message the quote state machine throws.
+      return new InvalidStateTransitionException(
+        quoteStatus as unknown as ServiceRequestStatus,
+        QuoteStatus.ACCEPTED as unknown as ServiceRequestStatus,
+      );
+    case QuoteAcceptabilityViolation.QUOTE_EXPIRED:
+      return new QuoteExpiredException();
+    case QuoteAcceptabilityViolation.PROVIDER_GONE:
+      return new NotFoundException('Service provider not found');
+    case QuoteAcceptabilityViolation.PROVIDER_ORGANIZATION:
+      return new OrganizationQuoteDispatchNotImplementedException();
+    case QuoteAcceptabilityViolation.PROVIDER_PAUSED:
+      return new ProviderUnavailableException();
+  }
 }
 
 @Injectable()
@@ -254,38 +291,41 @@ export class QuotesService {
         throw new NotRequestOwnerException();
       }
 
-      // 3. The request must be an OPEN project tender.
-      if (
-        request.requestType !== ServiceRequestType.PROJECT_TENDER ||
-        request.status !== ServiceRequestStatus.OPEN
-      ) {
-        throw new RequestNotOpenForQuotingException();
+      // 3. Every "can this quote be accepted?" rule, in ONE place shared with
+      //    the client's received-quotes list (`quote-acceptability.ts`). Checked
+      //    on the locked records and BEFORE any write, so a refusal rolls back
+      //    a transaction that has touched nothing. The provider read moved up
+      //    for that reason; it used to run after the quote updates, which the
+      //    rollback undid anyway — the HTTP codes are unchanged.
+      const provider = await this.providerRepo.findById(quote.serviceProviderId);
+      const violation = quoteAcceptabilityViolation(
+        request,
+        quote,
+        // `findById` filters soft-deleted rows: a provider it returns is live.
+        provider ? { ...provider, deleted: false } : null,
+        new Date(),
+      );
+      if (violation !== null) {
+        throw acceptViolationException(violation, quote.status);
+      }
+      // Narrowing for the compiler: `violation === null` already excludes both.
+      if (!provider || provider.userId === null) {
+        throw new OrganizationQuoteDispatchNotImplementedException();
       }
 
-      // 4. The quote must be SUBMITTED and still within its validity window.
+      // 4. Accept the quote (the transition cannot fail: SUBMITTED checked above).
       const quoteTransition = buildQuoteTransition(quote.status, QuoteStatus.ACCEPTED);
-      if (new Date(quote.validUntilUtc).getTime() <= Date.now()) {
-        throw new QuoteExpiredException();
-      }
-
-      // 5. Accept the quote.
       await this.quotesRepo.updateStatus(quote.id, quoteTransition.status, qr.manager);
 
-      // 6. Auto-reject the other live quotes.
+      // 5. Auto-reject the other live quotes.
       const rejected = await this.quotesRepo.rejectSiblings(
         request.id,
         quote.id,
         qr.manager,
       );
 
-      // 7 + 8. Resolve the accepted provider, then reuse the INDIVIDUAL
-      // self-assign path (request OPEN→ASSIGNED + assignment row).
-      const provider = await this.providerRepo.findById(quote.serviceProviderId);
-      if (!provider) throw new NotFoundException('Service provider not found');
-      if (provider.providerType === ProviderType.ORGANIZATION || provider.userId === null) {
-        throw new OrganizationQuoteDispatchNotImplementedException();
-      }
-
+      // 6. Reuse the INDIVIDUAL self-assign path (request OPEN→ASSIGNED +
+      //    assignment row).
       await this.serviceRequestsService.assignIndividualProvider(qr.manager, {
         requestId: request.id,
         currentStatus: request.status,

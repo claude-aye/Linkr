@@ -1295,6 +1295,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-requests/{id}/received-quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quotes received on a PROJECT_TENDER, comparable (request owner only). Every status but WITHDRAWN; live offers first, then arrival order — never ranked by price or rating. `acceptable` is decided by the same rule as accept. */
+        get: operations["QuotesController_listReceived"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/quotes/mine": {
         parameters: {
             query?: never;
@@ -2413,6 +2430,47 @@ export interface components {
             createdAtUtc: string;
             /** Format: date-time */
             updatedAtUtc: string;
+        };
+        ReceivedQuoteItemDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Decimal serialized as string, paired with currency.
+             * @example 850.50
+             */
+            amount: string;
+            /** @example CAD */
+            currency: string;
+            /** @example 120 */
+            estimatedDurationMinutes: number;
+            /** Format: date-time */
+            proposedStartAtUtc: string | null;
+            description: string;
+            /** @enum {string} */
+            status: "SUBMITTED" | "WITHDRAWN" | "ACCEPTED" | "REJECTED" | "EXPIRED";
+            /** Format: date-time */
+            validUntilUtc: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: uuid */
+            serviceProviderId: string;
+            /** @enum {string} */
+            providerType: "INDIVIDUAL" | "ORGANIZATION";
+            /** @description Public name: business_name, falling back to organization.display_name. Null if the provider was deleted. */
+            displayName: string | null;
+            headline: string | null;
+            /**
+             * @description Live reviews; null when reputation is unavailable (distinct from 0).
+             * @example 4
+             */
+            reviewCount: number | null;
+            /** @example 4.33 */
+            averageRating: number | null;
+            /** @enum {string|null} */
+            verificationStatus: "PENDING" | "VERIFIED" | "REJECTED" | "NOT_REQUIRED" | null;
+            /** @example 12 */
+            distanceKm: number | null;
+            acceptable: boolean;
         };
         GeocodeCandidateDto: {
             /**
@@ -5310,6 +5368,48 @@ export interface operations {
             };
         };
     };
+    QuotesController_listReceived: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceivedQuoteItemDto"][];
+                };
+            };
+            /** @description The request is not a PROJECT_TENDER */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not the request owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service request not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     QuotesController_listMine: {
         parameters: {
             query?: never;
@@ -5413,7 +5513,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Request not OPEN, quote not SUBMITTED, or quote expired */
+            /** @description Request not OPEN, quote not SUBMITTED, quote expired, or the provider is paused */
             409: {
                 headers: {
                     [name: string]: unknown;
