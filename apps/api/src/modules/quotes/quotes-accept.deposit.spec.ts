@@ -83,7 +83,10 @@ function buildHarness(opts: {
   } as unknown as ServiceProviderRepository;
 
   const captureDeposit = opts.captureDeposit ?? jest.fn().mockResolvedValue(undefined);
-  const paymentsService = { captureDeposit } as unknown as PaymentsService;
+  const paymentsService = {
+    captureDeposit,
+    isProviderChargeable: jest.fn().mockResolvedValue(true),
+  } as unknown as PaymentsService;
 
   const dataSource = {
     createQueryRunner: () => ({

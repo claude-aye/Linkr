@@ -126,14 +126,51 @@ export class PaymentsService {
     clientUserId: string,
     serviceProviderId: string,
   ): Promise<void> {
-    const connect = await this.connectRepo.findByServiceProviderId(serviceProviderId);
-    if (!connect || !connect.chargesEnabled) {
+    if (!(await this.isProviderChargeable(serviceProviderId))) {
       throw new ProviderNotChargeableException();
     }
     const pm = await this.pmRepo.findDefaultByUserId(clientUserId);
     if (!pm) {
       throw new ClientPaymentMethodRequiredException();
     }
+  }
+
+  /**
+   * Whether the provider can take a destination charge: its Connect mirror row
+   * exists AND `charges_enabled`. A missing row reads as NOT chargeable.
+   *
+   * The one reading of that fact in TypeScript — `assertPayable` goes through
+   * it, and so does `QuotesService.accept` (via `quoteAcceptabilityViolation`),
+   * so the acceptability of a quote and the guard that would refuse it cannot
+   * disagree. The received-quotes LIST reads the same column in SQL (one join
+   * for the whole list, never one read per quote) with the same rule: no row
+   * ⇒ false.
+   */
+  async isProviderChargeable(serviceProviderId: string): Promise<boolean> {
+    const connect = await this.connectRepo.findByServiceProviderId(serviceProviderId);
+    return connect !== null && connect.chargesEnabled === true;
+  }
+
+  /**
+   * The deposit owed on an agreed amount, as a decimal string in that currency
+   * — or `null` when the amount is too small to yield a non-zero deposit (the
+   * case `DepositAmountUnavailableException` refuses).
+   *
+   * ⚠️ ONE ARITHMETIC. `assertDepositBasis` and `captureDeposit` go through the
+   * same `depositMinorFor`, so what the client is SHOWN before accepting (the
+   * received-quotes list) is, to the cent, what `captureDeposit` charges. The
+   * rate comes from `PLATFORM_DEPOSIT_RATE_PERCENT`: no web mirror could follow
+   * it verifiably, which is why the server sends the amount.
+   */
+  depositAmountFor(agreedAmount: string, agreedCurrency: string): string | null {
+    const currency = agreedCurrency.toUpperCase();
+    const depositMinor = this.depositMinorFor(agreedAmount, currency);
+    return depositMinor > 0 ? fromMinorUnits(depositMinor, currency) : null;
+  }
+
+  /** Integer minor units, HALF-UP (`common/money`). `currency` is upper-case. */
+  private depositMinorFor(agreedAmount: string, currency: string): number {
+    return percentageOf(toMinorUnits(agreedAmount, currency), this.depositRatePercent);
   }
 
   /**
@@ -148,18 +185,15 @@ export class PaymentsService {
    * request, not an outcome of the payment, so it belongs before the commit —
    * where refusing still costs nothing.
    *
-   * The arithmetic mirrors `captureDeposit`, which re-runs it; both go through
-   * `common/money` so they cannot disagree.
+   * The arithmetic is `captureDeposit`'s — both call `depositMinorFor` — so
+   * they cannot disagree.
    */
   assertDepositBasis(agreedAmount: string | null, agreedCurrency: string | null): void {
     if (agreedAmount === null || agreedCurrency === null) {
       throw new DepositAmountUnavailableException();
     }
     const currency = agreedCurrency.toUpperCase();
-    const depositMinor = percentageOf(
-      toMinorUnits(agreedAmount, currency),
-      this.depositRatePercent,
-    );
+    const depositMinor = this.depositMinorFor(agreedAmount, currency);
     if (depositMinor <= 0) {
       throw new DepositAmountUnavailableException(
         'The agreed amount is too small to compute a non-zero deposit',
@@ -223,8 +257,7 @@ export class PaymentsService {
 
     // Deposit breakdown — all arithmetic in integer minor units (exact, HALF-UP)
     // so `net = gross - fee - tax` holds to the cent.
-    const agreedMinor = toMinorUnits(params.agreedAmount, currency);
-    const depositMinor = percentageOf(agreedMinor, this.depositRatePercent);
+    const depositMinor = this.depositMinorFor(params.agreedAmount, currency);
     if (depositMinor <= 0) {
       throw new DepositAmountUnavailableException(
         'The agreed amount is too small to compute a non-zero deposit',

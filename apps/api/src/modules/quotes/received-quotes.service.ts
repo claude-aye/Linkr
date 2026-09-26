@@ -6,6 +6,7 @@ import { RequestNotATenderException } from './exceptions/quote.exceptions';
 import { ServiceRequestsService } from '../service-requests/service-requests.service';
 import { ServiceRequestType } from '../service-requests/enums/service-request-type.enum';
 import { NotRequestOwnerException } from '../service-requests/exceptions/service-request.exceptions';
+import { PaymentsService } from '../payments/payments.service';
 import {
   ProviderRatingAggregate,
   ReviewsRepository,
@@ -26,6 +27,7 @@ export class ReceivedQuotesService {
     private readonly quotesRepo: QuoteRepository,
     private readonly serviceRequestsService: ServiceRequestsService,
     private readonly reviewsRepo: ReviewsRepository,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   /**
@@ -82,6 +84,7 @@ export class ReceivedQuotesService {
           userId: record.providerUserId,
           isActive: record.providerIsActive,
           deleted: record.providerDeletedAtUtc !== null,
+          chargesEnabled: record.providerChargesEnabled,
         },
         now,
       );
@@ -89,6 +92,9 @@ export class ReceivedQuotesService {
         record,
         ratings === null ? null : ratings.get(record.serviceProviderId),
         violation === null,
+        // Computed by the arithmetic `captureDeposit` charges with — never
+        // re-derived here, never mirrored on the web (the rate is an env var).
+        this.paymentsService.depositAmountFor(record.amount, record.currency),
       );
     });
   }

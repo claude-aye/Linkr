@@ -5933,6 +5933,12 @@
             "type": "string",
             "example": "CAD"
           },
+          "depositAmount": {
+            "type": "string",
+            "nullable": true,
+            "description": "Deposit charged on acceptance, decimal serialized as string, in `currency`. Null when the amount yields no non-zero deposit.",
+            "example": "170.10"
+          },
           "estimatedDurationMinutes": {
             "type": "integer",
             "example": 120
@@ -6017,6 +6023,7 @@
           "id",
           "amount",
           "currency",
+          "depositAmount",
           "estimatedDurationMinutes",
           "proposedStartAtUtc",
           "description",

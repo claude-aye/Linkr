@@ -2441,6 +2441,11 @@ export interface components {
             amount: string;
             /** @example CAD */
             currency: string;
+            /**
+             * @description Deposit charged on acceptance, decimal serialized as string, in `currency`. Null when the amount yields no non-zero deposit.
+             * @example 170.10
+             */
+            depositAmount: string | null;
             /** @example 120 */
             estimatedDurationMinutes: number;
             /** Format: date-time */
