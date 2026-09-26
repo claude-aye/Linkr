@@ -32,6 +32,7 @@ const provider = (o: Partial<AcceptabilityProvider> = {}): AcceptabilityProvider
   userId: 'user-1',
   isActive: true,
   deleted: false,
+  chargesEnabled: true,
   ...o,
 });
 
@@ -121,6 +122,20 @@ describe('quoteAcceptabilityViolation — truth table', () => {
     ).toBe(V.PROVIDER_PAUSED);
   });
 
+  it('PROVIDER_NOT_CHARGEABLE when charges_enabled is false (or no Connect row)', () => {
+    expect(
+      quoteAcceptabilityViolation(request(), quote(), provider({ chargesEnabled: false }), NOW),
+    ).toBe(V.PROVIDER_NOT_CHARGEABLE);
+  });
+
+  it('PROVIDER_NOT_CHARGEABLE when chargeability is unknown (partial double)', () => {
+    const p = provider();
+    delete (p as Partial<AcceptabilityProvider>).chargesEnabled;
+    expect(quoteAcceptabilityViolation(request(), quote(), p, NOW)).toBe(
+      V.PROVIDER_NOT_CHARGEABLE,
+    );
+  });
+
   describe('order — the first failing rule wins, in the historical guard order', () => {
     it('request before quote', () => {
       expect(
@@ -170,6 +185,17 @@ describe('quoteAcceptabilityViolation — truth table', () => {
           NOW,
         ),
       ).toBe(V.PROVIDER_ORGANIZATION);
+    });
+
+    // PROVIDER_NOT_CHARGEABLE is LAST: before it existed, `assertPayable`
+    // refused it after every other check. Each earlier reason keeps its code.
+    it.each<[string, () => V | null, V]>([
+      ['expired', () => quoteAcceptabilityViolation(request(), quote({ validUntilUtc: NOW }), provider({ chargesEnabled: false }), NOW), V.QUOTE_EXPIRED],
+      ['deleted', () => quoteAcceptabilityViolation(request(), quote(), provider({ deleted: true, chargesEnabled: false }), NOW), V.PROVIDER_GONE],
+      ['organization', () => quoteAcceptabilityViolation(request(), quote(), provider({ providerType: ProviderType.ORGANIZATION, userId: null, chargesEnabled: false }), NOW), V.PROVIDER_ORGANIZATION],
+      ['paused', () => quoteAcceptabilityViolation(request(), quote(), provider({ isActive: false, chargesEnabled: false }), NOW), V.PROVIDER_PAUSED],
+    ])('%s AND not chargeable → the earlier reason wins', (_label, run, expected) => {
+      expect(run()).toBe(expected);
     });
   });
 });

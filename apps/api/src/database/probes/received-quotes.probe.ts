@@ -28,6 +28,10 @@ import { ServiceRequestRepository } from '../../modules/service-requests/reposit
 import { ServiceRequestsService } from '../../modules/service-requests/service-requests.service';
 import { Review } from '../../modules/reviews/entities/review.entity';
 import { ReviewsRepository } from '../../modules/reviews/repositories/reviews.repository';
+import { StripeConnectAccount } from '../../modules/stripe-connect/entities/stripe-connect-account.entity';
+import { StripeConnectAccountRepository } from '../../modules/stripe-connect/repositories/stripe-connect-account.repository';
+import { PaymentsService } from '../../modules/payments/payments.service';
+import { ConfigService } from '@nestjs/config';
 
 const TAG = '[probe-received-quotes]';
 
@@ -51,6 +55,8 @@ const P = {
   EXPIRED: 'ccccccc3-0000-4000-8000-000000000007', // SUBMITTED but past valid_until
   REJECTED: 'ccccccc3-0000-4000-8000-000000000008', // a REJECTED quote
   ORG: 'ccccccc3-0000-4000-8000-000000000009', // ORGANIZATION, NULL business_name
+  NOCONNECT: 'ccccccc3-0000-4000-8000-00000000000a', // no stripe_connect_accounts row
+  CONNECTOFF: 'ccccccc3-0000-4000-8000-00000000000b', // row, charges_enabled = false
 } as const;
 
 const TENDER = 'fffffff3-0000-4000-8000-000000000001';
@@ -70,6 +76,8 @@ const Q = {
   EXPIRED: '99999993-0000-4000-8000-000000000007',
   REJECTED: '99999993-0000-4000-8000-000000000008',
   ORG: '99999993-0000-4000-8000-000000000009',
+  NOCONNECT: '99999993-0000-4000-8000-00000000000a',
+  CONNECTOFF: '99999993-0000-4000-8000-00000000000b',
 } as const;
 
 // Québec City: the tender, and every provider base within a few km of it.
@@ -113,6 +121,10 @@ async function wipe(ds: DataSource): Promise<void> {
   const requests = [TENDER, DIRECT, OTHERS, ...[1, 2, 3, 4, 5].map(REVIEW_REQ)];
   await ds.query(`DELETE FROM reviews WHERE service_request_id = ANY($1::uuid[])`, [requests]);
   await ds.query(`DELETE FROM quotes WHERE id = ANY($1::uuid[])`, [Object.values(Q)]);
+  await ds.query(
+    `DELETE FROM stripe_connect_accounts WHERE service_provider_id = ANY($1::uuid[])`,
+    [Object.values(P)],
+  );
   await ds.query(`DELETE FROM service_requests WHERE id = ANY($1::uuid[])`, [requests]);
   await ds.query(
     `DELETE FROM professional_service_categories WHERE service_provider_id = ANY($1::uuid[])`,
@@ -199,6 +211,21 @@ async function seed(ds: DataSource): Promise<void> {
     );
   }
 
+  // Connect mirror: every provider is chargeable (VERIFIED, both capabilities)
+  // EXCEPT NOCONNECT (no row at all) and CONNECTOFF (NOT_STARTED, both off —
+  // the CHECK constraints forbid charges without a matching status).
+  for (const [key, id] of Object.entries(P)) {
+    if (key === 'NOCONNECT') continue;
+    const on = key !== 'CONNECTOFF';
+    await ds.query(
+      `INSERT INTO stripe_connect_accounts
+         (service_provider_id, stripe_account_id, onboarding_status,
+          charges_enabled, payouts_enabled, country_code, default_currency)
+       VALUES ($1, $2, $3, $4, $4, 'CA', 'CAD')`,
+      [id, `acct_probe_rq_${key.toLowerCase()}`, on ? 'VERIFIED' : 'NOT_STARTED', on],
+    );
+  }
+
   const request = (id: string, client: string, type: string, status: string) =>
     ds.query(
       `INSERT INTO service_requests
@@ -259,6 +286,8 @@ async function seed(ds: DataSource): Promise<void> {
   await quote(Q.PAUSED, P.PAUSED, 'SUBMITTED', 200);
   await quote(Q.NOCLAIM, P.NOCLAIM, 'SUBMITTED', 150);
   await quote(Q.ORG, P.ORG, 'SUBMITTED', 120);
+  await quote(Q.NOCONNECT, P.NOCONNECT, 'SUBMITTED', 115);
+  await quote(Q.CONNECTOFF, P.CONNECTOFF, 'SUBMITTED', 110);
   await quote(Q.RATED3, P.RATED3, 'SUBMITTED', 100);
 }
 
@@ -293,10 +322,28 @@ async function main(): Promise<void> {
     const quotes = new QuoteRepository(ds.getRepository(Quote));
     const srRepo = new ServiceRequestRepository(ds.getRepository(ServiceRequest));
     const reviews = new ReviewsRepository(ds.getRepository(Review));
+    // The REAL PaymentsService: its deposit arithmetic (depositAmountFor) and
+    // its Connect reading (isProviderChargeable, the one `accept` uses) run
+    // against this database. Neither method touches Stripe or the payment
+    // tables, hence the empty stand-ins.
+    const connectRepo = new StripeConnectAccountRepository(ds.getRepository(StripeConnectAccount));
+    const depositRate = process.env.PLATFORM_DEPOSIT_RATE_PERCENT ?? '20';
+    const payments = new PaymentsService(
+      {} as never,
+      {} as never,
+      {} as never,
+      connectRepo,
+      {} as never,
+      {
+        getOrThrow: (k: string) =>
+          k === 'PLATFORM_DEPOSIT_RATE_PERCENT' ? Number(depositRate) : 10,
+      } as unknown as ConfigService,
+    );
     const service = new ReceivedQuotesService(
       quotes,
       { getRequestRecord: (id: string) => srRepo.findById(id) } as unknown as ServiceRequestsService,
       reviews,
+      payments,
     );
 
     const items = await service.listForClient(TENDER, U_CLIENT);
@@ -312,6 +359,8 @@ async function main(): Promise<void> {
       Q.PAUSED,
       Q.NOCLAIM,
       Q.ORG,
+      Q.NOCONNECT,
+      Q.CONNECTOFF,
       Q.RATED3,
       Q.REJECTED,
     ]);
@@ -339,6 +388,35 @@ async function main(): Promise<void> {
     check('REJECTED quote → false', byId.get(Q.REJECTED)?.acceptable, false);
     check('live INDIVIDUAL, valid quote → true', byId.get(Q.RATED3)?.acceptable, true);
     check('a soft-deleted claim does not block acceptance (accept never read it)', byId.get(Q.NOCLAIM)?.acceptable, true);
+
+    console.log('\nE2. acceptable — provider chargeability (PR 4a-bis)');
+    check('no Connect row → false (quote still listed)', byId.get(Q.NOCONNECT)?.acceptable, false);
+    check('charges_enabled = false → false', byId.get(Q.CONNECTOFF)?.acceptable, false);
+    check('charges_enabled = true → unchanged (true)', byId.get(Q.RATED3)?.acceptable, true);
+    check(
+      'the SQL join and isProviderChargeable (what accept reads) agree',
+      await Promise.all(
+        [P.NOCONNECT, P.CONNECTOFF, P.RATED3].map((id) => payments.isProviderChargeable(id)),
+      ),
+      [false, false, true],
+    );
+
+    console.log('\nE3. depositAmount — server-computed');
+    check(
+      `500.00 CAD at ${depositRate}% → what depositAmountFor computes`,
+      byId.get(Q.RATED3)?.depositAmount,
+      payments.depositAmountFor('500.00', 'CAD'),
+    );
+    check(
+      'at the default 20% it is "100.00"',
+      Number(depositRate) !== 20 || byId.get(Q.RATED3)?.depositAmount === '100.00',
+      true,
+    );
+    check(
+      'present on a non-acceptable quote too',
+      byId.get(Q.CONNECTOFF)?.depositAmount,
+      byId.get(Q.RATED3)?.depositAmount,
+    );
 
     console.log('\nF. Display name — one SQL source');
     check('INDIVIDUAL → business_name', byId.get(Q.RATED3)?.displayName, 'Probe RATED3');

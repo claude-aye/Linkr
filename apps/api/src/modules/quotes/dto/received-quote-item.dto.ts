@@ -31,6 +31,22 @@ export class ReceivedQuoteItemDto {
   @ApiProperty({ type: 'string', example: 'CAD' })
   currency!: string;
 
+  /**
+   * The deposit accepting this quote would charge, to the cent — computed by
+   * the same function `captureDeposit` uses, so what the client is shown
+   * before paying is what he pays. Same decimal format as `amount`, same
+   * `currency`. Null when the amount is too small to yield a non-zero
+   * deposit. No fee, no net: the client has no business seeing them.
+   */
+  @ApiProperty({
+    type: 'string',
+    nullable: true,
+    description:
+      'Deposit charged on acceptance, decimal serialized as string, in `currency`. Null when the amount yields no non-zero deposit.',
+    example: '170.10',
+  })
+  depositAmount!: string | null;
+
   @ApiProperty({ type: 'integer', example: 120 })
   estimatedDurationMinutes!: number;
 
@@ -108,6 +124,7 @@ export class ReceivedQuoteItemDto {
     /** `null` = the aggregate read failed; `undefined` = no live review. */
     rating: ProviderRatingAggregate | undefined | null,
     acceptable: boolean,
+    depositAmount: string | null,
   ): ReceivedQuoteItemDto {
     // A deleted provider's quote stays listed (the client sees the real number
     // of offers) but carries no identity — masked HERE, not filtered in SQL,
@@ -118,6 +135,7 @@ export class ReceivedQuoteItemDto {
     dto.id = record.id;
     dto.amount = record.amount;
     dto.currency = record.currency;
+    dto.depositAmount = depositAmount;
     dto.estimatedDurationMinutes = record.estimatedDurationMinutes;
     dto.proposedStartAtUtc = record.proposedStartAtUtc;
     dto.description = record.description;

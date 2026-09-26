@@ -69,6 +69,11 @@ export interface ReceivedQuoteRecord {
   providerUserId: string | null;
   providerIsActive: boolean;
   providerDeletedAtUtc: Date | null;
+  /**
+   * Connect mirror row exists AND charges_enabled. No row ⇒ false — the same
+   * rule as `PaymentsService.isProviderChargeable`, which `accept` reads.
+   */
+  providerChargesEnabled: boolean;
   providerDisplayName: string | null;
   providerHeadline: string | null;
   /** Null when the claim on the trade no longer exists (or is soft-deleted). */
@@ -92,6 +97,7 @@ interface RawReceivedQuoteRow {
   provider_user_id: string | null;
   provider_is_active: boolean;
   provider_deleted_at_utc: Date | null;
+  provider_charges_enabled: boolean;
   provider_display_name: string | null;
   provider_headline: string | null;
   verification_status: PscVerificationStatus | null;
@@ -233,6 +239,7 @@ export class QuoteRepository {
          sp.user_id        AS provider_user_id,
          sp.is_active      AS provider_is_active,
          sp.deleted_at_utc AS provider_deleted_at_utc,
+         COALESCE(sca.charges_enabled, false) AS provider_charges_enabled,
          ${PROVIDER_DISPLAY_NAME_SQL} AS provider_display_name,
          sp.headline       AS provider_headline,
          psc.verification_status,
@@ -245,6 +252,11 @@ export class QuoteRepository {
          ON psc.service_provider_id = sp.id
         AND psc.service_category_id = sr.service_category_id
         AND psc.deleted_at_utc IS NULL
+       -- UNIQUE(service_provider_id): at most one row, no fan-out. LEFT, never
+       -- INNER — a provider without a Connect row keeps its quote listed, and
+       -- COALESCE reads the missing row as "not chargeable".
+       LEFT JOIN stripe_connect_accounts sca
+         ON sca.service_provider_id = sp.id
        WHERE q.service_request_id = $1
          AND q.status <> '${QuoteStatus.WITHDRAWN}'
        ORDER BY
@@ -268,6 +280,7 @@ export class QuoteRepository {
       providerUserId: row.provider_user_id,
       providerIsActive: row.provider_is_active,
       providerDeletedAtUtc: row.provider_deleted_at_utc,
+      providerChargesEnabled: row.provider_charges_enabled,
       providerDisplayName: row.provider_display_name,
       providerHeadline: row.provider_headline,
       verificationStatus: row.verification_status,

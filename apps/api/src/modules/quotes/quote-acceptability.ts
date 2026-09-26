@@ -14,10 +14,16 @@ import { ProviderType } from '../service-providers/enums/provider-type.enum';
  * symptom until a client clicks a button the list said was live and gets a 409.
  *
  * ⚠️ THE ORDER IS THE CONTRACT. It follows the order of the guards `accept` had
- * before this function existed, so no existing case changes its HTTP code. The
- * only new reason, PROVIDER_PAUSED, is checked LAST — after
- * PROVIDER_ORGANIZATION — so a paused ORGANIZATION provider keeps answering
- * 501 as it did, instead of silently switching to 409.
+ * before this function existed, so no existing case changes its HTTP code.
+ * Reasons added since are appended, each AFTER every reason that used to
+ * answer before it:
+ *   - PROVIDER_PAUSED (PR 4a) after PROVIDER_ORGANIZATION, so a paused
+ *     ORGANIZATION provider keeps answering 501 instead of switching to 409;
+ *   - PROVIDER_NOT_CHARGEABLE (PR 4a-bis) LAST: before it existed, that
+ *     refusal came from `assertPayable` inside `assignIndividualProvider`,
+ *     i.e. after EVERY check here. A deleted / expired / organization / paused
+ *     case keeps its own code; only a quote that passes all of them reaches
+ *     this one, and gets the SAME 409 (`ProviderNotChargeableException`).
  *
  * Owner checks and "not found" on the quote or the request are NOT here: they
  * are about who is asking and what exists, not about whether this quote can be
@@ -30,6 +36,7 @@ export enum QuoteAcceptabilityViolation {
   PROVIDER_GONE = 'PROVIDER_GONE',
   PROVIDER_ORGANIZATION = 'PROVIDER_ORGANIZATION',
   PROVIDER_PAUSED = 'PROVIDER_PAUSED',
+  PROVIDER_NOT_CHARGEABLE = 'PROVIDER_NOT_CHARGEABLE',
 }
 
 export interface AcceptabilityRequest {
@@ -53,6 +60,11 @@ export interface AcceptabilityProvider {
   userId: string | null;
   isActive: boolean;
   deleted: boolean;
+  /**
+   * Connect mirror row exists AND `charges_enabled`; no row ⇒ false. REQUIRED
+   * for the same reason as `deleted`: each caller must say where it read it.
+   */
+  chargesEnabled: boolean;
 }
 
 export function quoteAcceptabilityViolation(
@@ -98,6 +110,21 @@ export function quoteAcceptabilityViolation(
   // double, where "unknown" must not read as "paused".
   if (provider.isActive === false) {
     return QuoteAcceptabilityViolation.PROVIDER_PAUSED;
+  }
+
+  // Without charges_enabled the deposit cannot be taken: `assertPayable`
+  // refuses the assignment (409) inside `accept`. Without this reason the list
+  // would show a live "Accept" that answers 409.
+  //
+  // ⚠️ The CLIENT's default card — the other half of `assertPayable` — is NOT
+  // here and must not be: it is a condition on the client, not on the quote.
+  // It holds or fails for every quote of the list at once; the screen handles
+  // it itself.
+  //
+  // `!== true`, not `=== false`: unlike `isActive`, "unknown" must read as
+  // "cannot be charged" — no Connect row already means false upstream.
+  if (provider.chargesEnabled !== true) {
+    return QuoteAcceptabilityViolation.PROVIDER_NOT_CHARGEABLE;
   }
 
   return null;

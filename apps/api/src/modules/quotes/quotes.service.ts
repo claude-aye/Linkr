@@ -33,6 +33,7 @@ import {
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { PaymentsService } from '../payments/payments.service';
+import { ProviderNotChargeableException } from '../payments/exceptions/payments.exceptions';
 
 /** Postgres unique-violation SQLSTATE — raised by the live-quote partial unique index. */
 function isUniqueViolation(err: unknown): boolean {
@@ -57,7 +58,8 @@ export interface AcceptQuoteOutcome {
  * Each acceptability reason → the exception `accept` has always thrown for it.
  * Exhaustive by construction: a new reason that is not mapped here does not
  * compile. The only reason without a historical exception is PROVIDER_PAUSED,
- * which is new (409).
+ * which is new (409). PROVIDER_NOT_CHARGEABLE reuses the one `assertPayable`
+ * throws — same class, same 409.
  */
 function acceptViolationException(
   violation: QuoteAcceptabilityViolation,
@@ -80,6 +82,9 @@ function acceptViolationException(
       return new OrganizationQuoteDispatchNotImplementedException();
     case QuoteAcceptabilityViolation.PROVIDER_PAUSED:
       return new ProviderUnavailableException();
+    case QuoteAcceptabilityViolation.PROVIDER_NOT_CHARGEABLE:
+      // The exception `assertPayable` has always thrown for it — same 409.
+      return new ProviderNotChargeableException();
   }
 }
 
@@ -302,7 +307,16 @@ export class QuotesService {
         request,
         quote,
         // `findById` filters soft-deleted rows: a provider it returns is live.
-        provider ? { ...provider, deleted: false } : null,
+        // Chargeability is read through the SAME method `assertPayable` uses
+        // (it still runs in `assignIndividualProvider`: that duplicate read is
+        // assumed — it also guards direct booking).
+        provider
+          ? {
+              ...provider,
+              deleted: false,
+              chargesEnabled: await this.paymentsService.isProviderChargeable(provider.id),
+            }
+          : null,
         new Date(),
       );
       if (violation !== null) {

@@ -1,4 +1,5 @@
 import { HttpException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityManager } from 'typeorm';
 import { QuotesService } from './quotes.service';
 import { ReceivedQuotesService } from './received-quotes.service';
@@ -27,6 +28,8 @@ import { ProfessionalServiceCategoryRepository } from '../service-providers/repo
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { PscVerificationStatus } from '../service-providers/enums/psc-verification-status.enum';
 import { PaymentsService } from '../payments/payments.service';
+import { ProviderNotChargeableException } from '../payments/exceptions/payments.exceptions';
+import { StripeConnectAccountRepository } from '../stripe-connect/repositories/stripe-connect-account.repository';
 import { ReviewsRepository } from '../reviews/repositories/reviews.repository';
 
 /**
@@ -54,6 +57,7 @@ interface Scenario {
   providerUserId: string | null;
   providerIsActive: boolean;
   providerDeleted: boolean;
+  providerChargesEnabled: boolean;
 }
 
 const future = () => new Date(Date.now() + 86_400_000);
@@ -69,6 +73,7 @@ function scenario(o: Partial<Scenario> = {}): Scenario {
     providerUserId: PROVIDER_USER_ID,
     providerIsActive: true,
     providerDeleted: false,
+    providerChargesEnabled: true,
     ...o,
   };
 }
@@ -116,6 +121,7 @@ function receivedRecord(s: Scenario, o: Partial<ReceivedQuoteRecord> = {}): Rece
     providerUserId: s.providerUserId,
     providerIsActive: s.providerIsActive,
     providerDeletedAtUtc: s.providerDeleted ? new Date() : null,
+    providerChargesEnabled: s.providerChargesEnabled,
     providerDisplayName: 'Coiffure Bob',
     providerHeadline: 'Coupes à domicile',
     verificationStatus: PscVerificationStatus.NOT_REQUIRED,
@@ -171,7 +177,10 @@ function acceptHarness(s: Scenario) {
     serviceRequestsService as unknown as ServiceRequestsService,
     providerRepo as unknown as ServiceProviderRepository,
     {} as unknown as ProfessionalServiceCategoryRepository,
-    { captureDeposit } as unknown as PaymentsService,
+    {
+      captureDeposit,
+      isProviderChargeable: jest.fn().mockResolvedValue(s.providerChargesEnabled),
+    } as unknown as PaymentsService,
     dataSource as unknown as DataSource,
   );
   return {
@@ -182,6 +191,52 @@ function acceptHarness(s: Scenario) {
     committed: () => committed,
     rolledBack: () => rolledBack,
   };
+}
+
+/**
+ * A REAL PaymentsService — only its Stripe, payment and user dependencies are
+ * doubles — so the list's `depositAmount` and `captureDeposit` run the SAME
+ * code. `charged` collects what `captureDeposit` persists.
+ */
+function realPaymentsService(depositRatePercent = 20) {
+  const charged: Array<{ grossAmount: string; currency: string }> = [];
+  const paymentRepo = {
+    findByServiceRequestAndType: jest.fn().mockResolvedValue(null),
+    create: jest.fn(async (row: { grossAmount: string; currency: string }) => {
+      charged.push({ grossAmount: row.grossAmount, currency: row.currency });
+      return { id: 'pay-1' };
+    }),
+    attachIntent: jest.fn().mockResolvedValue(null),
+    recordFailure: jest.fn().mockResolvedValue(undefined),
+  };
+  const service = new PaymentsService(
+    {
+      client: {
+        paymentIntents: {
+          create: jest.fn().mockResolvedValue({ id: 'pi_1', status: 'succeeded' }),
+        },
+      },
+    } as never,
+    paymentRepo as never,
+    {
+      findDefaultByUserId: jest
+        .fn()
+        .mockResolvedValue({ id: 'pm-row', stripePaymentMethodId: 'pm_1' }),
+    } as never,
+    {
+      findByServiceProviderId: jest
+        .fn()
+        .mockResolvedValue({ stripeAccountId: 'acct_1', chargesEnabled: true }),
+    } as unknown as StripeConnectAccountRepository,
+    {
+      findById: jest.fn().mockResolvedValue({ id: CLIENT_ID, stripeCustomerId: 'cus_1' }),
+    } as never,
+    {
+      getOrThrow: (k: string) =>
+        k === 'PLATFORM_DEPOSIT_RATE_PERCENT' ? depositRatePercent : 10,
+    } as unknown as ConfigService,
+  );
+  return { service, charged };
 }
 
 function listHarness(opts: {
@@ -204,6 +259,7 @@ function listHarness(opts: {
     quotesRepo as unknown as QuoteRepository,
     serviceRequestsService as unknown as ServiceRequestsService,
     reviewsRepo as unknown as ReviewsRepository,
+    realPaymentsService().service,
   );
   return { service, quotesRepo, reviewsRepo };
 }
@@ -231,6 +287,11 @@ describe('accept() and the received-quotes list agree, reason by reason', () => 
       OrganizationQuoteDispatchNotImplementedException,
     ],
     ['PROVIDER_PAUSED', { providerIsActive: false }, ProviderUnavailableException],
+    [
+      'PROVIDER_NOT_CHARGEABLE',
+      { providerChargesEnabled: false },
+      ProviderNotChargeableException,
+    ],
   ];
 
   it.each(cases)('%s → accept throws, list says acceptable: false', async (_name, o, Ex) => {
@@ -295,6 +356,91 @@ describe('accept() — the new pause guard writes nothing', () => {
     expect(h.captureDeposit).not.toHaveBeenCalled();
     expect(h.rolledBack()).toBe(true);
   });
+});
+
+describe('accept() — PROVIDER_NOT_CHARGEABLE keeps the codes of every earlier reason', () => {
+  // Before PR 4a-bis this refusal came from `assertPayable`, i.e. after all of
+  // the checks below. A case failing BOTH must keep the older answer.
+  it.each<[string, Partial<Scenario>, new (...args: never[]) => HttpException, number]>([
+    ['expired', { validUntilUtc: past() }, QuoteExpiredException, 409],
+    ['deleted', { providerDeleted: true }, NotFoundException, 404],
+    [
+      'organization',
+      { providerType: ProviderType.ORGANIZATION, providerUserId: null },
+      OrganizationQuoteDispatchNotImplementedException,
+      501,
+    ],
+    ['paused', { providerIsActive: false }, ProviderUnavailableException, 409],
+  ])('%s AND not chargeable → the earlier exception', async (_l, o, Ex, status) => {
+    const h = acceptHarness(scenario({ ...o, providerChargesEnabled: false }));
+    const err = await h.service.accept(QUOTE_ID, CLIENT_ID).catch((e: HttpException) => e);
+    expect(err).toBeInstanceOf(Ex);
+    expect((err as HttpException).getStatus()).toBe(status);
+  });
+
+  it('not chargeable alone → the SAME 409 assertPayable answered, nothing written', async () => {
+    const h = acceptHarness(scenario({ providerChargesEnabled: false }));
+    const err = await h.service.accept(QUOTE_ID, CLIENT_ID).catch((e: HttpException) => e);
+    expect(err).toBeInstanceOf(ProviderNotChargeableException);
+    expect((err as HttpException).getStatus()).toBe(409);
+    expect(h.quotesRepo.updateStatus).not.toHaveBeenCalled();
+    expect(h.quotesRepo.rejectSiblings).not.toHaveBeenCalled();
+    expect(h.serviceRequestsService.assignIndividualProvider).not.toHaveBeenCalled();
+    expect(h.captureDeposit).not.toHaveBeenCalled();
+    expect(h.rolledBack()).toBe(true);
+  });
+});
+
+describe('ReceivedQuotesService.listForClient — depositAmount', () => {
+  async function depositFor(amount: string): Promise<string | null> {
+    const s = scenario();
+    const h = listHarness({
+      request: requestRecord(s),
+      records: [receivedRecord(s, { amount })],
+    });
+    const [item] = await h.service.listForClient(REQUEST_ID, CLIENT_ID);
+    return item.depositAmount;
+  }
+
+  it('nominal: 20% of 850.50 CAD → "170.10"', async () => {
+    expect(await depositFor('850.50')).toBe('170.10');
+  });
+
+  it('rounds HALF-UP at the half-cent: 20% of 0.03 = 0.006 → "0.01"', async () => {
+    expect(await depositFor('0.03')).toBe('0.01');
+  });
+
+  it('under the half-cent rounds down: 20% of 0.02 = 0.004 → null (zero deposit)', async () => {
+    expect(await depositFor('0.02')).toBeNull();
+  });
+
+  it('an amount too small to yield a non-zero deposit → null', async () => {
+    expect(await depositFor('0.01')).toBeNull();
+  });
+
+  it('present on a quote that is NOT acceptable', async () => {
+    const s = scenario({ providerChargesEnabled: false });
+    const h = listHarness({ request: requestRecord(s), records: [receivedRecord(s)] });
+    const [item] = await h.service.listForClient(REQUEST_ID, CLIENT_ID);
+    expect(item.acceptable).toBe(false);
+    expect(item.depositAmount).toBe('80.00');
+  });
+
+  it.each(['850.50', '400.00', '0.03', '123.45', '99999.99'])(
+    'equals, to the cent, what captureDeposit charges for the same quote (%s CAD)',
+    async (amount) => {
+      const shown = await depositFor(amount);
+      const payments = realPaymentsService();
+      await payments.service.captureDeposit({
+        serviceRequestId: REQUEST_ID,
+        clientUserId: CLIENT_ID,
+        serviceProviderId: PROVIDER_ID,
+        agreedAmount: amount,
+        agreedCurrency: 'CAD',
+      });
+      expect(payments.charged).toEqual([{ grossAmount: shown, currency: 'CAD' }]);
+    },
+  );
 });
 
 describe('ReceivedQuotesService.listForClient — guards 404 → 403 → 400', () => {
