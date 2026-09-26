@@ -925,6 +925,11 @@ export default async function DashboardPage({
    * ⚠️ IT NEVER BLOCKS. Quoting stays open: a provider may well finish his
    * Stripe onboarding before the client picks, and gating the form on it would
    * be a decision this PR does not take.
+   *
+   * PR 4b — the copy now says what is at stake: without `charges_enabled` the
+   * quote cannot be ACCEPTED (the client's list shows it `acceptable: false`,
+   * and `accept` would answer 409). The previous wording only mentioned the
+   * deposit, which undersold it.
    */
   const tenderPaymentWarning = connect !== undefined && (connect === null || !connect.chargesEnabled);
 
@@ -945,8 +950,8 @@ export default async function DashboardPage({
         {tenderPaymentWarning && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950">
             <p className="text-sm text-amber-800 dark:text-amber-300">
-              Vous pouvez soumettre un devis, mais l’acompte ne pourra être prélevé
-              qu’une fois vos paiements configurés.{' '}
+              Tant que vos paiements ne sont pas configurés, un client ne pourra pas
+              accepter votre devis.{' '}
               <Link
                 href="/dashboard/paiements"
                 className="font-medium underline underline-offset-2"
