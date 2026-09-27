@@ -5,6 +5,7 @@ import { UsersModule } from '../users/users.module';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { ServiceRequestsModule } from '../service-requests/service-requests.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ReviewsDataModule } from '../reviews/reviews-data.module';
 import { Quote } from './entities/quote.entity';
 import { QuoteRepository } from './repositories/quote.repository';
@@ -29,6 +30,9 @@ import { QuotesCron } from './quotes.cron';
     // `ReviewsModule`: no cycle is possible, and quotes gets the table's rule
     // (D-3, D-4) without the reviews feature. See `reviews-data.module.ts`.
     ReviewsDataModule,
+    // NotificationsService → the three quote emails (received / accepted / not
+    // selected). One-way: notifications imports nothing from quotes.
+    NotificationsModule,
   ],
   controllers: [QuotesController],
   providers: [QuoteRepository, QuotesService, ReceivedQuotesService, QuotesCron, AdminGuard],

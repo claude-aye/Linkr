@@ -127,6 +127,21 @@ const TEMPLATE_FIXTURES: {
     // The tab matters: the retry button only exists on « Mes jobs » (5.3).
     dashboardUrl: 'https://linkr.test/dashboard?onglet=jobs',
   },
+  'quote-received': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    quotesUrl: 'https://linkr.test/requests/11111111-1111-4111-8111-111111111111/devis',
+  },
+  'quote-accepted': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    dashboardUrl: 'https://linkr.test/dashboard?onglet=jobs',
+  },
+  'quote-not-selected': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    dashboardUrl: 'https://linkr.test/dashboard?onglet=appels-offres',
+  },
 };
 
 describe('template registry', () => {

@@ -124,6 +124,27 @@ function affectedCount(result: unknown): number {
   return 0;
 }
 
+/**
+ * The rows an `UPDATE … RETURNING` touched. Same `[rows, affected]` quirk as
+ * above, read the other way: here the ROWS are the answer, not the count.
+ *
+ * ⚠️ A naive `result.length` would read 2 on zero rows — and here that would
+ * mean emailing two phantom recipients. Local copy of the normaliser the other
+ * repositories carry (`updateReturningRows`); the shared helper is a chore.
+ */
+function updateReturningRows<TRow>(result: unknown): TRow[] {
+  if (Array.isArray(result) && Array.isArray(result[0])) {
+    return result[0] as TRow[];
+  }
+  return (result as TRow[]) ?? [];
+}
+
+/** A sibling quote this accept flipped from SUBMITTED to REJECTED. */
+export interface RejectedSibling {
+  quoteId: string;
+  serviceProviderId: string;
+}
+
 function mapRow(row: RawQuoteRow): QuoteRecord {
   return {
     id: row.id,
@@ -330,22 +351,35 @@ export class QuoteRepository {
 
   /**
    * Bulk-reject the other live (SUBMITTED) quotes of a request when one is
-   * accepted. Returns the number of siblings rejected.
+   * accepted. Returns the siblings THIS statement transitioned — not a count.
+   *
+   * ⚠️ THE LIST IS THE RECIPIENT LIST of the « not selected » email, and the
+   * `status = SUBMITTED` predicate is what makes it right: a quote already
+   * WITHDRAWN or EXPIRED is not in it, so its provider — who had already left
+   * the race — is never told "the client chose someone else". Reading the
+   * recipients from anywhere else (every quote of the request, every provider
+   * who ever quoted) would lose that, silently.
+   *
+   * At most one SUBMITTED quote per provider per request
+   * (`uq_quote_one_live_per_provider_per_request`), so a provider appears here
+   * at most once — no dedupe needed.
    */
   async rejectSiblings(
     serviceRequestId: string,
     acceptedQuoteId: string,
     manager: EntityManager,
-  ): Promise<number> {
+  ): Promise<RejectedSibling[]> {
     const result = await manager.query(
       `UPDATE quotes SET status = '${QuoteStatus.REJECTED}', updated_at_utc = now()
        WHERE service_request_id = $1
          AND id <> $2
          AND status = '${QuoteStatus.SUBMITTED}'
-       RETURNING id`,
+       RETURNING id, service_provider_id`,
       [serviceRequestId, acceptedQuoteId],
     );
-    return affectedCount(result);
+    return updateReturningRows<{ id: string; service_provider_id: string }>(result).map(
+      (row) => ({ quoteId: row.id, serviceProviderId: row.service_provider_id }),
+    );
   }
 
   /**

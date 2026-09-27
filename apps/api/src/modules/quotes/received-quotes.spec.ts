@@ -28,6 +28,7 @@ import { ProfessionalServiceCategoryRepository } from '../service-providers/repo
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { PscVerificationStatus } from '../service-providers/enums/psc-verification-status.enum';
 import { PaymentsService } from '../payments/payments.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ProviderNotChargeableException } from '../payments/exceptions/payments.exceptions';
 import { StripeConnectAccountRepository } from '../stripe-connect/repositories/stripe-connect-account.repository';
 import { ReviewsRepository } from '../reviews/repositories/reviews.repository';
@@ -137,7 +138,9 @@ function acceptHarness(s: Scenario) {
   const quotesRepo = {
     findByIdForUpdate: jest.fn().mockResolvedValue(quoteRecord(s)),
     updateStatus: jest.fn().mockResolvedValue(undefined),
-    rejectSiblings: jest.fn().mockResolvedValue(1),
+    rejectSiblings: jest.fn().mockResolvedValue([
+      { quoteId: 'sibling-quote-1', serviceProviderId: 'sibling-provider-1' },
+    ]),
     findById: jest.fn().mockResolvedValue({ ...quoteRecord(s), status: QuoteStatus.ACCEPTED }),
   };
   const serviceRequestsService = {
@@ -182,6 +185,11 @@ function acceptHarness(s: Scenario) {
       isProviderChargeable: jest.fn().mockResolvedValue(s.providerChargesEnabled),
     } as unknown as PaymentsService,
     dataSource as unknown as DataSource,
+    {
+      notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
+      notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
+      notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
+    } as unknown as NotificationsService,
   );
   return {
     service,

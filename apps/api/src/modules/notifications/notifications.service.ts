@@ -21,6 +21,17 @@ import { ServiceRequestRecord } from '../service-requests/repositories/service-r
  */
 const NOTIFICATIONS_LIST_LIMIT = 50;
 
+/**
+ * What the quote emails need to know about the request: who the client is, and
+ * what to call it. Narrower than `ServiceRequestRecord` on purpose — the quote
+ * paths hold the full record, but these methods read three fields and a test
+ * should not have to fabricate thirty.
+ */
+export type QuoteEmailRequest = Pick<
+  ServiceRequestRecord,
+  'id' | 'title' | 'clientUserId'
+>;
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -519,5 +530,192 @@ export class NotificationsService {
         `notifyDepositFailed: could not queue the PROVIDER email for request ${serviceRequest.id}: ${String(err)}`,
       );
     }
+  }
+
+  /**
+   * The email half of `quote.sent` — the client learns that a provider answered
+   * their call for tenders. One email PER submitted quote.
+   *
+   * Same terms as `notifyRequestAccepted`: `clientUserId` is on the request, one
+   * lookup, no organization case, and NOTHING HERE MAY SPEAK FOR THE SUBMIT —
+   * the quote row is written; every outcome is a log line and a return.
+   *
+   * The link is THIS request's received-quotes page (`/requests/{id}/devis`),
+   * where the quote can be compared and accepted — not the `/requests` list.
+   */
+  async notifyQuoteReceived(
+    serviceRequest: QuoteEmailRequest,
+  ): Promise<void> {
+    if (emailTemplateFor('quote.sent') === null) {
+      return;
+    }
+
+    try {
+      const client = await this.usersRepo.findById(serviceRequest.clientUserId);
+
+      // Soft-deleted (`findById` excludes it) or without an address: nobody to
+      // write to, and nothing worth a warning — the account is gone.
+      if (!client?.email) {
+        this.logger.debug(
+          `notifyQuoteReceived: client ${serviceRequest.clientUserId} of request ${serviceRequest.id} unreachable — no email sent`,
+        );
+        return;
+      }
+
+      const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+      await this.emailService.send({
+        to: client.email,
+        template: 'quote-received',
+        vars: {
+          firstName: client.firstName,
+          requestTitle: serviceRequest.title,
+          quotesUrl: `${baseUrl}/requests/${serviceRequest.id}/devis`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyQuoteReceived: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * The email half of `quote.accepted` — the selected provider learns the job
+   * is theirs.
+   *
+   * ⚠️ Sent on a 200 AND on a 202, and says nothing about the deposit: the
+   * assignment is committed whatever the capture did (T4). When it failed, the
+   * provider ALSO receives `deposit-failed-provider`, which carries the caution.
+   *
+   * NOTHING HERE MAY SPEAK FOR THE ACCEPT: every outcome is a log line and a
+   * return.
+   */
+  async notifyQuoteAccepted(
+    serviceRequest: QuoteEmailRequest,
+    serviceProviderId: string,
+  ): Promise<void> {
+    if (emailTemplateFor('quote.accepted') === null) {
+      return;
+    }
+
+    const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+    try {
+      const owner = await this.resolveProviderOwner(
+        'notifyQuoteAccepted',
+        serviceProviderId,
+        serviceRequest.id,
+      );
+      if (!owner) return;
+
+      await this.emailService.send({
+        to: owner.email,
+        template: 'quote-accepted',
+        vars: {
+          firstName: owner.firstName,
+          requestTitle: serviceRequest.title,
+          // `onglet=jobs`: the request is ASSIGNED now, which the default tab
+          // filters out. Quasi-immutable slug — see dashboard-tabs.tsx.
+          dashboardUrl: `${baseUrl}/dashboard?onglet=jobs`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyQuoteAccepted: could not queue the email for provider ${serviceProviderId} (request ${serviceRequest.id}): ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * The email half of `quote.rejected` — every OTHER provider learns the client
+   * selected a different offer.
+   *
+   * ⚠️ `serviceProviderIds` MUST BE the siblings `rejectSiblings` flipped in the
+   * accept's transaction, and nothing else. A quote already WITHDRAWN or
+   * EXPIRED is not in that list, so its provider is never told "the client
+   * chose someone else" — they had already left the race.
+   *
+   * ⚠️ ONE TRY/CATCH PER RECIPIENT, on purpose: a bounced address, a deleted
+   * owner or a Redis blink on provider B must not cost provider C their email.
+   * A single try around the loop would stop at the first failure, silently.
+   */
+  async notifyQuotesNotSelected(
+    serviceRequest: QuoteEmailRequest,
+    serviceProviderIds: readonly string[],
+  ): Promise<void> {
+    if (emailTemplateFor('quote.rejected') === null) {
+      return;
+    }
+
+    const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+    for (const serviceProviderId of serviceProviderIds) {
+      try {
+        const owner = await this.resolveProviderOwner(
+          'notifyQuotesNotSelected',
+          serviceProviderId,
+          serviceRequest.id,
+        );
+        if (!owner) continue;
+
+        await this.emailService.send({
+          to: owner.email,
+          template: 'quote-not-selected',
+          vars: {
+            firstName: owner.firstName,
+            requestTitle: serviceRequest.title,
+            // Toward the next opportunity, not a dead end. Quasi-immutable slug.
+            dashboardUrl: `${baseUrl}/dashboard?onglet=appels-offres`,
+          },
+        });
+      } catch (err) {
+        this.logger.error(
+          `notifyQuotesNotSelected: could not queue the email for provider ${serviceProviderId} (request ${serviceRequest.id}): ${String(err)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * The human behind a provider, or null when there is none to write to.
+   *
+   * An ORGANIZATION has no `user_id` (CHECK constraint): that is a WARNING —
+   * the email channel is not open to organizations yet, and quoting as one is
+   * deferred, so reaching it means something upstream changed. A provider or
+   * owner that is gone (soft-deleted) or has no address is a quiet DEBUG: the
+   * account left, there is nothing to fix.
+   */
+  private async resolveProviderOwner(
+    caller: string,
+    serviceProviderId: string,
+    requestId: string,
+  ): Promise<{ email: string; firstName: string } | null> {
+    const provider = await this.providerRepo.findById(serviceProviderId);
+
+    if (!provider) {
+      this.logger.debug(
+        `${caller}: provider ${serviceProviderId} not found (request ${requestId}) — no email sent`,
+      );
+      return null;
+    }
+
+    if (!provider.userId) {
+      this.logger.warn(
+        `${caller}: provider ${serviceProviderId} is an ORGANIZATION (request ${requestId}) — the email channel is not open to organizations yet`,
+      );
+      return null;
+    }
+
+    const owner = await this.usersRepo.findById(provider.userId);
+
+    if (!owner?.email) {
+      this.logger.debug(
+        `${caller}: owner ${provider.userId} of provider ${serviceProviderId} unreachable (request ${requestId}) — no email sent`,
+      );
+      return null;
+    }
+
+    return { email: owner.email, firstName: owner.firstName };
   }
 }

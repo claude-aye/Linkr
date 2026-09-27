@@ -15,6 +15,7 @@ import { ServiceRequestLocationPrecision } from '../service-requests/enums/servi
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { PaymentsService } from '../payments/payments.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * No quoting on your own tender.
@@ -125,6 +126,11 @@ function buildService(
     } as unknown as ProfessionalServiceCategoryRepository,
     {} as unknown as PaymentsService,
     {} as unknown as DataSource,
+    {
+      notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
+      notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
+      notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
+    } as unknown as NotificationsService,
   );
 
   return { service, create, findByUserId };

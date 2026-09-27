@@ -72,7 +72,9 @@ export type DomainEvent =
   | 'request.declined'
   | 'deposit.failed'
   | 'job.completed'
-  | 'quote.sent';
+  | 'quote.sent'
+  | 'quote.accepted'
+  | 'quote.rejected';
 
 export interface EventChannels {
   readonly inApp: ChannelDecision<NotificationType>;
@@ -151,18 +153,30 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
 
   'quote.sent': {
     inApp: todo('no notification_type yet — grouped migration once the set is settled'),
-    // ⚠️ NOT "not written yet" — DELIBERATELY WAITING ON THE FRONT.
-    // The API can submit, list and accept quotes; `apps/web` shows NONE of it
-    // (no quote screen exists at all). This email would tell a client an offer
-    // is waiting and send them to a page where they cannot see it, compare it
-    // or accept it. Every other transactional email leads to a real control.
-    // Write it when the quote screen exists — and then name `valid_until_utc`
-    // in it, formatted in DISPLAY_TIME_ZONE ('America/Toronto', a NAMED zone):
-    // a date rendered in the worker's UTC is off by a full civil day for any
-    // evening instant, which on an expiry date is not cosmetic.
-    email: todo(
-      'a quote nobody is told about is a quote that expires — but no quote screen exists in the front yet, so this email would lead nowhere',
-    ),
+    // To the CLIENT, one per submitted quote, linking to THIS request's
+    // received-quotes page (PR 4b) — the email now leads to a real control.
+    // ⚠️ NO DATE in it, on purpose: the API has no formatter zoned to
+    // DISPLAY_TIME_ZONE ('America/Toronto', a NAMED zone) and the worker runs
+    // in UTC, so a validity date would be off by a full civil day for any
+    // evening instant. The debt stays open in CLAUDE.md — to be paid the day
+    // an email needs a date.
+    email: send('quote-received'),
+  },
+
+  'quote.accepted': {
+    inApp: todo('no notification_type yet — grouped migration once the set is settled'),
+    // To the SELECTED provider. Sent on a 200 AND on a 202 — same T4 reasoning
+    // as `request.accepted`: the assignment holds whatever the card did, and
+    // `deposit-failed-provider` carries the caution when it failed.
+    email: send('quote-accepted'),
+  },
+
+  'quote.rejected': {
+    inApp: todo('no notification_type yet — grouped migration once the set is settled'),
+    // ⚠️ ONLY the quotes this accept flipped SUBMITTED → REJECTED
+    // (`rejectSiblings` returns them). A provider who withdrew, or whose quote
+    // expired, had already left the race and is never told "another offer won".
+    email: send('quote-not-selected'),
   },
 };
 
