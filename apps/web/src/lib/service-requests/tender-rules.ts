@@ -471,9 +471,31 @@ export const MAX_DURATION_MINUTES = 2147483647;
  * date illisible — ne jamais fabriquer un instant.
  */
 export function quoteValidUntil(quotesDeadlineUtc: string): string | null {
+  return tenderSelectionEndUtc(quotesDeadlineUtc);
+}
+
+/**
+ * Fin de la période de SÉLECTION d'un tender (R7) = date limite des devis +
+ * {@link TENDER_SELECTION_WINDOW_DAYS}. C'est la date que la carte client
+ * annonce quand la réception est close (PR 4b) — et celle que `quoteValidUntil`
+ * donne à un devis : les deux doivent être le MÊME instant, d'où une seule
+ * fonction. `null` sur une date illisible.
+ */
+export function tenderSelectionEndUtc(quotesDeadlineUtc: string): string | null {
   const deadlineMs = Date.parse(quotesDeadlineUtc);
   if (!Number.isFinite(deadlineMs)) return null;
   return new Date(deadlineMs + TENDER_SELECTION_WINDOW_DAYS * MS_PER_DAY).toISOString();
+}
+
+/**
+ * La réception des devis est-elle close ? Vrai dès l'instant exact de la date
+ * limite — même comparateur que `QuotesService.submit` (R6 : la milliseconde de
+ * la date limite est déjà trop tard). Date illisible → `false` : on ne déclare
+ * pas close une réception qu'on ne sait pas lire.
+ */
+export function quotesReceptionClosed(quotesDeadlineUtc: string, now: Date): boolean {
+  const deadlineMs = Date.parse(quotesDeadlineUtc);
+  return Number.isFinite(deadlineMs) && now.getTime() >= deadlineMs;
 }
 
 export type DurationViolation = 'empty' | 'format' | 'not-positive' | 'step' | 'too-large';

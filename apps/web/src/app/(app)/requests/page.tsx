@@ -55,10 +55,21 @@ function Section({
  */
 const PUBLISHED_TENDER_FLAG = 'appel-offres';
 
+/**
+ * Set by « Devis reçus » after an accepted quote (PR 4b), one flag per HTTP
+ * success the API can answer. The two are NOT the same news: on 202 the job is
+ * the provider's but the deposit was not taken, and this banner is the ONLY
+ * place the client is told — the request card has no deposit field (the client
+ * DTO carries none). No retry button: `retry-deposit` is the assigned
+ * provider's, a client would get 403.
+ */
+const QUOTE_ACCEPTED_FLAG = 'accepte';
+const QUOTE_ACCEPTED_DEPOSIT_FAILED_FLAG = 'acompte-en-echec';
+
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ publie?: string | string[] }>;
+  searchParams: Promise<{ publie?: string | string[]; devis?: string | string[] }>;
 }) {
   // Session gate — `redirect` throws, so it runs OUTSIDE any try/catch. The page
   // is PRIVATE (under `(app)`): an expired session must not render.
@@ -67,8 +78,10 @@ export default async function RequestsPage({
     redirect('/login');
   }
 
-  const { publie } = await searchParams;
+  const { publie, devis } = await searchParams;
   const justPublishedTender = publie === PUBLISHED_TENDER_FLAG;
+  const quoteAccepted = devis === QUOTE_ACCEPTED_FLAG;
+  const quoteAcceptedDepositFailed = devis === QUOTE_ACCEPTED_DEPOSIT_FAILED_FLAG;
 
   const client = await getServerApiClient();
 
@@ -143,6 +156,23 @@ export default async function RequestsPage({
           <p className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
             Votre appel d’offres est publié. Les prestataires qui couvrent votre secteur en
             sont avisés et peuvent vous envoyer un devis jusqu’à la date limite.
+          </p>
+        )}
+
+        {quoteAccepted && (
+          <p className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+            Devis accepté. L’acompte a été prélevé.
+          </p>
+        )}
+
+        {quoteAcceptedDepositFailed && (
+          <p className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+            Le devis est accepté et le travail est confié au prestataire. Toutefois, le
+            prélèvement de l’acompte a échoué. Vérifiez votre{' '}
+            <Link href="/account/payment-methods" className="font-medium underline underline-offset-2">
+              moyen de paiement
+            </Link>{' '}
+            ; le prestataire pourra relancer le prélèvement depuis son espace.
           </p>
         )}
 

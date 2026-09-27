@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import type { components } from '@linkr/api-client';
 import type { MyReview } from '@/lib/reviews/types';
 import { formatDateLong, formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
@@ -5,6 +7,10 @@ import {
   LOCATION_PRECISION_NOTICE_CLASS,
   clientLocationPrecisionNotice,
 } from '@/lib/service-requests/location-precision';
+import {
+  quotesReceptionClosed,
+  tenderSelectionEndUtc,
+} from '@/lib/service-requests/tender-rules';
 
 import { CompletionActions, ContestedNotice } from './completion-actions';
 import { ReviewSection } from './review-section';
@@ -178,11 +184,22 @@ export function RequestCard({
   // PR 1b — a PROJECT_TENDER card. Its deadline is `quotesDeadlineUtc` (same
   // nullable-JSONB debt, same surgical cast). No quote count is shown: the
   // client DTO carries none, and a static « Aucun devis » would turn false the
-  // day the provider side can quote. No link either — the tender detail page
-  // does not exist yet (PR 4b).
+  // day the provider side can quote. The link to the quotes (PR 4b) is shown
+  // WHATEVER the status: the history stays readable after the choice.
   const isTender = request.requestType === 'PROJECT_TENDER';
   const quotesDeadlineUtc = request.quotesDeadlineUtc as unknown as string | null;
-  const receivingQuotes = isTender && request.status === 'OPEN' && Boolean(quotesDeadlineUtc);
+  const openTender = isTender && request.status === 'OPEN' && Boolean(quotesDeadlineUtc);
+  // R7 — the deadline closes RECEPTION, not SELECTION: an OPEN tender past its
+  // deadline is one that received quotes (otherwise the cron expired it) and is
+  // waiting for the client's choice. Saying « Reçoit des devis jusqu'au <date
+  // passée> » would be false; the selection end is the deadline + the window
+  // mirrored in `tender-rules.ts`, the same instant a quote's validity uses.
+  // Server Component: `now` is read at render, like `formatDeadline`.
+  const receptionClosed =
+    openTender && quotesReceptionClosed(quotesDeadlineUtc as string, new Date());
+  const receivingQuotes = openTender && !receptionClosed;
+  const selectionEndUtc =
+    receptionClosed && quotesDeadlineUtc ? tenderSelectionEndUtc(quotesDeadlineUtc) : null;
   const hasDesiredWindow = Boolean(desiredStartAtUtc || desiredEndAtUtc);
 
   // Exception marker: `null` on GEOCODED, so a precise request shows nothing.
@@ -218,6 +235,11 @@ export function RequestCard({
           Reçoit des devis jusqu’au {formatDateTime(quotesDeadlineUtc)}
         </p>
       )}
+      {receptionClosed && (
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Réception close — choisissez un devis avant le {formatDateTime(selectionEndUtc)}
+        </p>
+      )}
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         {/* A tender's amount is the client's optional budget, not a price. */}
@@ -241,6 +263,17 @@ export function RequestCard({
           )}
         </Detail>
       </dl>
+
+      {isTender && (
+        <div className="mt-4">
+          <Link
+            href={`/requests/${request.id}/devis`}
+            className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+          >
+            Voir les devis reçus →
+          </Link>
+        </div>
+      )}
 
       {awaitingCompletionDecision && <CompletionActions requestId={request.id} />}
       {isContested && <ContestedNotice />}
