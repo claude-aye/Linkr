@@ -11,6 +11,7 @@ import { ServiceProviderRepository } from '../service-providers/repositories/ser
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { PaymentsService } from '../payments/payments.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { DepositChargeFailedException } from '../payments/exceptions/payments.exceptions';
 
 /**
@@ -56,7 +57,10 @@ function buildHarness(opts: {
   const quotesRepo = {
     findByIdForUpdate: jest.fn().mockResolvedValue(locked),
     updateStatus: jest.fn().mockResolvedValue(undefined),
-    rejectSiblings: jest.fn().mockResolvedValue(2),
+    rejectSiblings: jest.fn().mockResolvedValue([
+      { quoteId: 'sibling-quote-1', serviceProviderId: 'sibling-provider-1' },
+      { quoteId: 'sibling-quote-2', serviceProviderId: 'sibling-provider-2' },
+    ]),
     // The post-commit re-read: the quote as the DB now holds it.
     findById: jest.fn().mockResolvedValue({ ...locked, status: QuoteStatus.ACCEPTED }),
   } as unknown as QuoteRepository;
@@ -110,6 +114,11 @@ function buildHarness(opts: {
     {} as unknown as ProfessionalServiceCategoryRepository,
     paymentsService,
     dataSource,
+    {
+      notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
+      notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
+      notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
+    } as unknown as NotificationsService,
   );
 
   return {

@@ -34,6 +34,10 @@ import { ServiceProviderRepository } from '../service-providers/repositories/ser
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { PaymentsService } from '../payments/payments.service';
 import { ProviderNotChargeableException } from '../payments/exceptions/payments.exceptions';
+import {
+  NotificationsService,
+  QuoteEmailRequest,
+} from '../notifications/notifications.service';
 
 /** Postgres unique-violation SQLSTATE — raised by the live-quote partial unique index. */
 function isUniqueViolation(err: unknown): boolean {
@@ -99,6 +103,7 @@ export class QuotesService {
     private readonly pscRepo: ProfessionalServiceCategoryRepository,
     private readonly paymentsService: PaymentsService,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -181,8 +186,9 @@ export class QuotesService {
       throw new QuoteValidUntilInPastException();
     }
 
+    let created: QuoteRecord;
     try {
-      const created = await this.quotesRepo.create({
+      created = await this.quotesRepo.create({
         serviceRequestId: request.id,
         serviceProviderId: provider.id,
         amount: String(dto.amount),
@@ -194,14 +200,25 @@ export class QuotesService {
         description: dto.description,
         validUntilUtc: validUntil,
       });
-      this.logger.log(
-        `Provider ${provider.id} submitted quote ${created.id} on request ${request.id}`,
-      );
-      return this.toResponseDto(created);
     } catch (err) {
       if (isUniqueViolation(err)) throw new ActiveQuoteExistsException();
       throw err;
     }
+
+    this.logger.log(
+      `Provider ${provider.id} submitted quote ${created.id} on request ${request.id}`,
+    );
+
+    // After the write succeeded, never before: a quote the unique index refused
+    // (409 above) must not announce itself. Enqueue only, not awaited — nothing
+    // here may speak for the submit.
+    this.notificationsService.notifyQuoteReceived(request).catch((err: unknown) => {
+      this.logger.error(
+        `notifyQuoteReceived failed for quote ${created.id} (request ${request.id}): ${String(err)}`,
+      );
+    });
+
+    return this.toResponseDto(created);
   }
 
   /**
@@ -275,6 +292,13 @@ export class QuotesService {
       serviceProviderId: string;
       agreedAmount: string | null;
       agreedCurrency: string | null;
+    } | null = null;
+    // Who to tell, once the tx has committed. Populated just before the commit
+    // like `depositParams`, so a rollback leaves it null and nobody is emailed.
+    let emailParams: {
+      request: QuoteEmailRequest;
+      acceptedProviderId: string;
+      rejectedProviderIds: string[];
     } | null = null;
 
     const qr = this.dataSource.createQueryRunner();
@@ -362,9 +386,17 @@ export class QuotesService {
         agreedCurrency: quote.currency,
       };
 
+      // The « not selected » recipients are EXACTLY the siblings this
+      // statement flipped — never "every quote of the request".
+      emailParams = {
+        request: { id: request.id, title: request.title, clientUserId: request.clientUserId },
+        acceptedProviderId: provider.id,
+        rejectedProviderIds: rejected.map((sibling) => sibling.serviceProviderId),
+      };
+
       await qr.commitTransaction();
       this.logger.log(
-        `Quote ${quote.id} accepted on request ${request.id}; ${rejected} sibling(s) rejected`,
+        `Quote ${quote.id} accepted on request ${request.id}; ${rejected.length} sibling(s) rejected`,
       );
     } catch (err) {
       await qr.rollbackTransaction();
@@ -394,6 +426,34 @@ export class QuotesService {
             `provider ${depositParams.serviceProviderId} but the deposit did NOT settle: ${detail}`,
         );
         this.serviceRequestsService.announceDepositFailure(depositParams.serviceRequestId);
+      }
+    }
+
+    // Emails: AFTER the commit and AFTER the capture block, BEFORE the re-read.
+    //   • after the commit — only a committed accept is news;
+    //   • after the capture — `depositSettled` is decided and nothing below can
+    //     change it; the selected provider is told on a 200 AND on a 202;
+    //   • before `findById` — that re-read can throw 404, and a failed re-read
+    //     must not swallow emails about an accept that did happen.
+    // Two separate calls, each enqueue-only and not awaited: the winner's email
+    // failing does not stop the others', and neither can change the response.
+    if (emailParams) {
+      const { request, acceptedProviderId, rejectedProviderIds } = emailParams;
+      this.notificationsService
+        .notifyQuoteAccepted(request, acceptedProviderId)
+        .catch((err: unknown) => {
+          this.logger.error(
+            `notifyQuoteAccepted failed for quote ${quoteId} (request ${request.id}): ${String(err)}`,
+          );
+        });
+      if (rejectedProviderIds.length > 0) {
+        this.notificationsService
+          .notifyQuotesNotSelected(request, rejectedProviderIds)
+          .catch((err: unknown) => {
+            this.logger.error(
+              `notifyQuotesNotSelected failed for quote ${quoteId} (request ${request.id}): ${String(err)}`,
+            );
+          });
       }
     }
 

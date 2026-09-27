@@ -4,6 +4,9 @@ import { depositFailedProviderEmail } from './deposit-failed-provider.template';
 import { jobCompletedEmail } from './job-completed.template';
 import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
+import { quoteAcceptedEmail } from './quote-accepted.template';
+import { quoteNotSelectedEmail } from './quote-not-selected.template';
+import { quoteReceivedEmail } from './quote-received.template';
 import { requestAcceptedEmail } from './request-accepted.template';
 import { requestDeclinedEmail } from './request-declined.template';
 
@@ -23,6 +26,11 @@ export const EMAIL_TEMPLATES = {
   'job-completed': jobCompletedEmail,
   'password-reset': passwordResetEmail,
   probe: probeEmail,
+  // The call-for-tenders trio (PR 5): one to the client per submitted quote,
+  // one to the selected provider, one to each provider this accept rejected.
+  'quote-accepted': quoteAcceptedEmail,
+  'quote-not-selected': quoteNotSelectedEmail,
+  'quote-received': quoteReceivedEmail,
   'request-accepted': requestAcceptedEmail,
   'request-declined': requestDeclinedEmail,
 } as const;
@@ -53,5 +61,8 @@ export type { DepositFailedProviderEmailVars } from './deposit-failed-provider.t
 export type { JobCompletedEmailVars } from './job-completed.template';
 export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';
+export type { QuoteAcceptedEmailVars } from './quote-accepted.template';
+export type { QuoteNotSelectedEmailVars } from './quote-not-selected.template';
+export type { QuoteReceivedEmailVars } from './quote-received.template';
 export type { RequestAcceptedEmailVars } from './request-accepted.template';
 export type { RequestDeclinedEmailVars } from './request-declined.template';

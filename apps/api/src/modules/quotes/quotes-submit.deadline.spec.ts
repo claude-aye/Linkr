@@ -16,6 +16,7 @@ import { ServiceRequestLocationPrecision } from '../service-requests/enums/servi
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { PaymentsService } from '../payments/payments.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * R6 — no quote once the tender's quotes deadline is reached.
@@ -122,6 +123,11 @@ function buildService(request: ServiceRequestRecord | null): {
     } as unknown as ProfessionalServiceCategoryRepository,
     {} as unknown as PaymentsService,
     {} as unknown as DataSource,
+    {
+      notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
+      notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
+      notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
+    } as unknown as NotificationsService,
   );
 
   return { service, create };
@@ -200,6 +206,11 @@ describe('QuotesService.submit — quotes deadline (R6)', () => {
       {} as unknown as ProfessionalServiceCategoryRepository,
       {} as unknown as PaymentsService,
       {} as unknown as DataSource,
+      {
+        notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
+        notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
+        notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
+      } as unknown as NotificationsService,
     );
 
     await expect(
