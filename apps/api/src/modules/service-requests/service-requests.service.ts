@@ -9,7 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { ServiceRequestRepository } from './repositories/service-request.repository';
-import { ServiceRequestRecord } from './repositories/service-request.repository';
+import {
+  ServiceRequestReadRecord,
+  ServiceRequestRecord,
+} from './repositories/service-request.repository';
+import { AgreedPrice, AgreedPriceRequest, AcceptedQuotePrice, resolveAgreedPrice } from './agreed-price';
 import { ServiceRequestAssignmentRepository } from './repositories/service-request-assignment.repository';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
 import { UsersRepository } from '../users/users.repository';
@@ -555,7 +559,9 @@ export class ServiceRequestsService {
       });
 
     return {
-      items: items.map((r) => ProviderServiceRequestItemDto.fromWithLabels(r)),
+      items: items.map((r) =>
+        ProviderServiceRequestItemDto.fromWithLabels(r, this.agreedPriceOf(r)),
+      ),
       total,
       page,
       limit,
@@ -1280,7 +1286,33 @@ export class ServiceRequestsService {
     return { expired: count };
   }
 
-  private toResponseDto(record: ServiceRequestRecord): ServiceRequestResponseDto {
+  /**
+   * Resolves the agreed price of a request read through a path that joined its
+   * ACCEPTED quote, and owns the one warning the pure rule cannot emit: an
+   * accepted PROJECT_TENDER with no ACCEPTED quote. The response is still
+   * served (agreed price null) — a read must not fail on a data anomaly — but
+   * the anomaly is not silent. Only the request id is logged.
+   */
+  private agreedPriceOf(
+    record: AgreedPriceRequest & {
+      id: string;
+      acceptedQuote: AcceptedQuotePrice | null;
+    },
+  ): AgreedPrice {
+    if (
+      record.requestType === ServiceRequestType.PROJECT_TENDER &&
+      record.acceptedAtUtc !== null &&
+      record.acceptedQuote === null
+    ) {
+      this.logger.warn(
+        `Accepted tender ${record.id} has no ACCEPTED quote; agreed price served as null`,
+      );
+    }
+    return resolveAgreedPrice(record, record.acceptedQuote);
+  }
+
+  private toResponseDto(record: ServiceRequestReadRecord): ServiceRequestResponseDto {
+    const agreed = this.agreedPriceOf(record);
     const dto = new ServiceRequestResponseDto();
     dto.id = record.id;
     dto.clientUserId = record.clientUserId;
@@ -1302,6 +1334,8 @@ export class ServiceRequestsService {
     dto.estimatedCurrency = record.estimatedCurrency;
     dto.finalAmount = record.finalAmount;
     dto.finalCurrency = record.finalCurrency;
+    dto.agreedAmount = agreed.agreedAmount;
+    dto.agreedCurrency = agreed.agreedCurrency;
     dto.responseDeadlineUtc = record.responseDeadlineUtc;
     dto.quotesDeadlineUtc = record.quotesDeadlineUtc;
     dto.acceptedAtUtc = record.acceptedAtUtc;

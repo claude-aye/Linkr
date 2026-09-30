@@ -9,6 +9,7 @@ import { ServiceRequestLocationPrecision } from '../enums/service-request-locati
 import { PaymentStatus } from '../../payments/enums/payment-status.enum';
 import { PaymentType } from '../../payments/enums/payment-type.enum';
 import { QuoteStatus } from '../../quotes/enums/quote-status.enum';
+import type { AcceptedQuotePrice } from '../agreed-price';
 import {
   ELIGIBILITY_CATEGORY_FROM_TENDER,
   ELIGIBILITY_POINT_FROM_TENDER,
@@ -47,6 +48,20 @@ export interface ServiceRequestRecord {
   cancelledByUserId: string | null;
   createdAtUtc: Date;
   updatedAtUtc: Date;
+}
+
+/**
+ * A request as the READ paths return it: the row plus its ACCEPTED quote's
+ * price, joined in the same statement (never one query per row). Only
+ * `findById` and `findAll` build this — the locked read and the two cron reads
+ * return the plain {@link ServiceRequestRecord}, because nothing on those
+ * paths ever renders a price. `toResponseDto` takes THIS type, so handing it a
+ * record from a path that did not join the quote is a compile error, not a
+ * silent `null`.
+ */
+export interface ServiceRequestReadRecord extends ServiceRequestRecord {
+  /** Null when no quote is ACCEPTED — always the case for a DIRECT_BOOKING. */
+  acceptedQuote: AcceptedQuotePrice | null;
 }
 
 /**
@@ -95,6 +110,8 @@ export interface ProviderServiceRequestRecord {
    * but unpaid, which is the whole readable half of the "explicit state" fix.
    */
   depositStatus: PaymentStatus | null;
+  /** ACCEPTED quote's price (LATERAL, same statement); null when none. */
+  acceptedQuote: AcceptedQuotePrice | null;
 }
 
 /**
@@ -296,6 +313,51 @@ interface RawRow {
   updated_at_utc: Date;
 }
 
+/** RawRow plus the two columns projected by {@link acceptedQuoteLateral}. */
+interface ReadRawRow extends RawRow {
+  quote_amount: string | null;
+  quote_currency: string | null;
+}
+
+/**
+ * The ACCEPTED quote of a request, joined as a LATERAL so it is one statement
+ * whatever the page size, and cannot fan the result out (LIMIT 1).
+ *
+ * The join exposes ONLY `quote_amount` / `quote_currency` — deliberately not
+ * `status`, `id` or `created_at_utc` — because the unaliased SELECT_COLUMNS of
+ * `service_requests` would otherwise become ambiguous. That is what lets the
+ * read paths keep their column list and WHERE clauses untouched.
+ *
+ * No index guarantees a single ACCEPTED quote per request (checked: the only
+ * unique index on `quotes` is the partial one over SUBMITTED). The guarantee is
+ * in the code — acceptance locks the request row FOR UPDATE, demands OPEN, and
+ * OPEN is unreachable from ASSIGNED. The ORDER BY is therefore never a tiebreak
+ * in practice; it exists so that the day that guarantee breaks, the answer is
+ * at least the SAME row on every read instead of whichever the planner found.
+ *
+ * `requestRef` is a compile-time literal, never caller data.
+ */
+function acceptedQuoteLateral(requestRef: 'service_requests' | 'sr'): string {
+  return `
+         LEFT JOIN LATERAL (
+           SELECT q.amount AS quote_amount, q.currency AS quote_currency
+             FROM quotes q
+            WHERE q.service_request_id = ${requestRef}.id
+              AND q.status = '${QuoteStatus.ACCEPTED}'
+            ORDER BY q.created_at_utc ASC, q.id ASC
+            LIMIT 1
+         ) aq ON true`;
+}
+
+const ACCEPTED_QUOTE_COLUMNS = `aq.quote_amount, aq.quote_currency`;
+
+function mapAcceptedQuote(
+  amount: string | null,
+  currency: string | null,
+): AcceptedQuotePrice | null {
+  return amount !== null && currency !== null ? { amount, currency } : null;
+}
+
 const SELECT_COLUMNS = `
   id, client_user_id, request_type, status,
   service_category_id, service_item_id,
@@ -347,6 +409,13 @@ function mapRow(row: RawRow): ServiceRequestRecord {
   };
 }
 
+function mapReadRow(row: ReadRawRow): ServiceRequestReadRecord {
+  return {
+    ...mapRow(row),
+    acceptedQuote: mapAcceptedQuote(row.quote_amount, row.quote_currency),
+  };
+}
+
 /**
  * Columns for the provider-dashboard read, aliased on `sr` and joined to the
  * catalog + client for the labels.
@@ -376,7 +445,8 @@ const PROVIDER_SELECT_COLUMNS = `
   cu.first_name  AS client_first_name,
   cu.last_name   AS client_last_name,
   cu.deleted_at_utc AS client_deleted_at_utc,
-  dep.status AS deposit_status
+  dep.status AS deposit_status,
+  ${ACCEPTED_QUOTE_COLUMNS}
 `;
 
 interface ProviderRawRow {
@@ -411,6 +481,8 @@ interface ProviderRawRow {
   client_last_name: string | null;
   client_deleted_at_utc: Date | null;
   deposit_status: PaymentStatus | null;
+  quote_amount: string | null;
+  quote_currency: string | null;
 }
 
 function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
@@ -444,6 +516,7 @@ function mapProviderRow(row: ProviderRawRow): ProviderServiceRequestRecord {
     serviceItemNameTranslations: row.service_item_name_translations,
 	clientDisplayName: clientDeleted ? null : row.client_display_name,
     depositStatus: row.deposit_status,
+    acceptedQuote: mapAcceptedQuote(row.quote_amount, row.quote_currency),
     clientFirstName: clientDeleted ? null : row.client_first_name,
     clientLastName: clientDeleted ? null : row.client_last_name,
   };
@@ -456,13 +529,14 @@ export class ServiceRequestRepository {
     private readonly repo: Repository<ServiceRequest>,
   ) {}
 
-  async findById(id: string): Promise<ServiceRequestRecord | null> {
-    const rows: RawRow[] = await this.repo.query(
-      `SELECT ${SELECT_COLUMNS} FROM service_requests
+  async findById(id: string): Promise<ServiceRequestReadRecord | null> {
+    const rows: ReadRawRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS}, ${ACCEPTED_QUOTE_COLUMNS}
+         FROM service_requests ${acceptedQuoteLateral('service_requests')}
        WHERE id = $1 AND deleted_at_utc IS NULL`,
       [id],
     );
-    return rows.length ? mapRow(rows[0]) : null;
+    return rows.length ? mapReadRow(rows[0]) : null;
   }
 
   /**
@@ -490,7 +564,7 @@ export class ServiceRequestRepository {
     requestType?: ServiceRequestType;
     page: number;
     limit: number;
-  }): Promise<{ items: ServiceRequestRecord[]; total: number }> {
+  }): Promise<{ items: ServiceRequestReadRecord[]; total: number }> {
     const conditions: string[] = ['deleted_at_utc IS NULL'];
     const params: unknown[] = [];
     let i = 1;
@@ -516,8 +590,11 @@ export class ServiceRequestRepository {
       params,
     );
 
-    const rows: RawRow[] = await this.repo.query(
-      `SELECT ${SELECT_COLUMNS} FROM service_requests
+    // The COUNT above does not join the quote: a LEFT JOIN LATERAL ... LIMIT 1
+    // cannot add or drop a row, so the two cannot disagree.
+    const rows: ReadRawRow[] = await this.repo.query(
+      `SELECT ${SELECT_COLUMNS}, ${ACCEPTED_QUOTE_COLUMNS}
+         FROM service_requests ${acceptedQuoteLateral('service_requests')}
        WHERE ${where}
        ORDER BY created_at_utc DESC
        LIMIT $${i++} OFFSET $${i++}`,
@@ -525,7 +602,7 @@ export class ServiceRequestRepository {
     );
 
     return {
-      items: rows.map(mapRow),
+      items: rows.map(mapReadRow),
       total: parseInt(countRows[0].count, 10),
     };
   }
@@ -582,6 +659,7 @@ export class ServiceRequestRepository {
          LEFT JOIN payments dep
            ON dep.service_request_id = sr.id
           AND dep.payment_type = '${PaymentType.DEPOSIT}'
+         ${acceptedQuoteLateral('sr')}
         WHERE ${where}
         ORDER BY sr.created_at_utc DESC
         LIMIT $${i++} OFFSET $${i++}`,
@@ -675,7 +753,7 @@ export class ServiceRequestRepository {
     };
   }
 
-  async create(data: CreateServiceRequestData): Promise<ServiceRequestRecord> {
+  async create(data: CreateServiceRequestData): Promise<ServiceRequestReadRecord> {
     const rows: Array<{ id: string }> = await this.repo.query(
       `INSERT INTO service_requests (
          client_user_id, request_type, status,
