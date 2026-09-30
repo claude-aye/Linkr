@@ -1,0 +1,39 @@
+# Runs the web unit tests (apps/web/src/**/*.test.mjs) on pull requests.
+# Until now they only ran on a developer's machine.
+#
+# Separate from the two guards on purpose: path filters apply to a whole
+# workflow, not per job, so folding this in would tie it to their triggers.
+#
+# Dependency-free: no pnpm install. The tests import only node:* and relative
+# .ts modules that themselves import nothing (Node strips the types natively,
+# >= 22.6). If a test ever imports a package, this job fails loudly with
+# ERR_MODULE_NOT_FOUND - add an install step then, don't work around it.
+#
+# `npm test` runs the package.json script as written, so the glob and the
+# Node flags live in one place. npm ships with setup-node and needs no
+# node_modules to run a script.
+
+name: Web tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/web-tests.yml'
+
+jobs:
+  web-unit-tests:
+    name: Web unit tests (node --test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm test
