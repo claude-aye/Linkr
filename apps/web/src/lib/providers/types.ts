@@ -153,6 +153,16 @@ export interface ProviderServiceRequestItem {
   estimatedCurrency: string | null;
   finalAmount: string | null;
   finalCurrency: string | null;
+  /**
+   * The AGREED price (API #121): what the deposit and balance are computed
+   * from — a tender's ACCEPTED quote, a direct booking's estimate. Null until
+   * accepted, and on the accepted-tender-without-quote anomaly. DERIVED from
+   * the schema, not hand-mirrored, like `serviceLocationPrecision`: the fields
+   * generate cleanly as `string | null`, so a drift in the contract breaks the
+   * build here instead of a card. Read only through `priceDisplay`.
+   */
+  agreedAmount: components['schemas']['ProviderServiceRequestItemDto']['agreedAmount'];
+  agreedCurrency: components['schemas']['ProviderServiceRequestItemDto']['agreedCurrency'];
   scheduledAtUtc: string | null;
   desiredStartAtUtc: string | null;
   desiredEndAtUtc: string | null;

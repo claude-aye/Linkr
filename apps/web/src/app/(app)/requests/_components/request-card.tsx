@@ -11,6 +11,7 @@ import {
   quotesReceptionClosed,
   tenderSelectionEndUtc,
 } from '@/lib/service-requests/tender-rules';
+import { CLIENT_PRICE_LABELS, priceDisplay } from '@/lib/service-requests/price-display';
 
 import { CompletionActions, ContestedNotice } from './completion-actions';
 import { ReviewSection } from './review-section';
@@ -175,6 +176,19 @@ export function RequestCard({
   const estimatedAmount = request.estimatedAmount as unknown as string | null;
   const estimatedCurrency = request.estimatedCurrency as unknown as string | null;
 
+  // `agreedAmount` / `agreedCurrency` are generated cleanly (`string | null`,
+  // PR #121 annotated them with a concrete type): read NATIVELY, no cast.
+  const price = priceDisplay(
+    {
+      requestType: request.requestType,
+      estimatedAmount,
+      estimatedCurrency,
+      agreedAmount: request.agreedAmount,
+      agreedCurrency: request.agreedCurrency,
+    },
+    CLIENT_PRICE_LABELS,
+  );
+
   // Same debt, same surgical cast: the desired window is nullable on the DTO
   // and therefore degrades to `Record<string, never>` too. A client whose
   // request now carries a date but cannot see it would be one silence more.
@@ -242,10 +256,10 @@ export function RequestCard({
       )}
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-        {/* A tender's amount is the client's optional budget, not a price. */}
-        <Detail label={isTender ? 'Budget indicatif' : 'Montant estimé'}>
-          {formatMoney(estimatedAmount, estimatedCurrency)}
-        </Detail>
+        {/* Once accepted, the AGREED price replaces the budget/estimate — one
+            amount, no status condition (cf. `priceDisplay`). Before that, a
+            tender's amount is the client's optional budget, not a price. */}
+        <Detail label={price.label}>{formatMoney(price.amount, price.currency)}</Detail>
         <Detail label={isTender ? 'Démarrage souhaité' : 'Période souhaitée'}>
           {isTender && !hasDesiredWindow
             ? 'Dates flexibles'
