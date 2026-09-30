@@ -26,6 +26,20 @@ export class ServiceRequestResponseDto {
   @ApiPropertyOptional() estimatedCurrency!: string | null;
   @ApiPropertyOptional() finalAmount!: string | null;
   @ApiPropertyOptional() finalCurrency!: string | null;
+
+  /**
+   * The price both parties agreed to — the amount the deposit and balance are
+   * computed from. NOT always `estimatedAmount`: a PROJECT_TENDER is charged on
+   * its ACCEPTED quote, and its `estimatedAmount` stays the client's indicative
+   * budget forever. Null until the request has been accepted, and null on an
+   * accepted request whose price cannot be determined. Amount and currency are
+   * a pair: both or neither. (Explicit `type` + `nullable`, so the generated
+   * client says `string | null` instead of degrading to `Record<string, never>`.)
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  agreedAmount!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  agreedCurrency!: string | null;
   @ApiPropertyOptional() responseDeadlineUtc!: Date | null;
   @ApiPropertyOptional() quotesDeadlineUtc!: Date | null;
   @ApiPropertyOptional() acceptedAtUtc!: Date | null;

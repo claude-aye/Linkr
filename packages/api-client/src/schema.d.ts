@@ -2121,6 +2121,8 @@ export interface components {
             estimatedCurrency?: Record<string, never>;
             finalAmount?: Record<string, never>;
             finalCurrency?: Record<string, never>;
+            agreedAmount?: string | null;
+            agreedCurrency?: string | null;
             responseDeadlineUtc?: Record<string, never>;
             quotesDeadlineUtc?: Record<string, never>;
             acceptedAtUtc?: Record<string, never>;
@@ -2181,6 +2183,8 @@ export interface components {
             estimatedCurrency?: Record<string, never>;
             finalAmount?: Record<string, never>;
             finalCurrency?: Record<string, never>;
+            agreedAmount?: string | null;
+            agreedCurrency?: string | null;
             scheduledAtUtc?: Record<string, never>;
             desiredStartAtUtc?: Record<string, never>;
             desiredEndAtUtc?: Record<string, never>;

@@ -5086,6 +5086,14 @@
           "finalCurrency": {
             "type": "object"
           },
+          "agreedAmount": {
+            "type": "string",
+            "nullable": true
+          },
+          "agreedCurrency": {
+            "type": "string",
+            "nullable": true
+          },
           "responseDeadlineUtc": {
             "type": "object"
           },
@@ -5293,6 +5301,14 @@
           },
           "finalCurrency": {
             "type": "object"
+          },
+          "agreedAmount": {
+            "type": "string",
+            "nullable": true
+          },
+          "agreedCurrency": {
+            "type": "string",
+            "nullable": true
           },
           "scheduledAtUtc": {
             "type": "object"

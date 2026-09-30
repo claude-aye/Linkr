@@ -4,6 +4,7 @@ import { ServiceRequestType } from '../enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
 import { PaymentStatus } from '../../payments/enums/payment-status.enum';
 import type { ProviderServiceRequestRecord } from '../repositories/service-request.repository';
+import type { AgreedPrice } from '../agreed-price';
 
 /**
  * Provider-facing service-request projection for the prestataire dashboard
@@ -43,6 +44,20 @@ export class ProviderServiceRequestItemDto {
   @ApiPropertyOptional() estimatedCurrency!: string | null;
   @ApiPropertyOptional() finalAmount!: string | null;
   @ApiPropertyOptional() finalCurrency!: string | null;
+
+  /**
+   * The price both parties agreed to — the amount the deposit and balance are
+   * computed from. NOT always `estimatedAmount`: a PROJECT_TENDER is charged on
+   * its ACCEPTED quote, and its `estimatedAmount` stays the client's indicative
+   * budget forever. Null until the request has been accepted, and null on an
+   * accepted request whose price cannot be determined. Amount and currency are
+   * a pair: both or neither. (Explicit `type` + `nullable`, so the generated
+   * client says `string | null` instead of degrading to `Record<string, never>`.)
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  agreedAmount!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  agreedCurrency!: string | null;
   @ApiPropertyOptional() scheduledAtUtc!: Date | null;
   @ApiPropertyOptional() desiredStartAtUtc!: Date | null;
   @ApiPropertyOptional() desiredEndAtUtc!: Date | null;
@@ -101,6 +116,7 @@ export class ProviderServiceRequestItemDto {
    */
   static fromWithLabels(
     record: ProviderServiceRequestRecord,
+    agreed: AgreedPrice,
   ): ProviderServiceRequestItemDto {
     const dto = new ProviderServiceRequestItemDto();
     dto.id = record.id;
@@ -114,6 +130,8 @@ export class ProviderServiceRequestItemDto {
     dto.estimatedCurrency = record.estimatedCurrency;
     dto.finalAmount = record.finalAmount;
     dto.finalCurrency = record.finalCurrency;
+    dto.agreedAmount = agreed.agreedAmount;
+    dto.agreedCurrency = agreed.agreedCurrency;
     dto.scheduledAtUtc = record.scheduledAtUtc;
     dto.desiredStartAtUtc = record.desiredStartAtUtc;
     dto.desiredEndAtUtc = record.desiredEndAtUtc;
