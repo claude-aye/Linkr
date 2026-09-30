@@ -289,7 +289,7 @@ test('the posted body is GEOCODED, [lng, lat], trimmed, and carries no booking f
   const result = assembleTender(draft(), NOW);
   assert.equal(result.kind, 'ready');
   const { body } = result;
-  assert.equal(body.requestType, 'PROJECT_TENDERX');
+  assert.equal(body.requestType, 'PROJECT_TENDER');
   assert.equal(body.serviceLocationPrecision, 'GEOCODED');
   assert.deepEqual(body.serviceLocation, { type: 'Point', coordinates: [-73.701, 45.554] });
   assert.equal(body.title, 'Rénover une salle de bain');
