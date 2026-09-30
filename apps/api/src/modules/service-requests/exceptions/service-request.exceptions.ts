@@ -69,3 +69,18 @@ export class RequestAlreadyContestedException extends HttpException {
     super(message, HttpStatus.CONFLICT);
   }
 }
+
+/**
+ * 409 — a deposit retry found no agreed price on a request that holds a live
+ * assignment: an accepted PROJECT_TENDER without an ACCEPTED quote, or a
+ * request with no `accepted_at_utc`. A data anomaly, not a payment outcome —
+ * raised BEFORE any Stripe call and any write, and never answered by falling
+ * back to the tender's budget (`estimated_amount`), which nobody agreed to.
+ */
+export class AgreedPriceUnavailableException extends HttpException {
+  constructor(
+    message = 'No agreed price is on file for this request; the deposit cannot be retried',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}

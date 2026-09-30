@@ -130,7 +130,11 @@ export class ServiceRequestsController {
   @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
   @ApiResponse({ status: 403, description: 'Caller is not the assigned worker' })
   @ApiResponse({ status: 404, description: 'Not found or no active assignment' })
-  @ApiResponse({ status: 409, description: 'Request is not in a state where a deposit applies' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Request is not in a state where a deposit applies, or no agreed price is on file (accepted tender without an ACCEPTED quote)',
+  })
   @ApiResponse({ status: 422, description: 'No amount to base a deposit on' })
   @ApiResponse({ status: 502, description: 'Stripe rejected the deposit charge' })
   retryDeposit(
