@@ -45,6 +45,7 @@ import {
 } from './constants';
 import { buildAssignmentTransition } from './service-request-assignment-state-machine';
 import {
+  AgreedPriceUnavailableException,
   DirectBookingValidationException,
   InvalidStateTransitionException,
   NotRequestOwnerException,
@@ -876,13 +877,32 @@ export class ServiceRequestsService {
       throw new NotFoundException('This request has no assigned provider');
     }
 
-    // Same basis as the accept that failed: the amount agreed on the request.
+    // ⚠️ SAME BASIS AS THE ACCEPT THAT FAILED — the AGREED price, never
+    // `estimatedAmount` read on its own. A DIRECT_BOOKING's accept charged on
+    // the request's estimate; a PROJECT_TENDER's accept (`QuotesService.accept`)
+    // charged on the ACCEPTED quote, and a tender's `estimatedAmount` is only
+    // the client's indicative budget — possibly empty, possibly a different
+    // figure. Reading it here used to 422 an empty-budget tender and charge a
+    // budget-based deposit on the others. `resolveAgreedPrice` is the one rule
+    // for both paths (it is also what the DTOs report as `agreedAmount`).
+    //
+    // The ACCEPTED quote comes from the SAME SQL statement as the request
+    // (`findById` joins it as a LATERAL): one snapshot, no second read. The
+    // currency travels with the amount — the quote's own on a tender.
+    const agreed = resolveAgreedPrice(request, request.acceptedQuote);
+    if (agreed.agreedAmount === null || agreed.agreedCurrency === null) {
+      // No fallback on the budget, no Stripe call, no write: whatever this
+      // request would be charged, nobody agreed to it. Id only in the log.
+      this.logger.warn(`Deposit retry refused on request ${requestId}: no agreed price on file`);
+      throw new AgreedPriceUnavailableException();
+    }
+
     await this.paymentsService.captureDeposit({
       serviceRequestId: requestId,
       clientUserId: request.clientUserId,
       serviceProviderId: request.assignedServiceProviderId,
-      agreedAmount: request.estimatedAmount,
-      agreedCurrency: request.estimatedCurrency,
+      agreedAmount: agreed.agreedAmount,
+      agreedCurrency: agreed.agreedCurrency,
     });
 
     this.logger.log(`Worker ${callerUserId} retried the deposit on request ${requestId}`);

@@ -4415,7 +4415,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Request is not in a state where a deposit applies */
+            /** @description Request is not in a state where a deposit applies, or no agreed price is on file (accepted tender without an ACCEPTED quote) */
             409: {
                 headers: {
                     [name: string]: unknown;
