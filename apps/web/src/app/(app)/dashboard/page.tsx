@@ -25,6 +25,7 @@ import { JobPipelineAction } from './_actions/job-pipeline-action';
 import { RetryDepositAction } from './_actions/retry-deposit-action';
 import { TenderQuoteAction } from './_actions/tender-quote-action';
 import { tendersToHandleCount } from '@/lib/service-requests/tender-rules';
+import { JOB_PRICE_LABELS, priceDisplay } from '@/lib/service-requests/price-display';
 import {
   NotificationsSection,
   type NotificationView,
@@ -468,7 +469,7 @@ function isDepositUnsettled(item: ProviderServiceRequestItem): boolean {
 /** Pipeline card: a request assigned to this provider, whatever its status. */
 function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   const badge = STATUS_BADGES[item.status];
-  const showFinal = item.finalAmount != null;
+  const price = priceDisplay(item, JOB_PRICE_LABELS);
   const locationNotice = providerLocationPrecisionNotice(item.serviceLocationPrecision);
   const depositUnsettled = isDepositUnsettled(item);
 
@@ -498,11 +499,10 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <Detail label="Client">{item.clientDisplayName || '—'}</Detail>
-        <Detail label={showFinal ? 'Prix final' : 'Prix estimé'}>
-          {showFinal
-            ? formatMoney(item.finalAmount, item.finalCurrency)
-            : formatMoney(item.estimatedAmount, item.estimatedCurrency)}
-        </Detail>
+        {/* The AGREED price once accepted (a tender's is its quote, never its
+            budget); before that, the estimate. `finalAmount` is no longer read —
+            nothing ever writes it. See `priceDisplay`. */}
+        <Detail label={price.label}>{formatMoney(price.amount, price.currency)}</Detail>
         <Detail label="Adresse" wide>
           {item.serviceAddress}
           {locationNotice && (
