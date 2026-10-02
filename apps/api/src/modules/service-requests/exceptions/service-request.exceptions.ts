@@ -84,3 +84,24 @@ export class AgreedPriceUnavailableException extends HttpException {
     super(message, HttpStatus.CONFLICT);
   }
 }
+
+/**
+ * 403 — the targeted provider can no longer practise the request's category:
+ * the practice row is paused, soft-deleted, or its verification is no longer
+ * VERIFIED / NOT_REQUIRED (a regulated licence that expired, for instance).
+ *
+ * 403 and not 409, and written in the provider's voice: the caller IS the
+ * provider, and what is refused is THEM, not the request's state. Raised inside
+ * the accept transaction, BEFORE any write and before the payability guard, so a
+ * refusal costs nothing — no assignment, no deposit.
+ *
+ * Distinct from `quotes`' `ProviderNoLongerEligibleException` (409), which speaks
+ * to the CLIENT choosing a quote: same fact, other reader.
+ */
+export class ProviderNotEligibleToAcceptException extends HttpException {
+  constructor(
+    message = 'Your provider profile is no longer eligible for this service category; this request cannot be accepted',
+  ) {
+    super(message, HttpStatus.FORBIDDEN);
+  }
+}

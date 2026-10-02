@@ -263,6 +263,7 @@ async function main(): Promise<void> {
       {} as never,
       { getOrThrow: () => 72 } as unknown as ConfigService,
       {} as never,
+      {} as never,
     );
 
     const warnings: string[] = [];

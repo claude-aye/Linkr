@@ -8,6 +8,7 @@ import {
 } from './repositories/service-request.repository';
 import { ServiceRequestAssignmentRepository } from './repositories/service-request-assignment.repository';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
+import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { UsersRepository } from '../users/users.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -15,7 +16,10 @@ import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
-import { InvalidStateTransitionException } from './exceptions/service-request.exceptions';
+import {
+  InvalidStateTransitionException,
+  ProviderNotEligibleToAcceptException,
+} from './exceptions/service-request.exceptions';
 import {
   DepositAmountUnavailableException,
   DepositChargeFailedException,
@@ -83,6 +87,10 @@ interface Harness {
   captureDeposit: jest.Mock;
   assertDepositBasis: jest.Mock;
   assignmentCreate: jest.Mock;
+  assertPayable: jest.Mock;
+  isEligibleForCategory: jest.Mock;
+  /** The manager handed to the transaction, to prove the read goes through it. */
+  txManager: EntityManager;
   committed: () => boolean;
   rolledBack: () => boolean;
 }
@@ -94,7 +102,7 @@ interface Harness {
 function buildHarness(
   preflight: ServiceRequestRecord,
   locked: ServiceRequestRecord | null,
-  opts?: { captureDeposit?: jest.Mock },
+  opts?: { captureDeposit?: jest.Mock; eligible?: boolean },
 ): Harness {
   let commit = false;
   let rollback = false;
@@ -121,11 +129,15 @@ function buildHarness(
 
   const captureDeposit = opts?.captureDeposit ?? jest.fn().mockResolvedValue(undefined);
   const assertDepositBasis = jest.fn();
+  const assertPayable = jest.fn().mockResolvedValue(undefined);
   const paymentsService = {
-    assertPayable: jest.fn().mockResolvedValue(undefined),
+    assertPayable,
     assertDepositBasis,
     captureDeposit,
   } as unknown as PaymentsService;
+
+  const txManager = {} as EntityManager;
+  const isEligibleForCategory = jest.fn().mockResolvedValue(opts?.eligible ?? true);
 
   const dataSource = {
     createQueryRunner: () => ({
@@ -138,7 +150,7 @@ function buildHarness(
         rollback = true;
       }),
       release: jest.fn().mockResolvedValue(undefined),
-      manager: {} as EntityManager,
+      manager: txManager,
     }),
   } as unknown as DataSource;
 
@@ -157,6 +169,7 @@ function buildHarness(
     paymentsService,
     { getOrThrow: jest.fn().mockReturnValue(72) } as unknown as ConfigService,
     dataSource,
+    { isEligibleForCategory } as unknown as ProfessionalServiceCategoryRepository,
   );
 
   return {
@@ -164,6 +177,9 @@ function buildHarness(
     captureDeposit,
     assertDepositBasis,
     assignmentCreate,
+    assertPayable,
+    isEligibleForCategory,
+    txManager,
     committed: () => commit,
     rolledBack: () => rollback,
   };
@@ -326,5 +342,82 @@ describe('ServiceRequestsService.acceptRequest - the deposit never speaks for th
     expect(h.committed()).toBe(false);
     expect(h.rolledBack()).toBe(true);
     expect(h.assignmentCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ServiceRequestsService.acceptRequest - the provider must still practise the category', () => {
+  const OLD_CATEGORY = '33333333-3333-4333-8333-333333333333';
+  const NEW_CATEGORY = '77777777-7777-4777-8777-777777777777';
+
+  it('403s, in the provider voice, when the practice is no longer eligible', async () => {
+    const h = buildHarness(record(), record(), { eligible: false });
+
+    const attempt = h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID);
+    await expect(attempt).rejects.toBeInstanceOf(ProviderNotEligibleToAcceptException);
+    await expect(attempt).rejects.toMatchObject({
+      status: 403,
+      message:
+        'Your provider profile is no longer eligible for this service category; this request cannot be accepted',
+    });
+  });
+
+  it('refuses BEFORE any write, the payability guard and Stripe — and rolls back', async () => {
+    const h = buildHarness(record(), record(), { eligible: false });
+
+    await expect(
+      h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID),
+    ).rejects.toBeInstanceOf(ProviderNotEligibleToAcceptException);
+
+    // The ordering is the contract: nothing downstream of the refusal ran.
+    expect(h.assertDepositBasis).not.toHaveBeenCalled();
+    expect(h.assertPayable).not.toHaveBeenCalled();
+    expect(h.assignmentCreate).not.toHaveBeenCalled();
+    expect(h.captureDeposit).not.toHaveBeenCalled();
+    expect(h.committed()).toBe(false);
+    expect(h.rolledBack()).toBe(true);
+  });
+
+  it('keeps the 409 for a request that is no longer OPEN, even for an ineligible provider', async () => {
+    // A cancelled request must keep saying so: the state conflict is checked
+    // first, and the eligibility read never happens.
+    const h = buildHarness(record(), record({ status: ServiceRequestStatus.CANCELLED }), {
+      eligible: false,
+    });
+
+    await expect(
+      h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID),
+    ).rejects.toBeInstanceOf(InvalidStateTransitionException);
+    expect(h.isEligibleForCategory).not.toHaveBeenCalled();
+  });
+
+  it('reads the eligibility of the LOCKED row, inside the transaction', async () => {
+    // Pre-flight and locked rows carry DIFFERENT categories, so a service that
+    // read the category from the unlocked copy cannot pass. This pins WHICH row
+    // the fact is read from — the same locked read as the status and the amount.
+    // It does not claim a measurable race: that cannot be reproduced from here.
+    const h = buildHarness(
+      record({ serviceCategoryId: OLD_CATEGORY }),
+      record({ serviceCategoryId: NEW_CATEGORY }),
+    );
+
+    await h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID);
+
+    expect(h.isEligibleForCategory).toHaveBeenCalledTimes(1);
+    expect(h.isEligibleForCategory).toHaveBeenCalledWith(
+      PROVIDER_ID,
+      NEW_CATEGORY,
+      h.txManager,
+    );
+  });
+
+  it('lets an eligible provider through to the assignment and the deposit', async () => {
+    const h = buildHarness(record(), record(), { eligible: true });
+
+    const outcome = await h.service.acceptRequest(REQUEST_ID, PROVIDER_USER_ID);
+
+    expect(outcome.depositSettled).toBe(true);
+    expect(h.assignmentCreate).toHaveBeenCalledTimes(1);
+    expect(h.captureDeposit).toHaveBeenCalledTimes(1);
+    expect(h.committed()).toBe(true);
   });
 });

@@ -16,6 +16,7 @@ import {
 import { AgreedPrice, AgreedPriceRequest, AcceptedQuotePrice, resolveAgreedPrice } from './agreed-price';
 import { ServiceRequestAssignmentRepository } from './repositories/service-request-assignment.repository';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
+import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { UsersRepository } from '../users/users.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
@@ -50,6 +51,7 @@ import {
   InvalidStateTransitionException,
   NotRequestOwnerException,
   OrganizationDispatchNotSupportedException,
+  ProviderNotEligibleToAcceptException,
   RequestAlreadyContestedException,
   RequestContestedException,
   RequestNotCompletedException,
@@ -132,6 +134,8 @@ export class ServiceRequestsService {
     private readonly paymentsService: PaymentsService,
     config: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
+    // Last, so every existing positional construction stays valid up to here.
+    private readonly pscRepo: ProfessionalServiceCategoryRepository,
   ) {
     this.autoReleaseHours = config.getOrThrow<number>('PLATFORM_AUTO_RELEASE_HOURS');
   }
@@ -702,6 +706,25 @@ export class ServiceRequestsService {
       // doing it here first means the 409 names the state conflict rather than
       // whichever check `assignIndividualProvider` happens to run first.
       buildTransition(locked.status, ServiceRequestStatus.ASSIGNED);
+
+      // The provider must still practise the category this request was made for.
+      // `create()` never checked it and nothing re-checks it later, so a licence
+      // that expired (`runLicenseExpiryCheck` → REJECTED), a paused trade or a
+      // removed one would otherwise be accepted — and a deposit captured — on a
+      // request received before the change. Same predicate as `QuotesService.accept`
+      // (`isEligibleForCategory`), read on the LOCKED row's category and through
+      // the transaction's own manager: the same read as the other locked facts,
+      // not a measurable race. After the 409 so a cancelled request still says
+      // so; before `assertDepositBasis` / `assertPayable` so a refusal costs
+      // nothing and never reaches Stripe.
+      const eligible = await this.pscRepo.isEligibleForCategory(
+        locked.requestedServiceProviderId,
+        locked.serviceCategoryId,
+        qr.manager,
+      );
+      if (!eligible) {
+        throw new ProviderNotEligibleToAcceptException();
+      }
 
       // "There is no amount to take a deposit from" is a precondition of the
       // REQUEST, not an outcome of the payment, so it is checked here — inside

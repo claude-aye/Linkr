@@ -100,7 +100,11 @@ export class ServiceRequestsController {
       'Assigned, but the deposit did not settle. The job is the provider’s; the deposit is retryable via POST :id/retry-deposit.',
   })
   @ApiResponse({ status: 400, description: 'Not a DIRECT_BOOKING or missing provider' })
-  @ApiResponse({ status: 403, description: 'Caller is not the targeted provider' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Caller is not the targeted provider, or the targeted provider can no longer practise the request’s service category (paused, removed, or its verification is no longer valid)',
+  })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 409, description: 'Invalid state transition' })
   @ApiResponse({ status: 422, description: 'ORGANIZATION dispatch not supported, or no amount to base a deposit on' })
