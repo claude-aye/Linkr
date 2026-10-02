@@ -14,6 +14,7 @@ import {
   ActiveQuoteExistsException,
   NotQuoteOwnerException,
   OrganizationQuoteDispatchNotImplementedException,
+  ProviderNoLongerEligibleException,
   ProviderNotEligibleForCategoryException,
   ProviderProfileRequiredException,
   ProviderUnavailableException,
@@ -61,9 +62,9 @@ export interface AcceptQuoteOutcome {
 /**
  * Each acceptability reason → the exception `accept` has always thrown for it.
  * Exhaustive by construction: a new reason that is not mapped here does not
- * compile. The only reason without a historical exception is PROVIDER_PAUSED,
- * which is new (409). PROVIDER_NOT_CHARGEABLE reuses the one `assertPayable`
- * throws — same class, same 409.
+ * compile. Two reasons have no historical exception: PROVIDER_PAUSED and
+ * PROVIDER_NOT_ELIGIBLE, both new (409). PROVIDER_NOT_CHARGEABLE reuses the one
+ * `assertPayable` throws — same class, same 409.
  */
 function acceptViolationException(
   violation: QuoteAcceptabilityViolation,
@@ -89,6 +90,10 @@ function acceptViolationException(
     case QuoteAcceptabilityViolation.PROVIDER_NOT_CHARGEABLE:
       // The exception `assertPayable` has always thrown for it — same 409.
       return new ProviderNotChargeableException();
+    case QuoteAcceptabilityViolation.PROVIDER_NOT_ELIGIBLE:
+      // NOT `ProviderNotEligibleForCategoryException` (403): that one speaks to
+      // a provider trying to quote. This one speaks to the client accepting.
+      return new ProviderNoLongerEligibleException();
   }
 }
 
@@ -334,11 +339,23 @@ export class QuotesService {
         // Chargeability is read through the SAME method `assertPayable` uses
         // (it still runs in `assignIndividualProvider`: that duplicate read is
         // assumed — it also guards direct booking).
+        //
+        // Eligibility: the SAME predicate `submit` enforced, re-read now because
+        // the trade can be paused, deleted or downgraded between the two. Read
+        // through `qr.manager` — which only keeps the transaction's connection:
+        // under READ COMMITTED it buys NO fresher view than a read outside it,
+        // and the claim row is NOT locked. A license-expiry downgrade committing
+        // right after this read is not seen (tracked debt, CLAUDE.md §6).
         provider
           ? {
               ...provider,
               deleted: false,
               chargesEnabled: await this.paymentsService.isProviderChargeable(provider.id),
+              eligibleForCategory: await this.pscRepo.isEligibleForCategory(
+                provider.id,
+                request.serviceCategoryId,
+                qr.manager,
+              ),
             }
           : null,
         new Date(),

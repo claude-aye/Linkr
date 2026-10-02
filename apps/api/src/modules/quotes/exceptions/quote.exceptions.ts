@@ -129,3 +129,18 @@ export class RequestNotATenderException extends HttpException {
     super(message, HttpStatus.BAD_REQUEST);
   }
 }
+
+/**
+ * 409 — the quote's provider no longer holds the request's trade: the claim was
+ * paused, deleted, or downgraded (license expiry → REJECTED) after the quote was
+ * sent. Spoken to the CLIENT accepting the quote — deliberately NOT
+ * `ProviderNotEligibleForCategoryException` (403), which speaks to the provider
+ * trying to quote.
+ */
+export class ProviderNoLongerEligibleException extends HttpException {
+  constructor(
+    message = 'This provider is no longer eligible for this service category; their quote cannot be accepted',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}

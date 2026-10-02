@@ -130,7 +130,9 @@ export class QuotesController {
   @ApiResponse({ status: 404, description: 'Quote, request or provider not found' })
   @ApiResponse({
     status: 409,
-    description: 'Request not OPEN, quote not SUBMITTED, quote expired, or the provider is paused',
+    description:
+      'Request not OPEN, quote not SUBMITTED, quote expired, or the provider is paused, ' +
+      'cannot take charges, or is no longer eligible for the service category',
   })
   @ApiResponse({ status: 501, description: 'Accepting an ORGANIZATION provider quote is not yet implemented' })
   async accept(

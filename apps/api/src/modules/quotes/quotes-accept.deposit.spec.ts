@@ -111,7 +111,11 @@ function buildHarness(opts: {
     quotesRepo,
     serviceRequestsService,
     providerRepo,
-    {} as unknown as ProfessionalServiceCategoryRepository,
+    {
+      // Eligible by default: existing tests keep their meaning; the
+      // ineligible case has its own tests (received-quotes.spec).
+      isEligibleForCategory: jest.fn().mockResolvedValue(true),
+    } as unknown as ProfessionalServiceCategoryRepository,
     paymentsService,
     dataSource,
     {
