@@ -4352,7 +4352,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Caller is not the targeted provider */
+            /** @description Caller is not the targeted provider, or the targeted provider can no longer practise the request’s service category (paused, removed, or its verification is no longer valid) */
             403: {
                 headers: {
                     [name: string]: unknown;

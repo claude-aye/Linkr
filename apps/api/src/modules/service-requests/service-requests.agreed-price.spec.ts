@@ -9,6 +9,7 @@ import {
 } from './repositories/service-request.repository';
 import { ServiceRequestAssignmentRepository } from './repositories/service-request-assignment.repository';
 import { ServiceProviderRepository } from '../service-providers/repositories/service-provider.repository';
+import { ProfessionalServiceCategoryRepository } from '../service-providers/repositories/professional-service-category.repository';
 import { UsersRepository } from '../users/users.repository';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -117,6 +118,7 @@ function build(repo: Partial<ServiceRequestRepository>): ServiceRequestsService 
     {} as unknown as PaymentsService,
     { getOrThrow: jest.fn().mockReturnValue(72) } as unknown as ConfigService,
     {} as unknown as DataSource,
+    { isEligibleForCategory: jest.fn().mockResolvedValue(true) } as unknown as ProfessionalServiceCategoryRepository,
   );
 }
 
