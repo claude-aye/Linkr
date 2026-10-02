@@ -33,6 +33,7 @@ const provider = (o: Partial<AcceptabilityProvider> = {}): AcceptabilityProvider
   isActive: true,
   deleted: false,
   chargesEnabled: true,
+  eligibleForCategory: true,
   ...o,
 });
 
@@ -136,6 +137,20 @@ describe('quoteAcceptabilityViolation — truth table', () => {
     );
   });
 
+  it('PROVIDER_NOT_ELIGIBLE when the provider no longer holds the trade', () => {
+    expect(
+      quoteAcceptabilityViolation(request(), quote(), provider({ eligibleForCategory: false }), NOW),
+    ).toBe(V.PROVIDER_NOT_ELIGIBLE);
+  });
+
+  it('PROVIDER_NOT_ELIGIBLE when eligibility is unknown (partial double)', () => {
+    const p = provider();
+    delete (p as Partial<AcceptabilityProvider>).eligibleForCategory;
+    expect(quoteAcceptabilityViolation(request(), quote(), p, NOW)).toBe(
+      V.PROVIDER_NOT_ELIGIBLE,
+    );
+  });
+
   describe('order — the first failing rule wins, in the historical guard order', () => {
     it('request before quote', () => {
       expect(
@@ -196,6 +211,30 @@ describe('quoteAcceptabilityViolation — truth table', () => {
       ['paused', () => quoteAcceptabilityViolation(request(), quote(), provider({ isActive: false, chargesEnabled: false }), NOW), V.PROVIDER_PAUSED],
     ])('%s AND not chargeable → the earlier reason wins', (_label, run, expected) => {
       expect(run()).toBe(expected);
+    });
+
+    // PROVIDER_NOT_ELIGIBLE is LAST of all: it is new, so every earlier reason
+    // keeps the code it answered before.
+    it.each<[string, Partial<AcceptabilityProvider>, V]>([
+      ['paused', { isActive: false }, V.PROVIDER_PAUSED],
+      ['not chargeable', { chargesEnabled: false }, V.PROVIDER_NOT_CHARGEABLE],
+      ['deleted', { deleted: true }, V.PROVIDER_GONE],
+      ['organization', { providerType: ProviderType.ORGANIZATION, userId: null }, V.PROVIDER_ORGANIZATION],
+    ])('%s AND not eligible → the earlier reason wins', (_label, o, expected) => {
+      expect(
+        quoteAcceptabilityViolation(
+          request(),
+          quote(),
+          provider({ ...o, eligibleForCategory: false }),
+          NOW,
+        ),
+      ).toBe(expected);
+    });
+
+    it('everything fine → null (eligibility included)', () => {
+      expect(
+        quoteAcceptabilityViolation(request(), quote(), provider({ eligibleForCategory: true }), NOW),
+      ).toBeNull();
     });
   });
 });

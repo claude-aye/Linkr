@@ -53,12 +53,24 @@ export class ProfessionalServiceCategoryRepository {
    * True when the provider may currently practice (and thus quote/serve) in a
    * category: an active, non-deleted practice row whose verification is
    * satisfied (VERIFIED for regulated, NOT_REQUIRED for informal).
+   *
+   * ⚠️ MIRRORED IN SQL by `QuoteRepository.findReceivedForRequest` (its
+   * `provider_eligible_for_category` EXISTS), so the client's list and `accept`
+   * cannot disagree. Change one, change the other — `quote-eligibility.probe.ts`
+   * compares the two case by case.
+   *
+   * Optional `manager` so `QuotesService.accept` can read inside its
+   * transaction (same connection) — same shape as `updateVerification`.
    */
   async isEligibleForCategory(
     serviceProviderId: string,
     serviceCategoryId: string,
+    manager?: import('typeorm').EntityManager,
   ): Promise<boolean> {
-    return this.repo
+    const repo = manager
+      ? manager.getRepository(ProfessionalServiceCategory)
+      : this.repo;
+    return repo
       .createQueryBuilder('psc')
       .where('psc.service_provider_id = :serviceProviderId', { serviceProviderId })
       .andWhere('psc.service_category_id = :serviceCategoryId', { serviceCategoryId })

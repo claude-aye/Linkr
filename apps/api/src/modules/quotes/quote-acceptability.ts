@@ -23,7 +23,11 @@ import { ProviderType } from '../service-providers/enums/provider-type.enum';
  *     refusal came from `assertPayable` inside `assignIndividualProvider`,
  *     i.e. after EVERY check here. A deleted / expired / organization / paused
  *     case keeps its own code; only a quote that passes all of them reaches
- *     this one, and gets the SAME 409 (`ProviderNotChargeableException`).
+ *     this one, and gets the SAME 409 (`ProviderNotChargeableException`);
+ *   - PROVIDER_NOT_ELIGIBLE LAST of all: a reason that did not exist before,
+ *     so placing it after every other one is the only position where no
+ *     existing case changes its code. A paused / non-chargeable provider who
+ *     ALSO lost the trade keeps answering what it answered before.
  *
  * Owner checks and "not found" on the quote or the request are NOT here: they
  * are about who is asking and what exists, not about whether this quote can be
@@ -37,6 +41,7 @@ export enum QuoteAcceptabilityViolation {
   PROVIDER_ORGANIZATION = 'PROVIDER_ORGANIZATION',
   PROVIDER_PAUSED = 'PROVIDER_PAUSED',
   PROVIDER_NOT_CHARGEABLE = 'PROVIDER_NOT_CHARGEABLE',
+  PROVIDER_NOT_ELIGIBLE = 'PROVIDER_NOT_ELIGIBLE',
 }
 
 export interface AcceptabilityRequest {
@@ -65,6 +70,13 @@ export interface AcceptabilityProvider {
    * for the same reason as `deleted`: each caller must say where it read it.
    */
   chargesEnabled: boolean;
+  /**
+   * The provider still holds the request's trade: an ACTIVE, non-deleted claim
+   * (`professional_service_categories`) whose verification is VERIFIED or
+   * NOT_REQUIRED — the predicate of `isEligibleForCategory`, the one `submit`
+   * already enforced. REQUIRED for the same reason as `chargesEnabled`.
+   */
+  eligibleForCategory: boolean;
 }
 
 export function quoteAcceptabilityViolation(
@@ -125,6 +137,18 @@ export function quoteAcceptabilityViolation(
   // "cannot be charged" — no Connect row already means false upstream.
   if (provider.chargesEnabled !== true) {
     return QuoteAcceptabilityViolation.PROVIDER_NOT_CHARGEABLE;
+  }
+
+  // `submit` checks the trade, but a quote can sit for days before the client
+  // picks it. In between, the provider can pause the trade, delete it, or lose
+  // it to the license-expiry downgrade (VERIFIED → REJECTED) — and none of the
+  // three touches the quote. Without this reason the client would assign the
+  // job, and capture a deposit, to someone the platform no longer lets practice
+  // that trade: for a regulated trade, a license that is no longer verified.
+  //
+  // `!== true`, like `chargesEnabled`: "unknown" must read as "not eligible".
+  if (provider.eligibleForCategory !== true) {
+    return QuoteAcceptabilityViolation.PROVIDER_NOT_ELIGIBLE;
   }
 
   return null;

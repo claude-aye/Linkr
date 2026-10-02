@@ -5522,7 +5522,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Request not OPEN, quote not SUBMITTED, quote expired, or the provider is paused */
+            /** @description Request not OPEN, quote not SUBMITTED, quote expired, or the provider is paused, cannot take charges, or is no longer eligible for the service category */
             409: {
                 headers: {
                     [name: string]: unknown;

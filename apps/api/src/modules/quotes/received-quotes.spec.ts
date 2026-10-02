@@ -11,6 +11,7 @@ import {
 import { QuoteStatus } from './enums/quote-status.enum';
 import {
   OrganizationQuoteDispatchNotImplementedException,
+  ProviderNoLongerEligibleException,
   ProviderUnavailableException,
   QuoteExpiredException,
   RequestNotATenderException,
@@ -48,6 +49,7 @@ const REQUEST_ID = '55555555-5555-4555-8555-555555555555';
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROVIDER_ID = '22222222-2222-4222-8222-222222222222';
 const PROVIDER_USER_ID = '66666666-6666-4666-8666-666666666666';
+const CATEGORY_ID = '88888888-8888-4888-8888-888888888888';
 
 interface Scenario {
   requestType: ServiceRequestType;
@@ -59,6 +61,7 @@ interface Scenario {
   providerIsActive: boolean;
   providerDeleted: boolean;
   providerChargesEnabled: boolean;
+  providerEligibleForCategory: boolean;
 }
 
 const future = () => new Date(Date.now() + 86_400_000);
@@ -75,6 +78,7 @@ function scenario(o: Partial<Scenario> = {}): Scenario {
     providerIsActive: true,
     providerDeleted: false,
     providerChargesEnabled: true,
+    providerEligibleForCategory: true,
     ...o,
   };
 }
@@ -83,6 +87,7 @@ function requestRecord(s: Scenario) {
   return {
     id: REQUEST_ID,
     clientUserId: CLIENT_ID,
+    serviceCategoryId: CATEGORY_ID,
     requestType: s.requestType,
     status: s.requestStatus,
   };
@@ -123,6 +128,7 @@ function receivedRecord(s: Scenario, o: Partial<ReceivedQuoteRecord> = {}): Rece
     providerIsActive: s.providerIsActive,
     providerDeletedAtUtc: s.providerDeleted ? new Date() : null,
     providerChargesEnabled: s.providerChargesEnabled,
+    providerEligibleForCategory: s.providerEligibleForCategory,
     providerDisplayName: 'Coiffure Bob',
     providerHeadline: 'Coupes à domicile',
     verificationStatus: PscVerificationStatus.NOT_REQUIRED,
@@ -161,6 +167,15 @@ function acceptHarness(s: Scenario) {
     ),
   };
   const captureDeposit = jest.fn().mockResolvedValue(undefined);
+  const pscRepo = {
+    isEligibleForCategory: jest.fn().mockResolvedValue(s.providerEligibleForCategory),
+  };
+  const notificationsService = {
+    notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
+    notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
+    notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
+  };
+  const manager = {} as EntityManager;
   const dataSource = {
     createQueryRunner: () => ({
       connect: jest.fn(),
@@ -172,29 +187,28 @@ function acceptHarness(s: Scenario) {
         rolledBack = true;
       }),
       release: jest.fn(),
-      manager: {} as EntityManager,
+      manager,
     }),
   };
   const service = new QuotesService(
     quotesRepo as unknown as QuoteRepository,
     serviceRequestsService as unknown as ServiceRequestsService,
     providerRepo as unknown as ServiceProviderRepository,
-    {} as unknown as ProfessionalServiceCategoryRepository,
+    pscRepo as unknown as ProfessionalServiceCategoryRepository,
     {
       captureDeposit,
       isProviderChargeable: jest.fn().mockResolvedValue(s.providerChargesEnabled),
     } as unknown as PaymentsService,
     dataSource as unknown as DataSource,
-    {
-      notifyQuoteReceived: jest.fn().mockResolvedValue(undefined),
-      notifyQuoteAccepted: jest.fn().mockResolvedValue(undefined),
-      notifyQuotesNotSelected: jest.fn().mockResolvedValue(undefined),
-    } as unknown as NotificationsService,
+    notificationsService as unknown as NotificationsService,
   );
   return {
     service,
     quotesRepo,
     serviceRequestsService,
+    pscRepo,
+    notificationsService,
+    manager,
     captureDeposit,
     committed: () => committed,
     rolledBack: () => rolledBack,
@@ -576,5 +590,83 @@ describe('ReceivedQuotesService.listForClient — projection', () => {
     for (const forbidden of ['email', 'phone', 'serviceAddress', 'serviceBaseLocation', 'userId', 'providerUserId', 'serviceRequestId']) {
       expect(keys).not.toContain(forbidden);
     }
+  });
+});
+
+describe('PROVIDER_NOT_ELIGIBLE — a trade lost after the quote blocks the accept', () => {
+  // The three ways to lose a trade (pause, soft-delete, REJECTED by the expiry
+  // downgrade) all collapse into `isEligibleForCategory` → false here; that
+  // they do is proven against a real Postgres by `quote-eligibility.probe.ts`.
+
+  it('accept → 409 ProviderNoLongerEligibleException, list → acceptable: false', async () => {
+    const s = scenario({ providerEligibleForCategory: false });
+    const h = acceptHarness(s);
+
+    const err = await h.service.accept(QUOTE_ID, CLIENT_ID).catch((e: HttpException) => e);
+    expect(err).toBeInstanceOf(ProviderNoLongerEligibleException);
+    expect((err as HttpException).getStatus()).toBe(409);
+    expect(h.rolledBack()).toBe(true);
+    expect(h.committed()).toBe(false);
+
+    expect(await listAcceptable(s)).toBe(false);
+  });
+
+  it('writes NOTHING: quote still SUBMITTED, siblings intact, no assignment, no deposit, no email', async () => {
+    const h = acceptHarness(scenario({ providerEligibleForCategory: false }));
+
+    await h.service.accept(QUOTE_ID, CLIENT_ID).catch(() => undefined);
+
+    expect(h.quotesRepo.updateStatus).not.toHaveBeenCalled();
+    expect(h.quotesRepo.rejectSiblings).not.toHaveBeenCalled();
+    expect(h.serviceRequestsService.assignIndividualProvider).not.toHaveBeenCalled();
+    expect(h.captureDeposit).not.toHaveBeenCalled();
+    expect(h.serviceRequestsService.announceDepositFailure).not.toHaveBeenCalled();
+    expect(h.notificationsService.notifyQuoteAccepted).not.toHaveBeenCalled();
+    expect(h.notificationsService.notifyQuotesNotSelected).not.toHaveBeenCalled();
+  });
+
+  it("reads eligibility for the quote's provider and the REQUEST's category, inside the tx", async () => {
+    const h = acceptHarness(scenario());
+    await h.service.accept(QUOTE_ID, CLIENT_ID);
+    expect(h.pscRepo.isEligibleForCategory).toHaveBeenCalledTimes(1);
+    expect(h.pscRepo.isEligibleForCategory).toHaveBeenCalledWith(
+      PROVIDER_ID,
+      CATEGORY_ID,
+      h.manager,
+    );
+  });
+
+  it('is LAST: paused AND not eligible → the historical PROVIDER_PAUSED 409', async () => {
+    const h = acceptHarness(
+      scenario({ providerIsActive: false, providerEligibleForCategory: false }),
+    );
+    await expect(h.service.accept(QUOTE_ID, CLIENT_ID)).rejects.toBeInstanceOf(
+      ProviderUnavailableException,
+    );
+  });
+
+  it('is LAST: not chargeable AND not eligible → the historical PROVIDER_NOT_CHARGEABLE 409', async () => {
+    const h = acceptHarness(
+      scenario({ providerChargesEnabled: false, providerEligibleForCategory: false }),
+    );
+    await expect(h.service.accept(QUOTE_ID, CLIENT_ID)).rejects.toBeInstanceOf(
+      ProviderNotChargeableException,
+    );
+  });
+
+  it("list: only the ineligible provider's quote turns unacceptable", async () => {
+    const s = scenario();
+    const h = listHarness({
+      request: requestRecord(s),
+      records: [
+        receivedRecord(s, { id: 'q-ineligible', providerEligibleForCategory: false }),
+        receivedRecord(s, { id: 'q-eligible' }),
+      ],
+    });
+    const items = await h.service.listForClient(REQUEST_ID, CLIENT_ID);
+    expect(items.map((i) => [i.id, i.acceptable])).toEqual([
+      ['q-ineligible', false],
+      ['q-eligible', true],
+    ]);
   });
 });

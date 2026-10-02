@@ -85,6 +85,7 @@ export class ReceivedQuotesService {
           isActive: record.providerIsActive,
           deleted: record.providerDeletedAtUtc !== null,
           chargesEnabled: record.providerChargesEnabled,
+          eligibleForCategory: record.providerEligibleForCategory,
         },
         now,
       );

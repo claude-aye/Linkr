@@ -74,6 +74,12 @@ export interface ReceivedQuoteRecord {
    * rule as `PaymentsService.isProviderChargeable`, which `accept` reads.
    */
   providerChargesEnabled: boolean;
+  /**
+   * The provider still holds the request's trade — the predicate of
+   * `ProfessionalServiceCategoryRepository.isEligibleForCategory`, which
+   * `accept` reads. Never null: EXISTS answers true or false.
+   */
+  providerEligibleForCategory: boolean;
   providerDisplayName: string | null;
   providerHeadline: string | null;
   /** Null when the claim on the trade no longer exists (or is soft-deleted). */
@@ -98,6 +104,7 @@ interface RawReceivedQuoteRow {
   provider_is_active: boolean;
   provider_deleted_at_utc: Date | null;
   provider_charges_enabled: boolean;
+  provider_eligible_for_category: boolean;
   provider_display_name: string | null;
   provider_headline: string | null;
   verification_status: PscVerificationStatus | null;
@@ -261,6 +268,21 @@ export class QuoteRepository {
          sp.is_active      AS provider_is_active,
          sp.deleted_at_utc AS provider_deleted_at_utc,
          COALESCE(sca.charges_enabled, false) AS provider_charges_enabled,
+         -- ⚠️ A WORD-FOR-WORD COPY of \`isEligibleForCategory\` (the read
+         -- \`accept\` makes), deliberately INDEPENDENT of the claim LEFT JOIN
+         -- below: that join filters neither \`is_active\` nor the status (it
+         -- feeds the badge), this one must. One EXISTS per row, in this ONE statement —
+         -- never a read per quote. \`quote-eligibility.probe.ts\` proves the
+         -- two agree case by case.
+         EXISTS (
+           SELECT 1
+             FROM professional_service_categories pe
+            WHERE pe.service_provider_id = sp.id
+              AND pe.service_category_id = sr.service_category_id
+              AND pe.is_active = true
+              AND pe.deleted_at_utc IS NULL
+              AND pe.verification_status IN ('${PscVerificationStatus.VERIFIED}', '${PscVerificationStatus.NOT_REQUIRED}')
+         ) AS provider_eligible_for_category,
          ${PROVIDER_DISPLAY_NAME_SQL} AS provider_display_name,
          sp.headline       AS provider_headline,
          psc.verification_status,
@@ -302,6 +324,7 @@ export class QuoteRepository {
       providerIsActive: row.provider_is_active,
       providerDeletedAtUtc: row.provider_deleted_at_utc,
       providerChargesEnabled: row.provider_charges_enabled,
+      providerEligibleForCategory: row.provider_eligible_for_category,
       providerDisplayName: row.provider_display_name,
       providerHeadline: row.provider_headline,
       verificationStatus: row.verification_status,
