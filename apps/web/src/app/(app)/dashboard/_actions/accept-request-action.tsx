@@ -4,6 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { SUPPORT_EMAIL } from '@/lib/constants';
+import {
+  MISSING_AMOUNT_MESSAGE,
+  UNEXPECTED_MESSAGE,
+  acceptErrorMessage,
+} from '@/lib/service-requests/accept-error-message';
 import {
   type ServiceLocationPrecision,
   providerLocationPrecisionNotice,
@@ -44,14 +50,6 @@ export interface AcceptRequestActionProps {
   estimatedCurrency: string | null;
 }
 
-/** Frozen FR message reused by the null-amount guard and the 422 mapping. */
-const MISSING_AMOUNT_MESSAGE =
-  "Cette demande n'a pas de montant estimé et ne peut être acceptée.";
-
-/** Frozen FR fallback for any unmapped status and for network/transport errors. */
-const UNEXPECTED_MESSAGE =
-  'Une erreur inattendue est survenue. Veuillez réessayer plus tard.';
-
 /**
  * Frozen FR copy for the 202: assigned, deposit unsettled.
  *
@@ -64,26 +62,6 @@ const DEPOSIT_UNSETTLED_MESSAGE =
   'La demande vous est assignée : le mandat est à vous. En revanche, le dépôt ' +
   "n'a pas pu être prélevé. Fermez cette fenêtre et relancez le prélèvement " +
   'depuis « Mes jobs ».';
-
-/**
- * Maps a relayed API status to the FROZEN French copy (see PR spec). Decision is
- * locked: mapping is by HTTP status ALONE — the response body is never parsed to
- * pick a message.
- */
-function messageForStatus(status: number): string {
-  switch (status) {
-    case 409:
-      return "Cette demande n'est plus disponible ou un problème de paiement empêche l'acceptation. Veuillez rafraîchir la page et réessayer.";
-    case 502:
-      return 'Le prélèvement du dépôt a échoué. Veuillez réessayer dans quelques instants.';
-    case 422:
-      return MISSING_AMOUNT_MESSAGE;
-    case 404:
-      return "Cette demande n'est plus accessible.";
-    default:
-      return UNEXPECTED_MESSAGE;
-  }
-}
 
 /** fr-CA currency formatting; degrades to the raw pair on an unknown ISO code. */
 function formatMoney(amount: string, currency: string): string {
@@ -160,8 +138,9 @@ export function AcceptRequestAction({
     }
 
     if (!response.ok) {
-      // Status-only mapping (locked). ConfirmDialog shows this verbatim.
-      throw new Error(messageForStatus(response.status));
+      // Status-only mapping (locked), in `lib/service-requests/accept-error-message`
+      // so `node --test` can pin it. ConfirmDialog shows this verbatim.
+      throw new Error(acceptErrorMessage(response.status, SUPPORT_EMAIL));
     }
 
     // Both 200 and 202 mean the request migrated OPEN→ASSIGNED server-side.
