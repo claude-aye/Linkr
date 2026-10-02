@@ -28,6 +28,11 @@ export function acceptErrorMessage(status: number, supportEmail: string): string
     // message, délibérément : la seconde est quasi inatteignable depuis
     // l'interface, qui ne propose « Accepter » qu'au prestataire ciblé.
     // L'adresse est là parce qu'aucun écran ne permet de rétablir un métier.
+    case 403:
+      return (
+        'Vous ne pouvez plus accepter cette demande : ce métier est en pause sur votre profil ' +
+        `ou sa vérification n'est plus valide. Écrivez-nous à ${supportEmail} pour le rétablir.`
+      );
     case 409:
       return "Cette demande n'est plus disponible ou un problème de paiement empêche l'acceptation. Veuillez rafraîchir la page et réessayer.";
     case 502:
