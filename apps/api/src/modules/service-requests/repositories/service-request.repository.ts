@@ -15,6 +15,7 @@ import {
   ELIGIBILITY_POINT_FROM_TENDER,
   eligibilityFromWhere,
 } from '../../service-providers/repositories/eligibility.sql';
+import { DEPOSIT_LIVE_REQUEST_STATUSES } from '../constants';
 
 export interface ServiceRequestRecord {
   id: string;
@@ -239,6 +240,30 @@ const TENDER_FEED_WHERE = `
       AND sr.client_user_id IS DISTINCT FROM me.user_id
       AND EXISTS (SELECT 1 ${TENDER_ELIGIBILITY_FROM_WHERE} AND sp.id = me.id)
 `;
+
+/**
+ * One deposit the CLIENT can still confirm from their browser (3-D Secure, or a
+ * declined card since replaced). Read from the local database only — never
+ * from Stripe — so the page that lists them makes no Stripe call to render.
+ */
+export interface DepositAwaitingConfirmationRecord {
+  serviceRequestId: string;
+  title: string;
+  grossAmount: string;
+  currency: string;
+  failedAtUtc: Date | null;
+}
+
+interface DepositAwaitingConfirmationRawRow {
+  service_request_id: string;
+  title: string;
+  gross_amount: string;
+  currency: string;
+  failed_at_utc: Date | null;
+}
+
+/** SQL list literal of the live request statuses, e.g. 'ASSIGNED','IN_PROGRESS',… */
+const DEPOSIT_LIVE_STATUSES_SQL = DEPOSIT_LIVE_REQUEST_STATUSES.map((s) => `'${s}'`).join(', ');
 
 export interface CreateServiceRequestData {
   clientUserId: string;
@@ -944,5 +969,54 @@ export class ServiceRequestRepository {
       [serviceRequestId],
     );
     return rows.length ? { amount: rows[0].amount, currency: rows[0].currency } : null;
+  }
+
+  /**
+   * The deposits a client can still confirm from their browser — the list
+   * `/account/payment-methods` shows. LOCAL DATABASE ONLY: no Stripe read, so
+   * rendering the page never costs a Stripe round-trip (D2.1); the
+   * `clientSecret` is obtained only on a click.
+   *
+   * The predicate, every term load-bearing:
+   *   - `payment_type = DEPOSIT`, `status = FAILED` — the off-session charge
+   *     did not go through;
+   *   - `stripe_payment_intent_id IS NOT NULL` — there is an intent to
+   *     confirm. A FAILED row with no intent (an invalid card id, a network
+   *     failure before Stripe answered) has nothing the browser could confirm;
+   *     only the provider's retry, which re-issues, can move it;
+   *   - `payer_user_id = $1` AND `client_user_id = $1` — the payer is the
+   *     client by construction; reading both means the list cannot offer a
+   *     button that the confirmation endpoint (client-owner guard) refuses;
+   *   - request live (`DEPOSIT_LIVE_REQUEST_STATUSES`, the set `retryDeposit`
+   *     guards) and not soft-deleted.
+   *
+   * `payments` has at most one DEPOSIT per request
+   * (`uq_payments_request_type`), so the join cannot fan out.
+   */
+  async findDepositsAwaitingClientConfirmation(
+    clientUserId: string,
+  ): Promise<DepositAwaitingConfirmationRecord[]> {
+    const rows: DepositAwaitingConfirmationRawRow[] = await this.repo.query(
+      `SELECT sr.id AS service_request_id, sr.title,
+              p.gross_amount, p.currency, p.failed_at_utc
+         FROM payments p
+         JOIN service_requests sr ON sr.id = p.service_request_id
+        WHERE p.payer_user_id = $1
+          AND sr.client_user_id = $1
+          AND p.payment_type = '${PaymentType.DEPOSIT}'
+          AND p.status = '${PaymentStatus.FAILED}'
+          AND p.stripe_payment_intent_id IS NOT NULL
+          AND sr.deleted_at_utc IS NULL
+          AND sr.status IN (${DEPOSIT_LIVE_STATUSES_SQL})
+        ORDER BY p.failed_at_utc DESC NULLS LAST, sr.id ASC`,
+      [clientUserId],
+    );
+    return rows.map((row) => ({
+      serviceRequestId: row.service_request_id,
+      title: row.title,
+      grossAmount: row.gross_amount,
+      currency: row.currency,
+      failedAtUtc: row.failed_at_utc,
+    }));
   }
 }

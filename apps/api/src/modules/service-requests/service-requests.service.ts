@@ -28,6 +28,11 @@ import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { ProviderServiceRequestItemDto } from './dto/provider-service-request-item.dto';
 import { ListProviderTendersDto } from './dto/list-provider-tenders.dto';
 import { ProviderTenderItemDto } from './dto/provider-tender-item.dto';
+import {
+  DepositAwaitingConfirmationItemDto,
+  DepositAwaitingConfirmationListDto,
+} from './dto/deposit-awaiting-confirmation.dto';
+import { DepositConfirmationResponseDto } from './dto/deposit-confirmation-response.dto';
 import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
@@ -35,6 +40,7 @@ import { ServiceRequestAssignmentStatus } from './enums/service-request-assignme
 import { buildTransition } from './service-request-state-machine';
 import {
   CURRENCY_CODE_PATTERN,
+  DEPOSIT_LIVE_REQUEST_STATUSES,
   MAX_ESTIMATED_AMOUNT,
   MAX_QUOTES_DEADLINE_DAYS,
   MAX_WINDOW_HOURS,
@@ -60,6 +66,7 @@ import {
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { SystemRole } from '../users/enums/system-role.enum';
 import { CaptureDepositParams, PaymentsService } from '../payments/payments.service';
+import { DepositNotAwaitingConfirmationException } from '../payments/exceptions/payments.exceptions';
 
 /** Hours → milliseconds, for the desired-window arithmetic in `create()`. */
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -932,6 +939,56 @@ export class ServiceRequestsService {
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * The deposits the caller, as a CLIENT, can still confirm from their browser
+   * — the banners of `/account/payment-methods`. Local database only (no Stripe
+   * read): rendering that page never costs a Stripe round-trip.
+   */
+  async listDepositsAwaitingConfirmation(
+    callerUserId: string,
+  ): Promise<DepositAwaitingConfirmationListDto> {
+    const records = await this.requestRepo.findDepositsAwaitingClientConfirmation(callerUserId);
+    return { items: records.map((r) => DepositAwaitingConfirmationItemDto.from(r)) };
+  }
+
+  /**
+   * Hand the CLIENT what their browser needs to confirm the deposit's existing
+   * PaymentIntent — the way out of an off-session charge the bank refused
+   * (3-D Secure required on every payment, or a declined card since replaced).
+   *
+   * Without it the client had no button at all: `deposit-failed-client` sent
+   * them to `/account/payment-methods`, where nothing could pay, and the
+   * provider's retry is off-session too, so it failed the same way. Dead end.
+   *
+   * Guards, in this order: 404 unknown, 403 not the client (owner-only, like
+   * `confirmCompletion` — the client is the payer; there is no ADMIN bypass,
+   * an admin has no card to confirm with), 409 request not live
+   * (`DEPOSIT_LIVE_REQUEST_STATUSES`, the set `retryDeposit` guards). Then the
+   * payment side (`PaymentsService.prepareClientDepositConfirmation`) owns the
+   * row and the intent.
+   */
+  async prepareDepositConfirmation(
+    requestId: string,
+    callerUserId: string,
+  ): Promise<DepositConfirmationResponseDto> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) throw new NotFoundException('Service request not found');
+    if (request.clientUserId !== callerUserId) {
+      throw new ForbiddenException('Only the client can confirm this deposit');
+    }
+    if (!(DEPOSIT_LIVE_REQUEST_STATUSES as readonly ServiceRequestStatus[]).includes(request.status)) {
+      throw new DepositNotAwaitingConfirmationException(
+        `A deposit cannot be confirmed on a ${request.status} request`,
+      );
+    }
+
+    const prepared = await this.paymentsService.prepareClientDepositConfirmation(
+      requestId,
+      callerUserId,
+    );
+    return { serviceRequestId: requestId, ...prepared };
   }
 
   /**

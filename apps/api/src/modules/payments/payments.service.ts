@@ -25,7 +25,12 @@ import {
   BalanceNotCapturableException,
   ClientPaymentMethodRequiredException,
   DepositAmountUnavailableException,
+  DepositAlreadySettledException,
   DepositChargeFailedException,
+  DepositConfirmationCardRequiredException,
+  DepositIntentMismatchException,
+  DepositIntentUnreadableException,
+  DepositNotAwaitingConfirmationException,
   DepositNotSettledException,
   ProviderNotChargeableException,
 } from './exceptions/payments.exceptions';
@@ -275,17 +280,13 @@ export class PaymentsService {
     // ── RETRY of a FAILED deposit (T3) ──────────────────────────────────────
     // Never a second INSERT (the unique guard) and — the part that matters —
     // never a second PaymentIntent when one already exists.
+    //
+    // The recomputed figures are only WRITTEN by the branches that create an
+    // intent (see `retryFailedDeposit`): they used to be written here, for
+    // every branch, before the intent was even read — so the "confirm the
+    // existing intent" branch confirmed an intent whose amount the row no
+    // longer described, and a failed read left the row PENDING for good.
     if (existing) {
-      await this.paymentRepo.prepareRetry(existing.id, {
-        paymentMethodId: pm.id,
-        grossAmount,
-        currency,
-        commissionRatePercent: this.commissionRatePercent,
-        platformFeeAmount,
-        taxAmount,
-        providerNetAmount,
-      });
-
       await this.retryFailedDeposit(existing, {
         serviceRequestId,
         currency,
@@ -293,7 +294,9 @@ export class PaymentsService {
         feeMinor,
         grossAmount,
         platformFeeAmount,
+        taxAmount,
         providerNetAmount,
+        paymentMethodRowId: pm.id,
         stripeCustomerId: client.stripeCustomerId,
         stripePaymentMethodId: pm.stripePaymentMethodId,
         destinationAccountId: connect.stripeAccountId,
@@ -546,12 +549,30 @@ export class PaymentsService {
       feeMinor: number;
       grossAmount: string;
       platformFeeAmount: string;
+      taxAmount: string;
       providerNetAmount: string;
+      /** `payment_methods.id` of the client's CURRENT default card. */
+      paymentMethodRowId: string;
       stripeCustomerId: string;
       stripePaymentMethodId: string;
       destinationAccountId: string;
     },
   ): Promise<void> {
+    // Re-arm the row with the RECOMPUTED figures — for the two branches below
+    // that create a PaymentIntent, and for them only: a new intent is created
+    // with exactly these figures, so the row and the intent agree by
+    // construction.
+    const rearmWithRecomputedFigures = () =>
+      this.paymentRepo.prepareRetry(existing.id, {
+        paymentMethodId: opts.paymentMethodRowId,
+        grossAmount: opts.grossAmount,
+        currency: opts.currency,
+        commissionRatePercent: this.commissionRatePercent,
+        platformFeeAmount: opts.platformFeeAmount,
+        taxAmount: opts.taxAmount,
+        providerNetAmount: opts.providerNetAmount,
+      });
+
     if (!existing.stripePaymentIntentId) {
       // Nothing is known to exist at Stripe. Reusing the FIRST attempt's key is
       // deliberate, and is the entire double-charge guarantee on this branch.
@@ -559,6 +580,7 @@ export class PaymentsService {
         `Retrying deposit for request ${opts.serviceRequestId} ` +
           `(payment ${existing.id}): no PaymentIntent on file, re-issuing`,
       );
+      await rearmWithRecomputedFigures();
       await this.chargeAndPersist({
         paymentId: existing.id,
         serviceRequestId: opts.serviceRequestId,
@@ -619,6 +641,7 @@ export class PaymentsService {
         `Deposit retry for request ${opts.serviceRequestId}: PaymentIntent ` +
           `${intent.id} is canceled, issuing a fresh one`,
       );
+      await rearmWithRecomputedFigures();
       await this.chargeAndPersist({
         paymentId: existing.id,
         serviceRequestId: opts.serviceRequestId,
@@ -642,10 +665,21 @@ export class PaymentsService {
     // `requires_confirmation`: confirm THIS intent with the client's current
     // default card. No new intent, so no second charge is representable.
     //
-    // The amounts are NOT recomputed here: an intent's amount is fixed at
-    // creation, so the row keeps the figures that intent was created with and
-    // the two cannot disagree. Recomputation belongs to the branch that
-    // actually creates an intent.
+    // The amounts are NOT recomputed here, and NOT written either: confirming
+    // sends no amount, so Stripe debits the one the intent was created with.
+    // The row keeps its own figures — which are that intent's, since only the
+    // branches above that CREATE an intent ever rewrite them — and the guard
+    // below refuses to confirm if the two have drifted apart anyway: the
+    // ledger would record one figure while the card is debited another.
+    if (!this.intentMatchesRow(intent, existing)) {
+      this.logger.error(
+        `Deposit retry REFUSED for request ${opts.serviceRequestId}: payment ` +
+          `${existing.id} records ${existing.grossAmount} ${existing.currency} but ` +
+          `PaymentIntent ${intent.id} is ${intent.amount} ${intent.currency} — nothing confirmed`,
+      );
+      throw new DepositIntentMismatchException();
+    }
+    await this.paymentRepo.prepareConfirmRetry(existing.id, opts.paymentMethodRowId);
     await this.confirmAndPersist({
       paymentId: existing.id,
       serviceRequestId: opts.serviceRequestId,
@@ -654,6 +688,157 @@ export class PaymentsService {
       grossAmount: existing.grossAmount,
       currency: existing.currency,
     });
+  }
+
+  /**
+   * Whether a PaymentIntent charges exactly what the ledger row records: same
+   * currency, and `intent.amount === toMinorUnits(row.grossAmount)`.
+   *
+   * The ONE equality guard, shared by the provider's re-confirmation
+   * (`retryFailedDeposit`) and the client's browser confirmation
+   * (`prepareClientDepositConfirmation`): both confirm an existing intent
+   * without sending an amount, so both must refuse when the row no longer
+   * describes it.
+   */
+  private intentMatchesRow(
+    intent: { amount: number; currency: string },
+    row: PaymentRecord,
+  ): boolean {
+    const currency = row.currency.toUpperCase();
+    return (
+      intent.currency.toUpperCase() === currency &&
+      intent.amount === toMinorUnits(row.grossAmount, currency)
+    );
+  }
+
+  /**
+   * Prepare the CLIENT's confirmation, from their browser, of a deposit whose
+   * off-session charge failed — the way out when the bank demands 3-D Secure on
+   * every payment (`authentication_required`), or when the card was declined
+   * and has since been replaced.
+   *
+   * The client confirms THE SAME PaymentIntent (`stripe.confirmCardPayment`).
+   * One PaymentIntent yields at most one successful charge, so no double debit
+   * is representable — not even if the provider retries at the same moment.
+   * Nothing is created here and nothing is confirmed server-side; the
+   * `payment_intent.succeeded` webhook finalizes, as for every other deposit.
+   *
+   * Reads the intent at Stripe — allowed because this runs on a CLICK, never
+   * on a render (cf. CLAUDE.md §13.1 nº 13). Writes, at most:
+   *   - `payment_method_id` (the card about to be confirmed), and nothing else;
+   *   - or, when the intent has in fact already settled, the same forward
+   *     reconciliation `retryFailedDeposit` performs (`attachIntent`), before
+   *     answering « already paid ». The web relies on that path to stop the
+   *     row reading FAILED after a successful confirmation, without waiting for
+   *     the webhook.
+   *
+   * The caller (`ServiceRequestsService`) has already established that the
+   * caller is the request's client and that the request is live.
+   */
+  async prepareClientDepositConfirmation(
+    serviceRequestId: string,
+    clientUserId: string,
+  ): Promise<{
+    clientSecret: string;
+    stripePaymentMethodId: string;
+    grossAmount: string;
+    currency: string;
+  }> {
+    const deposit = await this.paymentRepo.findByServiceRequestAndType(
+      serviceRequestId,
+      PaymentType.DEPOSIT,
+    );
+    if (
+      !deposit ||
+      deposit.status !== PaymentStatus.FAILED ||
+      !deposit.stripePaymentIntentId ||
+      deposit.payerUserId !== clientUserId
+    ) {
+      // Same predicate as the « deposits to confirm » list, row-side.
+      throw new DepositNotAwaitingConfirmationException();
+    }
+
+    const intentId = deposit.stripePaymentIntentId;
+    let intent: StripePaymentIntent;
+    try {
+      intent = await this.stripe.client.paymentIntents.retrieve(intentId);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Client confirmation: could not read PaymentIntent ${intentId} for request ${serviceRequestId}: ${detail}`,
+      );
+      // Never a fresh intent: not knowing what that one did is exactly the
+      // state in which creating a second one debits someone twice.
+      throw new DepositIntentUnreadableException(detail);
+    }
+
+    switch (intent.status) {
+      case 'succeeded':
+      case 'processing':
+      case 'requires_capture': {
+        // Already paid (or paying): reconcile forward, exactly as the
+        // provider's retry does, and tell the client there is nothing to do.
+        const status = mapPaymentIntentStatus(intent.status);
+        const capturedAt = status === PaymentStatus.SUCCEEDED ? new Date() : null;
+        await this.paymentRepo.attachIntent(deposit.id, intent.id, status, capturedAt);
+        this.logger.log(
+          `Client confirmation for request ${serviceRequestId}: PaymentIntent ` +
+            `${intent.id} is already ${intent.status} -> reconciled to ${status}`,
+        );
+        throw new DepositAlreadySettledException();
+      }
+      case 'canceled':
+        // A cancelled intent can never be confirmed. The provider's retry —
+        // which issues a fresh intent — is the only way forward from here.
+        throw new DepositNotAwaitingConfirmationException(
+          'The payment intent behind this deposit was cancelled; it can no longer be confirmed',
+        );
+      case 'requires_payment_method':
+      case 'requires_confirmation':
+      case 'requires_action':
+        break;
+      default:
+        this.logger.warn(
+          `Client confirmation for request ${serviceRequestId}: PaymentIntent ` +
+            `${intent.id} is in unexpected status ${intent.status}`,
+        );
+        throw new DepositNotAwaitingConfirmationException();
+    }
+
+    if (!this.intentMatchesRow(intent, deposit)) {
+      this.logger.error(
+        `Client confirmation REFUSED for request ${serviceRequestId}: payment ` +
+          `${deposit.id} records ${deposit.grossAmount} ${deposit.currency} but ` +
+          `PaymentIntent ${intent.id} is ${intent.amount} ${intent.currency} — nothing returned`,
+      );
+      throw new DepositIntentMismatchException();
+    }
+
+    // A PaymentIntent does not follow a change of default card: the browser
+    // confirms with the CURRENT default, passed explicitly (D2.2).
+    const pm = await this.pmRepo.findDefaultByUserId(clientUserId);
+    if (!pm) throw new DepositConfirmationCardRequiredException();
+
+    if (!intent.client_secret) {
+      throw new DepositIntentUnreadableException('the payment intent carries no client secret');
+    }
+
+    const touched = await this.paymentRepo.setPaymentMethodWhileFailed(deposit.id, pm.id);
+    if (!touched) {
+      // A provider retry re-armed the row between our read and this write.
+      throw new DepositNotAwaitingConfirmationException();
+    }
+
+    this.logger.log(
+      `Client confirmation prepared for request ${serviceRequestId}: PaymentIntent ` +
+        `${intent.id} (${intent.status}), payment ${deposit.id} -> card ${pm.id}`,
+    );
+    return {
+      clientSecret: intent.client_secret,
+      stripePaymentMethodId: pm.stripePaymentMethodId,
+      grossAmount: deposit.grossAmount,
+      currency: deposit.currency,
+    };
   }
 
   /**

@@ -8,7 +8,10 @@ import { UsersRepository } from '../users/users.repository';
 import { PaymentType } from './enums/payment-type.enum';
 import { PaymentStatus } from './enums/payment-status.enum';
 import { PaymentMethodType } from './enums/payment-method-type.enum';
-import { DepositChargeFailedException } from './exceptions/payments.exceptions';
+import {
+  DepositChargeFailedException,
+  DepositIntentMismatchException,
+} from './exceptions/payments.exceptions';
 
 /**
  * Deposit retry (T3) — the branch that decides whether money moves.
@@ -60,6 +63,7 @@ interface Harness {
     findByServiceRequestAndType: jest.Mock;
     create: jest.Mock;
     prepareRetry: jest.Mock;
+    prepareConfirmRetry: jest.Mock;
     attachIntent: jest.Mock;
     recordFailure: jest.Mock;
   };
@@ -72,14 +76,18 @@ interface Harness {
 
 function buildHarness(opts: {
   existing: PaymentRecord | null;
-  /** Result of `paymentIntents.retrieve`, or an Error to throw. */
-  retrieved?: { id: string; status: string } | Error;
+  /**
+   * Result of `paymentIntents.retrieve`, or an Error to throw. `amount` /
+   * `currency` default to the row's (3000 cad = 30.00 CAD): an intent that
+   * matches its ledger row, as every intent created by the code does.
+   */
+  retrieved?: { id: string; status: string; amount?: number; currency?: string } | Error;
 }): Harness {
   const intents = {
     create: jest.fn().mockResolvedValue({ id: 'pi_new', status: 'succeeded' }),
     retrieve: jest.fn(async () => {
       if (opts.retrieved instanceof Error) throw opts.retrieved;
-      return opts.retrieved;
+      return opts.retrieved && { amount: 3000, currency: 'cad', ...opts.retrieved };
     }),
     confirm: jest.fn().mockResolvedValue({ id: 'pi_existing', status: 'succeeded' }),
   };
@@ -88,6 +96,7 @@ function buildHarness(opts: {
     findByServiceRequestAndType: jest.fn().mockResolvedValue(opts.existing),
     create: jest.fn().mockResolvedValue(deposit({ status: PaymentStatus.PENDING })),
     prepareRetry: jest.fn().mockResolvedValue(undefined),
+    prepareConfirmRetry: jest.fn().mockResolvedValue(undefined),
     attachIntent: jest.fn().mockResolvedValue(null),
     recordFailure: jest.fn().mockResolvedValue(undefined),
   };
@@ -297,5 +306,131 @@ describe('PaymentsService.captureDeposit — retry of a FAILED deposit', () => {
 
     expect(h.intents.create).not.toHaveBeenCalled();
     expect(h.intents.confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentsService.captureDeposit — the recomputed figures are written ONLY where an intent is created', () => {
+  // `prepareRetry` used to run for EVERY retry branch, before the intent was
+  // even read: the "confirm the existing intent" branch then confirmed an intent
+  // (no amount sent — Stripe debits the creation amount) whose figures the row
+  // no longer recorded, and a failed read left the row PENDING forever.
+  //
+  // Basis here: agreed 200.00 → recomputed deposit 40.00, while the row (and
+  // its intent) say 30.00. A row that "drifted" from today's basis on purpose.
+  const drifted = { ...params, agreedAmount: '200.00' };
+
+  it('no intent on file → the row IS re-armed with the recomputed figures, then charged', async () => {
+    const h = buildHarness({ existing: deposit({ stripePaymentIntentId: null }) });
+
+    await h.service.captureDeposit(drifted);
+
+    expect(h.paymentRepo.prepareRetry).toHaveBeenCalledWith(
+      PAYMENT_ID,
+      expect.objectContaining({ grossAmount: '40.00', paymentMethodId: PM_ROW_ID }),
+    );
+    expect(h.paymentRepo.prepareConfirmRetry).not.toHaveBeenCalled();
+    expect(h.intents.create.mock.calls[0][0]).toMatchObject({ amount: 4000 });
+  });
+
+  it('canceled intent → the row IS re-armed with the recomputed figures, then a fresh intent', async () => {
+    const h = buildHarness({
+      existing: deposit({ stripePaymentIntentId: 'pi_dead' }),
+      retrieved: { id: 'pi_dead', status: 'canceled' },
+    });
+
+    await h.service.captureDeposit(drifted);
+
+    expect(h.paymentRepo.prepareRetry).toHaveBeenCalledWith(
+      PAYMENT_ID,
+      expect.objectContaining({ grossAmount: '40.00' }),
+    );
+    expect(h.intents.create.mock.calls[0][0]).toMatchObject({ amount: 4000 });
+  });
+
+  it('confirm branch → the figures are NOT rewritten: only status/card are re-armed', async () => {
+    const h = buildHarness({
+      existing: deposit({ stripePaymentIntentId: 'pi_existing' }),
+      retrieved: { id: 'pi_existing', status: 'requires_payment_method' },
+    });
+
+    await h.service.captureDeposit(drifted);
+
+    expect(h.paymentRepo.prepareRetry).not.toHaveBeenCalled();
+    expect(h.paymentRepo.prepareConfirmRetry).toHaveBeenCalledWith(PAYMENT_ID, PM_ROW_ID);
+    expect(h.intents.confirm).toHaveBeenCalledTimes(1);
+    expect(h.intents.create).not.toHaveBeenCalled();
+  });
+
+  it('confirm branch → the re-arm happens AFTER the read, BEFORE the confirm', async () => {
+    const h = buildHarness({
+      existing: deposit({ stripePaymentIntentId: 'pi_existing' }),
+      retrieved: { id: 'pi_existing', status: 'requires_confirmation' },
+    });
+
+    await h.service.captureDeposit(params);
+
+    const [read] = h.intents.retrieve.mock.invocationCallOrder;
+    const [rearm] = h.paymentRepo.prepareConfirmRetry.mock.invocationCallOrder;
+    const [confirm] = h.intents.confirm.mock.invocationCallOrder;
+    expect(read).toBeLessThan(rearm);
+    expect(rearm).toBeLessThan(confirm);
+  });
+
+  it.each([
+    ['amount', { amount: 4000 }],
+    ['currency', { currency: 'usd' }],
+  ])(
+    'confirm branch → REFUSES (409) when the intent and the row disagree on the %s, and writes nothing',
+    async (_label, drift) => {
+      const h = buildHarness({
+        existing: deposit({ stripePaymentIntentId: 'pi_existing' }),
+        retrieved: { id: 'pi_existing', status: 'requires_payment_method', ...drift },
+      });
+
+      await expect(h.service.captureDeposit(params)).rejects.toBeInstanceOf(
+        DepositIntentMismatchException,
+      );
+
+      expect(h.intents.confirm).not.toHaveBeenCalled();
+      expect(h.intents.create).not.toHaveBeenCalled();
+      expect(h.paymentRepo.prepareRetry).not.toHaveBeenCalled();
+      expect(h.paymentRepo.prepareConfirmRetry).not.toHaveBeenCalled();
+      expect(h.paymentRepo.recordFailure).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['succeeded', 'processing', 'requires_action', 'requires_capture'])(
+    'live intent (%s) → reconciled, the figures are NOT rewritten',
+    async (status) => {
+      const h = buildHarness({
+        existing: deposit({ stripePaymentIntentId: 'pi_existing' }),
+        retrieved: { id: 'pi_existing', status },
+      });
+
+      await h.service.captureDeposit(drifted);
+
+      expect(h.paymentRepo.prepareRetry).not.toHaveBeenCalled();
+      expect(h.paymentRepo.prepareConfirmRetry).not.toHaveBeenCalled();
+      expect(h.paymentRepo.attachIntent).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('unreadable intent → the row is left UNTOUCHED (still FAILED, still retryable)', async () => {
+    // Before: prepareRetry had already flipped the row to PENDING, and the
+    // short-circuit lets only FAILED through — a 502 here left a deposit that
+    // nothing could ever retry again.
+    const h = buildHarness({
+      existing: deposit({ stripePaymentIntentId: 'pi_unknown' }),
+      retrieved: new Error('network down'),
+    });
+
+    await expect(h.service.captureDeposit(params)).rejects.toBeInstanceOf(
+      DepositChargeFailedException,
+    );
+
+    expect(h.paymentRepo.prepareRetry).not.toHaveBeenCalled();
+    expect(h.paymentRepo.prepareConfirmRetry).not.toHaveBeenCalled();
+    expect(h.paymentRepo.attachIntent).not.toHaveBeenCalled();
+    expect(h.paymentRepo.recordFailure).not.toHaveBeenCalled();
   });
 });

@@ -284,6 +284,56 @@ export class PaymentRepository {
     );
   }
 
+  /**
+   * Re-arm a FAILED payment row for a RE-CONFIRMATION of its existing
+   * PaymentIntent: status PENDING, the new card, the failure cleared — and the
+   * amounts LEFT AS THEY ARE.
+   *
+   * ⚠️ Distinct from {@link prepareRetry} on purpose. An intent's amount is
+   * fixed at its creation, and confirming it sends none: the row must keep the
+   * figures that intent carries, or the ledger records one number while Stripe
+   * debits another. Only the branches that CREATE an intent may rewrite them.
+   */
+  async prepareConfirmRetry(paymentId: string, paymentMethodId: string): Promise<void> {
+    await this.repo.query(
+      `UPDATE payments
+         SET status = '${PaymentStatus.PENDING}',
+             payment_method_id = $2,
+             failed_at_utc = NULL,
+             failure_reason = NULL,
+             updated_at_utc = now()
+       WHERE id = $1`,
+      [paymentId, paymentMethodId],
+    );
+  }
+
+  /**
+   * Point a FAILED payment row at the card the CLIENT is about to confirm its
+   * PaymentIntent with, from the browser — and write nothing else: the status
+   * stays FAILED (the webhook moves it), the amounts stay those of the intent.
+   *
+   * Conditional on `status = 'FAILED'`, so a provider retry that re-armed the
+   * row in the meantime is not overwritten. Returns whether a row was touched.
+   * (`updated_at_utc` moves too: it is the row's bookkeeping, not its content.)
+   */
+  async setPaymentMethodWhileFailed(
+    paymentId: string,
+    paymentMethodId: string,
+  ): Promise<boolean> {
+    const rows = updateReturningRows(
+      await this.repo.query(
+        `UPDATE payments
+           SET payment_method_id = $2,
+               updated_at_utc = now()
+         WHERE id = $1
+           AND status = '${PaymentStatus.FAILED}'
+         RETURNING ${SELECT_COLUMNS}`,
+        [paymentId, paymentMethodId],
+      ),
+    );
+    return rows.length > 0;
+  }
+
   /** Record a capture failure (and the intent id, if Stripe produced one). */
   async recordFailure(
     paymentId: string,

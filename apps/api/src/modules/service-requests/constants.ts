@@ -1,3 +1,5 @@
+import { ServiceRequestStatus } from './enums/service-request-status.enum';
+
 /**
  * Allowed mime types for service-request attachment uploads.
  * Images + short videos (Avant/Après). Mirrors the 3.7c verification upload
@@ -101,3 +103,26 @@ export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
  * sélectionner : la demande expire à sa date limite, comme avant.
  */
 export const TENDER_SELECTION_WINDOW_DAYS = 7;
+
+// ---------------------------------------------------------------------------
+// Acompte — demandes sur lesquelles un dépôt a encore un sens.
+// ---------------------------------------------------------------------------
+
+/**
+ * Statuts d'une demande sur lesquels un acompte est encore « vivant » : le job
+ * est tenu par un prestataire et la phase du solde n'a pas commencé. Au-delà de
+ * COMPLETED, le flux du solde prend le relais et prélever un acompte n'aurait
+ * plus de sens.
+ *
+ * ⚠️ MÊME ENSEMBLE que la garde écrite en ligne dans `retryDeposit` (relance du
+ * prestataire). Il est lu ici par la liste des acomptes à confirmer (en SQL) et
+ * par la préparation de la confirmation côté client : les trois doivent dire la
+ * même chose, sinon la liste offrirait un bouton que l'endpoint refuse. Le spec
+ * `deposit-confirmation.spec.ts` épingle l'accord avec `retryDeposit` statut par
+ * statut.
+ */
+export const DEPOSIT_LIVE_REQUEST_STATUSES = [
+  ServiceRequestStatus.ASSIGNED,
+  ServiceRequestStatus.IN_PROGRESS,
+  ServiceRequestStatus.COMPLETED,
+] as const;
