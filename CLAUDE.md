@@ -1514,6 +1514,34 @@ Le workflow s'est déclenché **sur sa propre PR** dès l'ouverture, ce qui conf
 **Anti-objectifs respectés** : `chargeAndPersist`, `captureBalance`, l'arithmétique de l'acompte et de la commission, les remboursements, le traitement des webhooks, le verrou de `retryDeposit` et `resolveAgreedAmount` sont **non touchés**. Le compte fabriqué de Bob n'est pas touché. Zéro fichier `apps/web`.
 **Dettes** : (1) **le solde (80 %) a le même défaut hors session** (D4, §6) ; (2) ~~une ligne réconciliée en `REQUIRES_ACTION` sort de la liste~~ → **cul-de-sac fermé** par le correctif de revue ; deux cas restent ouverts (courriels d'échec renvoyés sur un défi raté depuis `REQUIRES_ACTION`, intent annulé à la main sur une ligne `REQUIRES_ACTION`), §6 ; (3) `attachIntent` ne vide pas `failure_reason` : une ligne réconciliée en `SUCCEEDED` garde le message de l'échec hors session. Comportement **hérité** de la réconciliation de la relance, non corrigé ; (4) **lot suivant** : un badge sur `/requests`, pour que le client voie qu'un acompte l'attend sans passer par le courriel (D1).
 
+**Chantier 3D Secure — PR 2 (web) : le bouton « Confirmer le paiement »** : le client qui arrive du courriel `deposit-failed-client` trouve enfin, sur `/account/payment-methods`, de quoi payer. **ZÉRO fichier `apps/api`, zéro migration, contrat inchangé** (consommé tel que la PR 1 l'a régénéré).
+**Lecture** : la page (Server Component) lit `GET /service-requests/deposits-awaiting-confirmation` côté serveur avec le cookie, dans son **propre** `try/catch`. Une lecture en échec n'affiche **rien** et ne fait pas tomber la liste des cartes ; une liste vide ne change rien à la page. **Aucun appel Stripe au rendu.** Les types sont consommés **nativement**, sans miroir ni cast.
+**Bandeau** (un par acompte, famille ambre déjà en place) : titre de la demande, montant (`fr-CA`), et un texte qui couvre **les deux** causes sans prétendre les distinguer : la banque demande une confirmation, ou la carte a été refusée. Il dit aussi que le paiement passera par la **carte par défaut**, avec une vérification bancaire possible.
+**Le clic** (`confirm-deposit-action.tsx`, seule surface `'use client'`) : relais BFF `POST /api/service-requests/{id}/deposit-confirmation` (transparent, frère de `retry-deposit`), puis `stripe.confirmCardPayment(clientSecret, { payment_method })` avec le chargeur existant `getStripe()`, puis **le même `POST` une seconde fois**. L'API constate l'intent réglé, réconcilie la ligne et répond 409. Vient enfin `router.refresh()`. C'est ce second appel qui empêche le bandeau de **réapparaître** en attendant le webhook. L'îlot garde en plus un état « confirmé » pour sa demande : si la synchronisation échouait, il ne proposerait pas de payer une seconde fois.
+> **⚠️ AUCUN `<dialog showModal()>` (§13.1 nº 19 (e)).** Stripe.js peint le défi 3D Secure en surcouche ajoutée à `<body>`. Un simple bouton sur la page n'a pas de *top layer* qui l'enterrerait. **Mesuré au navigateur** : le défi « 3D Secure 2 Test Page » s'affiche par-dessus la page, lisible.
+**Mapping FR par code HTTP SEUL** (verrou 3.12b), vouvoiement, dans le module pur `lib/payment-methods/deposit-confirmation.ts` (sans import, testé par `node --test`) :
+- 401 : session expirée.
+- 403 et 404 : le paiement n'est plus accessible.
+- **409** : « n'est plus à confirmer ici » ; le composant actualise la page de lui-même.
+- **422** : enregistrer une carte par défaut, message **distinct** du 409.
+- 502 : service indisponible.
+- Défaut : erreur inattendue.
+
+Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent **un seul** message, et **jamais** celui de Stripe (même règle que `card-form.tsx`).
+**a11y** : région `aria-live="polite"` présente même vide, erreurs en `role="alert"`, bouton de **44 px**.
+**Validé** : `@linkr/web` **typecheck + build verts** (`/api/service-requests/[id]/deposit-confirmation` listée `ƒ`). Le lint est rouge **uniquement** sur la dette pré-existante `completion-actions.tsx:191`. `node --test` passe de **106 à 117**. **4 mutations, toutes mordent** : 422 rabattu en 409, `requires_action` compté comme réglé, 404 non mappé, devise inventée.
+**Smoke au navigateur RÉEL par l'agent** (Docker + Stripe en mode test, API `:5000` et web `:3001` bâtis depuis les branches, client de test jetable, jeton forgé déposé en cookie, aucun mot de passe saisi, prestataire **Dana**). Deux acomptes refusés hors session avec la carte `3184` → **deux bandeaux**.
+- **Défi échoué** (« Fail ») : le message s'affiche, le bandeau reste, la ligne reste `FAILED`, et Mailpit n'a reçu aucun courriel (15 → 15).
+- **Défi réussi** (« Complete ») : le bandeau **disparaît sans webhook** et l'en-tête passe au singulier. La ligne passe `SUCCEEDED` (`captured_at_utc` posé), la demande reste `ASSIGNED`, et le réseau montre **200 · 200 · 409** (échec, succès, synchronisation).
+- **320, 375 et 414 px : zéro débordement.**
+- **Séquence `REQUIRES_ACTION`** (correctif de revue de la PR 1, joué avec cette UI) : défi ouvert puis abandonné par rechargement, puis deux relances de Dana (la ligne passe `REQUIRES_ACTION`). Après rechargement, **le bandeau est toujours là** ; le clic donne un `POST` 200, le défi est complété, la synchronisation répond 409, la ligne passe `SUCCEEDED` et Stripe ne détient qu'**un seul** intent.
+
+⚠️ **Ni webhook (aucun `stripe listen`), ni scénario « carte remplacée » au navigateur, du côté de l'agent.** Le scénario de la carte remplacée est prouvé au niveau API (PR 1). Les deux sont au **smoke de Hervé**, décrit pas à pas dans la PR. Ce smoke donne aussi le **nombre de courriels attendus après un défi raté** : **0** si la ligne part de `FAILED` (H2 : `markFailed` renvoie `null`), **2** (`deposit-failed-client` + `deposit-failed-provider`) si elle part de `REQUIRES_ACTION`, cas (a) de la dette §6.
+**Dettes** :
+- Le badge sur `/requests` reste le lot suivant (D1).
+- Le repli 502 du relais BFF reste **tutoyant** (dette héritée, mirroitée).
+- L'acompte de la fixture `[smoke-3ds] web1 n°1` reste `FAILED` en base de dev, sur un client de test jetable.
+
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)

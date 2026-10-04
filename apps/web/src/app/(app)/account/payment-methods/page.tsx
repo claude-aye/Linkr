@@ -10,8 +10,15 @@ import {
   type PaymentMethod,
 } from '@/lib/payment-methods/display';
 
+import type { components } from '@linkr/api-client';
+import { formatDepositAmount } from '@/lib/payment-methods/deposit-confirmation';
+
 import { AddCardSection } from './_components/add-card-section';
 import { CardActions } from './_components/card-actions';
+import { ConfirmDepositAction } from './_components/confirm-deposit-action';
+
+type DepositAwaitingConfirmation =
+  components['schemas']['DepositAwaitingConfirmationItemDto'];
 
 // Reads the access cookie + the caller's live payment methods — per request.
 export const dynamic = 'force-dynamic';
@@ -58,6 +65,22 @@ export default async function PaymentMethodsPage() {
     methods = null;
   }
 
+  // Deposits the bank refused off-session, that the client can confirm here.
+  // LOCAL DATABASE ONLY on the API side — no Stripe call on this render; the
+  // client secret is fetched on the click. Degrades BY SECTION: a failed read
+  // (`null`) shows nothing and never takes the card list down with it.
+  let deposits: DepositAwaitingConfirmation[] | null = null;
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-requests/deposits-awaiting-confirmation',
+    );
+    if (!error && response.ok && data) {
+      deposits = data.items;
+    }
+  } catch {
+    deposits = null;
+  }
+
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
       <section className="w-full max-w-3xl">
@@ -72,6 +95,48 @@ export default async function PaymentMethodsPage() {
           </div>
           <AddCardSection />
         </header>
+
+        {deposits && deposits.length > 0 && (
+          <section aria-labelledby="deposits-to-confirm" className="mb-8">
+            <h2
+              id="deposits-to-confirm"
+              className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+            >
+              {deposits.length > 1 ? 'Acomptes à confirmer' : 'Acompte à confirmer'}
+            </h2>
+            <ul className="mt-3 space-y-4">
+              {deposits.map((deposit) => (
+                <li
+                  key={deposit.serviceRequestId}
+                  className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm dark:border-amber-800 dark:bg-amber-950"
+                >
+                  <p className="font-medium break-words text-zinc-900 dark:text-zinc-50">
+                    {deposit.title}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                    Acompte de{' '}
+                    <span className="font-medium">
+                      {formatDepositAmount(deposit.grossAmount, deposit.currency)}
+                    </span>
+                  </p>
+                  {/*
+                    Covers BOTH causes, because the page cannot tell them apart
+                    and the gesture is the same: the bank asked the client to
+                    authenticate, or the card was declined and has since been
+                    replaced. Either way the job is assigned and waits on this.
+                  */}
+                  <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+                    Le prélèvement automatique de cet acompte n’a pas abouti : votre
+                    banque demande que vous confirmiez le paiement, ou la carte utilisée
+                    a été refusée. Le paiement sera fait avec votre carte par défaut, et
+                    votre banque peut vous demander une vérification.
+                  </p>
+                  <ConfirmDepositAction serviceRequestId={deposit.serviceRequestId} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {methods === null ? (
           <StateCard title="Chargement impossible">
