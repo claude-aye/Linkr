@@ -10,7 +10,9 @@
 # that touches only apps/web would never start it, and a required check that
 # never starts stays "pending" forever, blocking the merge. The cost is a
 # couple of minutes of CI on a web-only PR. The three other workflows can
-# filter because none of them is meant to become required.
+# filter as long as none of them is a required check; making one of them
+# required means removing its path filter. No decision has been taken on
+# their status.
 #
 # It is also the only one that installs dependencies. The two guards and the
 # web tests import nothing beyond node:* and relative files; jest, ts-jest and
