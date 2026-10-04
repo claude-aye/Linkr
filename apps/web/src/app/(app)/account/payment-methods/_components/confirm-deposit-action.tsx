@@ -100,7 +100,8 @@ export function ConfirmDepositAction({ serviceRequestId }: { serviceRequestId: s
     );
     if (confirmError || !isSettledIntentStatus(paymentIntent?.status)) {
       // A failed or abandoned challenge, a decline, a browser-side network
-      // failure. The row stays FAILED and the banner stays: try again, or
+      // failure. The row stays (or becomes) FAILED and stays listed — a
+      // REQUIRES_ACTION row is listed too — so the banner stays: try again, or
       // replace the card below.
       setError(CONFIRMATION_FAILED_MESSAGE);
       setPhase('idle');

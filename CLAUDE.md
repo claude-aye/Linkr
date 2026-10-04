@@ -1534,8 +1534,9 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 - **Défi échoué** (« Fail ») : le message s'affiche, le bandeau reste, la ligne reste `FAILED`, et Mailpit n'a reçu aucun courriel (15 → 15).
 - **Défi réussi** (« Complete ») : le bandeau **disparaît sans webhook** et l'en-tête passe au singulier. La ligne passe `SUCCEEDED` (`captured_at_utc` posé), la demande reste `ASSIGNED`, et le réseau montre **200 · 200 · 409** (échec, succès, synchronisation).
 - **320, 375 et 414 px : zéro débordement.**
+- **Séquence `REQUIRES_ACTION`** (correctif de revue de la PR 1, joué avec cette UI) : défi ouvert puis abandonné par rechargement, puis deux relances de Dana (la ligne passe `REQUIRES_ACTION`). Après rechargement, **le bandeau est toujours là** ; le clic donne un `POST` 200, le défi est complété, la synchronisation répond 409, la ligne passe `SUCCEEDED` et Stripe ne détient qu'**un seul** intent.
 
-⚠️ **Ni webhook (aucun `stripe listen`), ni scénario « carte remplacée » au navigateur.** L'absence de courriel sur un défi échoué ne passe que par le webhook, donc elle n'est prouvée **que par lecture de code** (H2). Le scénario de la carte remplacée est prouvé au niveau API (PR 1). Les deux restent au **smoke de Hervé**, décrit dans la PR.
+⚠️ **Ni webhook (aucun `stripe listen`), ni scénario « carte remplacée » au navigateur, du côté de l'agent.** Le scénario de la carte remplacée est prouvé au niveau API (PR 1). Les deux sont au **smoke de Hervé**, décrit pas à pas dans la PR. Ce smoke donne aussi le **nombre de courriels attendus après un défi raté** : **0** si la ligne part de `FAILED` (H2 : `markFailed` renvoie `null`), **2** (`deposit-failed-client` + `deposit-failed-provider`) si elle part de `REQUIRES_ACTION`, cas (a) de la dette §6.
 **Dettes** :
 - Le badge sur `/requests` reste le lot suivant (D1).
 - Le repli 502 du relais BFF reste **tutoyant** (dette héritée, mirroitée).
