@@ -25,6 +25,8 @@ import { DeclineServiceRequestDto } from './dto/decline-service-request.dto';
 import { ListServiceRequestsDto } from './dto/list-service-requests.dto';
 import { ServiceRequestListDto } from './dto/service-request-list.dto';
 import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
+import { DepositAwaitingConfirmationListDto } from './dto/deposit-awaiting-confirmation.dto';
+import { DepositConfirmationResponseDto } from './dto/deposit-confirmation-response.dto';
 import { ServiceRequestsService } from './service-requests.service';
 
 @ApiTags('service-requests')
@@ -44,6 +46,20 @@ export class ServiceRequestsController {
     @Body() dto: CreateServiceRequestDto,
   ): Promise<ServiceRequestResponseDto> {
     return this.service.create(user.sub, dto);
+  }
+
+  // ⚠️ Declared BEFORE `GET :id`: otherwise the literal segment is captured as
+  // an `:id` and `ParseUUIDPipe` answers 400.
+  @Get('deposits-awaiting-confirmation')
+  @ApiOperation({
+    summary:
+      'Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read.',
+  })
+  @ApiResponse({ status: 200, type: DepositAwaitingConfirmationListDto })
+  listDepositsAwaitingConfirmation(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<DepositAwaitingConfirmationListDto> {
+    return this.service.listDepositsAwaitingConfirmation(user.sub);
   }
 
   @Get(':id')
@@ -137,7 +153,7 @@ export class ServiceRequestsController {
   @ApiResponse({
     status: 409,
     description:
-      'Request is not in a state where a deposit applies, or no agreed price is on file (accepted tender without an ACCEPTED quote)',
+      'Request is not in a state where a deposit applies, no agreed price is on file (accepted tender without an ACCEPTED quote), or the deposit record and its existing payment intent disagree on the amount (nothing is confirmed)',
   })
   @ApiResponse({ status: 422, description: 'No amount to base a deposit on' })
   @ApiResponse({ status: 502, description: 'Stripe rejected the deposit charge' })
@@ -146,6 +162,29 @@ export class ServiceRequestsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ServiceRequestResponseDto> {
     return this.service.retryDeposit(id, user.sub);
+  }
+
+  @Post(':id/deposit-confirmation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Client only. Prepare the browser-side confirmation of the deposit’s EXISTING PaymentIntent (3-D Secure, or a declined card since replaced). Reads the intent at Stripe, points the payment row at the client’s current default card, and returns the client secret. Creates and confirms nothing server-side.',
+  })
+  @ApiResponse({ status: 200, type: DepositConfirmationResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the client of this request' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Nothing to confirm: request not live, deposit neither FAILED nor REQUIRES_ACTION, or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount',
+  })
+  @ApiResponse({ status: 422, description: 'The client has no default card to confirm with' })
+  @ApiResponse({ status: 502, description: 'The PaymentIntent could not be read at Stripe' })
+  prepareDepositConfirmation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<DepositConfirmationResponseDto> {
+    return this.service.prepareDepositConfirmation(id, user.sub);
   }
 
   @Post(':id/decline')

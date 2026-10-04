@@ -167,3 +167,70 @@ export class RefundChargeFailedException extends HttpException {
     super(`Refund failed: ${detail}`, HttpStatus.BAD_GATEWAY);
   }
 }
+
+// --- client-side deposit confirmation (3-D Secure / replaced card) -----------
+
+/**
+ * 409 — there is nothing for the client to confirm on this deposit: the row is
+ * neither FAILED nor REQUIRES_ACTION, carries no PaymentIntent, or that intent was cancelled (only the
+ * provider's retry, which issues a fresh intent, can move it then).
+ *
+ * One status for every "not here, not now" cause on purpose: the web maps the
+ * copy from the status ALONE (3.12b), and the answer to all of them is the same
+ * — refresh the page, which will no longer offer the button.
+ */
+export class DepositNotAwaitingConfirmationException extends HttpException {
+  constructor(message = 'This deposit is not awaiting confirmation by the client') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 409 — the PaymentIntent behind this deposit has already settled (or is
+ * settling). The local row has just been reconciled forward; the client has
+ * nothing left to do. This is also the answer the web expects when it calls
+ * the endpoint again AFTER a successful confirmation, so that the row stops
+ * reading FAILED before the webhook arrives.
+ */
+export class DepositAlreadySettledException extends HttpException {
+  constructor(message = 'This deposit has already been paid') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 409 — the ledger row and the Stripe PaymentIntent disagree on the amount or
+ * the currency. Nothing is confirmed and nothing is returned: confirming would
+ * charge a figure the ledger does not record. Logged at ERROR by the caller —
+ * it means something rewrote one side without the other.
+ */
+export class DepositIntentMismatchException extends HttpException {
+  constructor(message = 'The deposit record and its payment intent disagree; nothing was confirmed') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 422 — the client has no default card to confirm the deposit with.
+ *
+ * Distinct from `ClientPaymentMethodRequiredException`, which is a 409 that
+ * guards the ASSIGNMENT: here the web must be able to say « add a card » apart
+ * from every « nothing to confirm » 409 above, and it maps from the status
+ * alone (3.12b) — so this one needs its own code.
+ */
+export class DepositConfirmationCardRequiredException extends HttpException {
+  constructor(message = 'Add a default card before confirming this deposit') {
+    super(message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
+/**
+ * 502 — the PaymentIntent could not be read at Stripe. Nothing is created and
+ * nothing is written: not knowing what that intent did is exactly the state in
+ * which acting on it is unsafe.
+ */
+export class DepositIntentUnreadableException extends HttpException {
+  constructor(detail: string) {
+    super(`Could not read the deposit payment intent: ${detail}`, HttpStatus.BAD_GATEWAY);
+  }
+}

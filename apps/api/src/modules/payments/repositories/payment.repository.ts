@@ -4,6 +4,7 @@ import { EntityManager, Repository } from 'typeorm';
 import { Payment } from '../entities/payment.entity';
 import { PaymentType } from '../enums/payment-type.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
+import { CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL } from '../client-confirmable-deposit';
 
 /** Domain record — snake_case columns mapped to camelCase. */
 export interface PaymentRecord {
@@ -282,6 +283,59 @@ export class PaymentRepository {
         data.providerNetAmount,
       ],
     );
+  }
+
+  /**
+   * Re-arm a FAILED payment row for a RE-CONFIRMATION of its existing
+   * PaymentIntent: status PENDING, the new card, the failure cleared — and the
+   * amounts LEFT AS THEY ARE.
+   *
+   * ⚠️ Distinct from {@link prepareRetry} on purpose. An intent's amount is
+   * fixed at its creation, and confirming it sends none: the row must keep the
+   * figures that intent carries, or the ledger records one number while Stripe
+   * debits another. Only the branches that CREATE an intent may rewrite them.
+   */
+  async prepareConfirmRetry(paymentId: string, paymentMethodId: string): Promise<void> {
+    await this.repo.query(
+      `UPDATE payments
+         SET status = '${PaymentStatus.PENDING}',
+             payment_method_id = $2,
+             failed_at_utc = NULL,
+             failure_reason = NULL,
+             updated_at_utc = now()
+       WHERE id = $1`,
+      [paymentId, paymentMethodId],
+    );
+  }
+
+  /**
+   * Point a payment row awaiting the client (FAILED or REQUIRES_ACTION — see
+   * `CLIENT_CONFIRMABLE_DEPOSIT_STATUSES`) at the card the CLIENT is about to
+   * confirm its PaymentIntent with, from the browser — and write nothing else:
+   * the status stays as it is (the webhook moves it), the amounts stay those of
+   * the intent.
+   *
+   * Conditional on that same status list, so a provider retry that re-armed
+   * the row in the meantime (PENDING) is not overwritten. Returns whether a row
+   * was touched. (`updated_at_utc` moves too: it is the row's bookkeeping, not
+   * its content.)
+   */
+  async setPaymentMethodWhileAwaitingClient(
+    paymentId: string,
+    paymentMethodId: string,
+  ): Promise<boolean> {
+    const rows = updateReturningRows(
+      await this.repo.query(
+        `UPDATE payments
+           SET payment_method_id = $2,
+               updated_at_utc = now()
+         WHERE id = $1
+           AND status IN (${CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL})
+         RETURNING ${SELECT_COLUMNS}`,
+        [paymentId, paymentMethodId],
+      ),
+    );
+    return rows.length > 0;
   }
 
   /** Record a capture failure (and the intent id, if Stripe produced one). */

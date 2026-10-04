@@ -884,6 +884,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-requests/deposits-awaiting-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read. */
+        get: operations["ServiceRequestsController_listDepositsAwaitingConfirmation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/service-requests/{id}": {
         parameters: {
             query?: never;
@@ -946,6 +963,23 @@ export interface paths {
         put?: never;
         /** Re-attempt the deposit on a job already assigned to the caller. Idempotent: a settled or in-flight deposit is left alone, and a retry never creates a second PaymentIntent. */
         post: operations["ServiceRequestsController_retryDeposit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-requests/{id}/deposit-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Client only. Prepare the browser-side confirmation of the deposit’s EXISTING PaymentIntent (3-D Secure, or a declined card since replaced). Reads the intent at Stripe, points the payment row at the client’s current default card, and returns the client secret. Creates and confirms nothing server-side. */
+        post: operations["ServiceRequestsController_prepareDepositConfirmation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2137,6 +2171,24 @@ export interface components {
             /** Format: date-time */
             updatedAtUtc: string;
         };
+        DepositAwaitingConfirmationItemDto: {
+            /** Format: uuid */
+            serviceRequestId: string;
+            /** @description Title of the service request, as the client wrote it */
+            title: string;
+            /** @description Deposit amount, decimal string (e.g. "30.00") */
+            grossAmount: string;
+            /** @description ISO 4217, upper-case */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description When the off-session charge failed
+             */
+            failedAtUtc: string | null;
+        };
+        DepositAwaitingConfirmationListDto: {
+            items: components["schemas"]["DepositAwaitingConfirmationItemDto"][];
+        };
         ServiceRequestListDto: {
             items: components["schemas"]["ServiceRequestResponseDto"][];
             /** @description Total matching rows (before pagination) */
@@ -2149,6 +2201,18 @@ export interface components {
         CancelServiceRequestDto: {
             /** @description Reason for cancellation. */
             cancellationReason: string;
+        };
+        DepositConfirmationResponseDto: {
+            /** Format: uuid */
+            serviceRequestId: string;
+            /** @description Client secret of the deposit PaymentIntent (browser-side confirmation) */
+            clientSecret: string;
+            /** @description Stripe id of the card to confirm with (the client’s current default) */
+            stripePaymentMethodId: string;
+            /** @description Deposit amount, decimal string (e.g. "30.00") */
+            grossAmount: string;
+            /** @description ISO 4217, upper-case */
+            currency: string;
         };
         DeclineServiceRequestDto: {
             /** @description Optional reason for declining the request */
@@ -4236,6 +4300,25 @@ export interface operations {
             };
         };
     };
+    ServiceRequestsController_listDepositsAwaitingConfirmation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepositAwaitingConfirmationListDto"];
+                };
+            };
+        };
+    };
     ServiceRequestsController_findOne: {
         parameters: {
             query?: never;
@@ -4415,7 +4498,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Request is not in a state where a deposit applies, or no agreed price is on file (accepted tender without an ACCEPTED quote) */
+            /** @description Request is not in a state where a deposit applies, no agreed price is on file (accepted tender without an ACCEPTED quote), or the deposit record and its existing payment intent disagree on the amount (nothing is confirmed) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4430,6 +4513,62 @@ export interface operations {
                 content?: never;
             };
             /** @description Stripe rejected the deposit charge */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ServiceRequestsController_prepareDepositConfirmation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepositConfirmationResponseDto"];
+                };
+            };
+            /** @description Caller is not the client of this request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing to confirm: request not live, deposit neither FAILED nor REQUIRES_ACTION, or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The client has no default card to confirm with */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The PaymentIntent could not be read at Stripe */
             502: {
                 headers: {
                     [name: string]: unknown;
