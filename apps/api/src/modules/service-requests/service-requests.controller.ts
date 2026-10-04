@@ -53,7 +53,7 @@ export class ServiceRequestsController {
   @Get('deposits-awaiting-confirmation')
   @ApiOperation({
     summary:
-      'Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read.',
+      'Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read.',
   })
   @ApiResponse({ status: 200, type: DepositAwaitingConfirmationListDto })
   listDepositsAwaitingConfirmation(
@@ -176,7 +176,7 @@ export class ServiceRequestsController {
   @ApiResponse({
     status: 409,
     description:
-      'Nothing to confirm: request not live, deposit not FAILED or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount',
+      'Nothing to confirm: request not live, deposit neither FAILED nor REQUIRES_ACTION, or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount',
   })
   @ApiResponse({ status: 422, description: 'The client has no default card to confirm with' })
   @ApiResponse({ status: 502, description: 'The PaymentIntent could not be read at Stripe' })

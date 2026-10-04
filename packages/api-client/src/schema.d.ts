@@ -891,7 +891,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read. */
+        /** Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read. */
         get: operations["ServiceRequestsController_listDepositsAwaitingConfirmation"];
         put?: never;
         post?: never;
@@ -4554,7 +4554,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Nothing to confirm: request not live, deposit not FAILED or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount */
+            /** @description Nothing to confirm: request not live, deposit neither FAILED nor REQUIRES_ACTION, or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount */
             409: {
                 headers: {
                     [name: string]: unknown;

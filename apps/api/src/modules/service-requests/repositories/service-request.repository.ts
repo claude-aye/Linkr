@@ -16,6 +16,7 @@ import {
   eligibilityFromWhere,
 } from '../../service-providers/repositories/eligibility.sql';
 import { DEPOSIT_LIVE_REQUEST_STATUSES } from '../constants';
+import { CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL } from '../../payments/client-confirmable-deposit';
 
 export interface ServiceRequestRecord {
   id: string;
@@ -978,8 +979,11 @@ export class ServiceRequestRepository {
    * `clientSecret` is obtained only on a click.
    *
    * The predicate, every term load-bearing:
-   *   - `payment_type = DEPOSIT`, `status = FAILED` — the off-session charge
-   *     did not go through;
+   *   - `payment_type = DEPOSIT`, status in
+   *     `CLIENT_CONFIRMABLE_DEPOSIT_STATUSES` — FAILED (the off-session charge
+   *     did not go through) or REQUIRES_ACTION (the client opened the 3-D
+   *     Secure challenge and abandoned it, then the provider's retry reconciled
+   *     the row: only the client can clear it, so it must stay listed);
    *   - `stripe_payment_intent_id IS NOT NULL` — there is an intent to
    *     confirm. A FAILED row with no intent (an invalid card id, a network
    *     failure before Stripe answered) has nothing the browser could confirm;
@@ -1004,7 +1008,7 @@ export class ServiceRequestRepository {
         WHERE p.payer_user_id = $1
           AND sr.client_user_id = $1
           AND p.payment_type = '${PaymentType.DEPOSIT}'
-          AND p.status = '${PaymentStatus.FAILED}'
+          AND p.status IN (${CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL})
           AND p.stripe_payment_intent_id IS NOT NULL
           AND sr.deleted_at_utc IS NULL
           AND sr.status IN (${DEPOSIT_LIVE_STATUSES_SQL})

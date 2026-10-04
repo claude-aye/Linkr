@@ -126,7 +126,7 @@ function buildHarness(opts: {
   /** Result of `paymentIntents.retrieve` (merged on a matching intent), or an Error. */
   retrieved?: Partial<Intent> | Error;
   defaultCard?: boolean;
-  /** Result of `setPaymentMethodWhileFailed` (false = a retry re-armed the row meanwhile). */
+  /** Result of `setPaymentMethodWhileAwaitingClient` (false = a retry re-armed the row meanwhile). */
   pmWriteTouched?: boolean;
 }) {
   const intents = {
@@ -144,16 +144,20 @@ function buildHarness(opts: {
       };
     }),
   };
+  // STATEFUL on the deposit row: `attachIntent` really moves it, so a test can
+  // chain a provider retry and a client confirmation on the SAME row.
+  let row: PaymentRecord | null = opts.existing === undefined ? failedDeposit() : opts.existing;
   const paymentRepo = {
-    findByServiceRequestAndType: jest
-      .fn()
-      .mockResolvedValue(opts.existing === undefined ? failedDeposit() : opts.existing),
+    findByServiceRequestAndType: jest.fn(async () => row),
     create: jest.fn(),
     prepareRetry: jest.fn(),
     prepareConfirmRetry: jest.fn(),
-    attachIntent: jest.fn().mockResolvedValue(null),
+    attachIntent: jest.fn(async (_id: string, pi: string, status: PaymentStatus) => {
+      row = row && { ...row, stripePaymentIntentId: pi, status };
+      return row;
+    }),
     recordFailure: jest.fn(),
-    setPaymentMethodWhileFailed: jest.fn().mockResolvedValue(opts.pmWriteTouched ?? true),
+    setPaymentMethodWhileAwaitingClient: jest.fn().mockResolvedValue(opts.pmWriteTouched ?? true),
   };
   const pmRepo = {
     findDefaultByUserId: jest.fn().mockResolvedValue(
@@ -218,7 +222,7 @@ function buildHarness(opts: {
     paymentRepo.prepareConfirmRetry,
     paymentRepo.recordFailure,
   ];
-  return { service, intents, paymentRepo, pmRepo, prepare, otherWrites };
+  return { service, intents, paymentRepo, pmRepo, prepare, otherWrites, currentRow: () => row };
 }
 
 type Harness = ReturnType<typeof buildHarness>;
@@ -303,7 +307,11 @@ describe('prepareClientDepositConfirmation — the deposit row', () => {
     expect(h.intents.retrieve).not.toHaveBeenCalled();
   });
 
-  it.each(Object.values(PaymentStatus).filter((s) => s !== PaymentStatus.FAILED))(
+  it.each(
+    Object.values(PaymentStatus).filter(
+      (s) => s !== PaymentStatus.FAILED && s !== PaymentStatus.REQUIRES_ACTION,
+    ),
+  )(
     '409 on a %s deposit — nothing read at Stripe',
     async (status) => {
       const h = buildHarness({ existing: failedDeposit({ status }) });
@@ -341,7 +349,7 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
         currency: 'CAD',
       });
       expect(h.intents.retrieve).toHaveBeenCalledWith('pi_3ds');
-      expect(h.paymentRepo.setPaymentMethodWhileFailed).toHaveBeenCalledWith(
+      expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).toHaveBeenCalledWith(
         PAYMENT_ID,
         NEW_PM_ROW_ID,
       );
@@ -368,7 +376,7 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
         mapped,
         mapped === PaymentStatus.SUCCEEDED ? expect.any(Date) : null,
       );
-      expect(h.paymentRepo.setPaymentMethodWhileFailed).not.toHaveBeenCalled();
+      expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).not.toHaveBeenCalled();
       for (const write of h.otherWrites) expect(write).not.toHaveBeenCalled();
       expectNoServerSideCharge(h);
     },
@@ -378,7 +386,7 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
     const h = buildHarness({ retrieved: { status: 'canceled' } });
     await expect(call(h)).rejects.toBeInstanceOf(DepositNotAwaitingConfirmationException);
     expect(h.paymentRepo.attachIntent).not.toHaveBeenCalled();
-    expect(h.paymentRepo.setPaymentMethodWhileFailed).not.toHaveBeenCalled();
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).not.toHaveBeenCalled();
     expectNoServerSideCharge(h);
   });
 
@@ -386,7 +394,7 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
     const h = buildHarness({ retrieved: new Error('network down') });
     await expect(call(h)).rejects.toBeInstanceOf(DepositIntentUnreadableException);
     expect(h.paymentRepo.attachIntent).not.toHaveBeenCalled();
-    expect(h.paymentRepo.setPaymentMethodWhileFailed).not.toHaveBeenCalled();
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).not.toHaveBeenCalled();
     for (const write of h.otherWrites) expect(write).not.toHaveBeenCalled();
     expectNoServerSideCharge(h);
   });
@@ -397,7 +405,7 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
   ])('409 when the intent and the row disagree on the %s — nothing returned, nothing written', async (_l, drift) => {
     const h = buildHarness({ retrieved: drift });
     await expect(call(h)).rejects.toBeInstanceOf(DepositIntentMismatchException);
-    expect(h.paymentRepo.setPaymentMethodWhileFailed).not.toHaveBeenCalled();
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).not.toHaveBeenCalled();
     expect(h.pmRepo.findDefaultByUserId).not.toHaveBeenCalled();
     expectNoServerSideCharge(h);
   });
@@ -405,7 +413,7 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
   it('422 when the client has no default card — nothing written', async () => {
     const h = buildHarness({ defaultCard: false });
     await expect(call(h)).rejects.toBeInstanceOf(DepositConfirmationCardRequiredException);
-    expect(h.paymentRepo.setPaymentMethodWhileFailed).not.toHaveBeenCalled();
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).not.toHaveBeenCalled();
     expectNoServerSideCharge(h);
   });
 
@@ -418,6 +426,64 @@ describe('prepareClientDepositConfirmation — the PaymentIntent, read at Stripe
   it('502 when the intent carries no client secret — and the card pointer is not moved', async () => {
     const h = buildHarness({ retrieved: { client_secret: null } });
     await expect(call(h)).rejects.toBeInstanceOf(DepositIntentUnreadableException);
-    expect(h.paymentRepo.setPaymentMethodWhileFailed).not.toHaveBeenCalled();
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('REQUIRES_ACTION — the abandoned challenge, then a provider retry', () => {
+  it('a REQUIRES_ACTION row (with an intent) is confirmable, exactly like a FAILED one', async () => {
+    const h = buildHarness({
+      existing: failedDeposit({ status: PaymentStatus.REQUIRES_ACTION }),
+      retrieved: { status: 'requires_action' },
+    });
+
+    await expect(call(h)).resolves.toMatchObject({
+      clientSecret: 'pi_3ds_secret_abc',
+      stripePaymentMethodId: 'pm_new_default',
+    });
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).toHaveBeenCalledWith(
+      PAYMENT_ID,
+      NEW_PM_ROW_ID,
+    );
+    for (const write of h.otherWrites) expect(write).not.toHaveBeenCalled();
+    expectNoServerSideCharge(h);
+  });
+
+  it('a REQUIRES_ACTION row WITHOUT an intent is not (nothing to confirm)', async () => {
+    const h = buildHarness({
+      existing: failedDeposit({ status: PaymentStatus.REQUIRES_ACTION, stripePaymentIntentId: null }),
+    });
+    await expect(call(h)).rejects.toBeInstanceOf(DepositNotAwaitingConfirmationException);
+    expect(h.intents.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('the exact sequence: challenge abandoned → provider retry reconciles to REQUIRES_ACTION → the client can STILL confirm', async () => {
+    // The client opened the 3-D Secure challenge and closed the tab: the
+    // intent stays `requires_action`, the row stays FAILED.
+    const h = buildHarness({ retrieved: { status: 'requires_action' } });
+
+    // The provider retries later. `retryFailedDeposit` counts `requires_action`
+    // among the LIVE intents and reconciles the row — it does NOT charge.
+    await h.service.retryDeposit(REQUEST_ID, WORKER_ID);
+    expect(h.currentRow()?.status).toBe(PaymentStatus.REQUIRES_ACTION);
+
+    // A second provider retry is now a silent no-op (only FAILED is retried):
+    // from the provider's side, nothing can move this row any more.
+    h.intents.retrieve.mockClear();
+    await h.service.retryDeposit(REQUEST_ID, WORKER_ID);
+    expect(h.intents.retrieve).not.toHaveBeenCalled();
+
+    // …which is why the client must keep the button.
+    await expect(call(h)).resolves.toMatchObject({
+      serviceRequestId: REQUEST_ID,
+      clientSecret: 'pi_3ds_secret_abc',
+      stripePaymentMethodId: 'pm_new_default',
+    });
+    expect(h.paymentRepo.setPaymentMethodWhileAwaitingClient).toHaveBeenCalledWith(
+      PAYMENT_ID,
+      NEW_PM_ROW_ID,
+    );
+    // Across the whole sequence, nothing was created or confirmed server-side.
+    expectNoServerSideCharge(h);
   });
 });

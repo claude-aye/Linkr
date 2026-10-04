@@ -172,7 +172,7 @@ export class RefundChargeFailedException extends HttpException {
 
 /**
  * 409 — there is nothing for the client to confirm on this deposit: the row is
- * not FAILED, carries no PaymentIntent, or that intent was cancelled (only the
+ * neither FAILED nor REQUIRES_ACTION, carries no PaymentIntent, or that intent was cancelled (only the
  * provider's retry, which issues a fresh intent, can move it then).
  *
  * One status for every "not here, not now" cause on purpose: the web maps the

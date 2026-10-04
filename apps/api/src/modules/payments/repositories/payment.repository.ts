@@ -4,6 +4,7 @@ import { EntityManager, Repository } from 'typeorm';
 import { Payment } from '../entities/payment.entity';
 import { PaymentType } from '../enums/payment-type.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
+import { CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL } from '../client-confirmable-deposit';
 
 /** Domain record — snake_case columns mapped to camelCase. */
 export interface PaymentRecord {
@@ -308,15 +309,18 @@ export class PaymentRepository {
   }
 
   /**
-   * Point a FAILED payment row at the card the CLIENT is about to confirm its
-   * PaymentIntent with, from the browser — and write nothing else: the status
-   * stays FAILED (the webhook moves it), the amounts stay those of the intent.
+   * Point a payment row awaiting the client (FAILED or REQUIRES_ACTION — see
+   * `CLIENT_CONFIRMABLE_DEPOSIT_STATUSES`) at the card the CLIENT is about to
+   * confirm its PaymentIntent with, from the browser — and write nothing else:
+   * the status stays as it is (the webhook moves it), the amounts stay those of
+   * the intent.
    *
-   * Conditional on `status = 'FAILED'`, so a provider retry that re-armed the
-   * row in the meantime is not overwritten. Returns whether a row was touched.
-   * (`updated_at_utc` moves too: it is the row's bookkeeping, not its content.)
+   * Conditional on that same status list, so a provider retry that re-armed
+   * the row in the meantime (PENDING) is not overwritten. Returns whether a row
+   * was touched. (`updated_at_utc` moves too: it is the row's bookkeeping, not
+   * its content.)
    */
-  async setPaymentMethodWhileFailed(
+  async setPaymentMethodWhileAwaitingClient(
     paymentId: string,
     paymentMethodId: string,
   ): Promise<boolean> {
@@ -326,7 +330,7 @@ export class PaymentRepository {
            SET payment_method_id = $2,
                updated_at_utc = now()
          WHERE id = $1
-           AND status = '${PaymentStatus.FAILED}'
+           AND status IN (${CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL})
          RETURNING ${SELECT_COLUMNS}`,
         [paymentId, paymentMethodId],
       ),

@@ -22,6 +22,8 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { ServiceRequest } from '../../modules/service-requests/entities/service-request.entity';
 import { ServiceRequestRepository } from '../../modules/service-requests/repositories/service-request.repository';
 import { DepositAwaitingConfirmationItemDto } from '../../modules/service-requests/dto/deposit-awaiting-confirmation.dto';
+import { Payment } from '../../modules/payments/entities/payment.entity';
+import { PaymentRepository } from '../../modules/payments/repositories/payment.repository';
 
 const TAG = '[probe-pending-deposits]';
 
@@ -62,7 +64,12 @@ const CASES: Case[] = [
   // Deposit row not confirmable.
   { key: 'NO_INTENT', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'FAILED', withIntent: false, failedMinutesAgo: 5, expected: false },
   { key: 'SUCCEEDED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'SUCCEEDED', withIntent: true, failedMinutesAgo: 5, expected: false },
-  { key: 'REQUIRES_ACTION', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'REQUIRES_ACTION', withIntent: true, failedMinutesAgo: 5, expected: false },
+  // REQUIRES_ACTION — the client abandoned the challenge, then the provider's
+  // retry reconciled the row: only the client can clear it, so it stays listed.
+  { key: 'REQUIRES_ACTION', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'REQUIRES_ACTION', withIntent: true, failedMinutesAgo: 15, expected: true },
+  { key: 'RA_NO_INTENT', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'REQUIRES_ACTION', withIntent: false, failedMinutesAgo: 5, expected: false },
+  // PENDING — a provider retry has just re-armed the row: in flight, not ours.
+  { key: 'PENDING', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'PENDING', withIntent: true, failedMinutesAgo: 5, expected: false },
   { key: 'BALANCE', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, failedMinutesAgo: 5, expected: false },
   // Soft-deleted request.
   { key: 'DELETED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'FAILED', withIntent: true, requestDeleted: true, failedMinutesAgo: 5, expected: false },
@@ -212,7 +219,7 @@ async function main(): Promise<void> {
     }
 
     console.log('\nOrdre et forme :');
-    check('ordre = échec le plus récent d’abord', keys, ['IN_PROGRESS', 'COMPLETED', 'ASSIGNED']);
+    check('ordre = échec le plus récent d’abord', keys, ['IN_PROGRESS', 'REQUIRES_ACTION', 'COMPLETED', 'ASSIGNED']);
     const dto = DepositAwaitingConfirmationItemDto.from(records[0]);
     check('champs exposés (ni clientSecret, ni message Stripe)', Object.keys(dto).sort(), [
       'currency',
@@ -223,6 +230,14 @@ async function main(): Promise<void> {
     ]);
     check('montant et devise de la ligne', [dto.grossAmount, dto.currency], ['30.00', 'CAD']);
     check('identifiant de la demande', dto.serviceRequestId, reqId(1));
+
+    console.log('\nÉcriture conditionnelle de la carte (même liste de statuts) :');
+    const payments = new PaymentRepository(ds.getRepository(Payment));
+    for (const key of ['ASSIGNED', 'REQUIRES_ACTION', 'PENDING', 'SUCCEEDED']) {
+      const i = CASES.findIndex((c) => c.key === key);
+      const touched = await payments.setPaymentMethodWhileAwaitingClient(payId(i), PM_CLIENT);
+      check(`${CASES[i].paymentStatus.padEnd(16)} → carte ${touched ? 'écrite' : 'non écrite'}`, touched, key === 'ASSIGNED' || key === 'REQUIRES_ACTION');
+    }
 
     console.log('\nAutre lecteur :');
     const stranger = await repo.findDepositsAwaitingClientConfirmation(U_STRANGER);

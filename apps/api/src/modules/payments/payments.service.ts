@@ -18,6 +18,7 @@ import {
 import { PaymentRepository, PaymentRecord } from './repositories/payment.repository';
 import { PaymentMethodRepository } from './repositories/payment-method.repository';
 import { PaymentType } from './enums/payment-type.enum';
+import { CLIENT_CONFIRMABLE_DEPOSIT_STATUSES } from './client-confirmable-deposit';
 import { PaymentStatus } from './enums/payment-status.enum';
 import {
   BalanceAmountUnavailableException,
@@ -729,7 +730,7 @@ export class PaymentsService {
    *   - or, when the intent has in fact already settled, the same forward
    *     reconciliation `retryFailedDeposit` performs (`attachIntent`), before
    *     answering « already paid ». The web relies on that path to stop the
-   *     row reading FAILED after a successful confirmation, without waiting for
+   *     row reading FAILED (or REQUIRES_ACTION) after a successful confirmation, without waiting for
    *     the webhook.
    *
    * The caller (`ServiceRequestsService`) has already established that the
@@ -750,11 +751,12 @@ export class PaymentsService {
     );
     if (
       !deposit ||
-      deposit.status !== PaymentStatus.FAILED ||
+      !CLIENT_CONFIRMABLE_DEPOSIT_STATUSES.includes(deposit.status) ||
       !deposit.stripePaymentIntentId ||
       deposit.payerUserId !== clientUserId
     ) {
-      // Same predicate as the « deposits to confirm » list, row-side.
+      // Same predicate as the « deposits to confirm » list, row-side — the
+      // status list is the SAME constant the list's SQL interpolates.
       throw new DepositNotAwaitingConfirmationException();
     }
 
@@ -823,7 +825,7 @@ export class PaymentsService {
       throw new DepositIntentUnreadableException('the payment intent carries no client secret');
     }
 
-    const touched = await this.paymentRepo.setPaymentMethodWhileFailed(deposit.id, pm.id);
+    const touched = await this.paymentRepo.setPaymentMethodWhileAwaitingClient(deposit.id, pm.id);
     if (!touched) {
       // A provider retry re-armed the row between our read and this write.
       throw new DepositNotAwaitingConfirmationException();
