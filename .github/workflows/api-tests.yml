@@ -1,0 +1,68 @@
+# Runs the API unit tests (apps/api/src/**/*.spec.ts, jest) on every pull
+# request to main. Until now they only ran on a developer's machine.
+#
+# The job name "API unit tests (jest)" is what branch protection will
+# reference once this check is made required. Renaming it silently drops the
+# requirement.
+#
+# This is the only one of the four workflows that does NOT filter by path,
+# and that is deliberate. A path filter applies to the whole workflow: a PR
+# that touches only apps/web would never start it, and a required check that
+# never starts stays "pending" forever, blocking the merge. The cost is a
+# couple of minutes of CI on a web-only PR. The three other workflows can
+# filter as long as none of them is a required check; making one of them
+# required means removing its path filter. No decision has been taken on
+# their status.
+#
+# It is also the only one that installs dependencies. The two guards and the
+# web tests import nothing beyond node:* and relative files; jest, ts-jest and
+# the NestJS packages under test cannot be had without an install. The install
+# is filtered to @linkr/api and its workspace dependencies (it has none today),
+# so Next and the web toolchain are never downloaded, and --frozen-lockfile
+# fails the job instead of rewriting pnpm-lock.yaml.
+#
+# No service container, no database, no Redis, no SMTP: no spec opens a
+# connection. Repositories, DataSource and ConfigService are hand-made test
+# doubles, and auth.controller.spec.ts boots a real Nest app on an ephemeral
+# loopback port with an in-memory rate limiter. Jest loads no .env either
+# (no setupFiles; dotenv is only imported by data-source, seeders and probes,
+# which no spec imports). Measured before this file existed: 375/375 with
+# TZ=UTC, without apps/api/.env, and in a fresh worktree after this exact
+# filtered install. If a spec ever needs a live service, it belongs with the
+# probes, not here.
+#
+# The ts-jest cache is deliberately not cached between runs, so every run
+# compiles cold (about 90 s locally for jest alone). Revisit only with a
+# measured runner duration in hand.
+
+name: API tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  api-unit-tests:
+    name: API unit tests (jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version:` input: the action reads `packageManager` from the root
+      # package.json, so the runner uses the same pnpm as developers.
+      - uses: pnpm/action-setup@v4
+
+      # Caches the pnpm store only, keyed on pnpm-lock.yaml.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install API dependencies
+        run: pnpm install --frozen-lockfile --filter '@linkr/api...'
+
+      # `exec jest`, not `test -- <args>`: pnpm swallows options placed after
+      # `--`. The jest config (maxWorkers: 2) lives in apps/api/package.json.
+      - name: Run jest
+        run: pnpm --filter @linkr/api exec jest
