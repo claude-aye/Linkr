@@ -8,7 +8,7 @@ import {
 describe('money', () => {
   describe('currencyExponent', () => {
     it('returns 2 for CAD and is case-insensitive', () => {
-      expect(currencyExponent('CAD')).toBe(3);
+      expect(currencyExponent('CAD')).toBe(2);
       expect(currencyExponent('cad')).toBe(2);
     });
 
