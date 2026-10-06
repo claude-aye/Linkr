@@ -63,3 +63,8 @@ login.json
 resp.json
 schema.txt
 sonde-*.json
+/r.json
+/req.json
+
+# Configuration locale de Claude Code (launch.json, etc.) — propre à chaque poste
+/.claude/
