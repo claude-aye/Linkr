@@ -125,9 +125,19 @@ function Detail({
 export function RequestCard({
   request,
   review,
+  depositAwaiting,
 }: {
   request: ClientRequest;
   review: MyReview | null;
+  /**
+   * True when this request's deposit is listed by
+   * `deposits-awaiting-confirmation` (3-D Secure chantier, D1): the bank refused
+   * it off-session and the CLIENT can confirm the same PaymentIntent on
+   * `/account/payment-methods`. Computed by the page from ONE read, never per
+   * card. The client DTO carries no deposit field, so this is the only way the
+   * card can know.
+   */
+  depositAwaiting: boolean;
 }) {
   const badge = STATUS_BADGES[request.status];
 
@@ -236,6 +246,14 @@ export function RequestCard({
               Appel d’offres
             </span>
           )}
+          {depositAwaiting && (
+            // Informative pill, amber family (the deposit banners'). NOT a link:
+            // a pill is too small to be a touch target — the action is the
+            // 44 px link further down the card.
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              Paiement à confirmer
+            </span>
+          )}
         </div>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           {formatDateLong(request.createdAtUtc)}
@@ -285,6 +303,19 @@ export function RequestCard({
             className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
           >
             Voir les devis reçus →
+          </Link>
+        </div>
+      )}
+
+      {depositAwaiting && (
+        <div className="mt-4">
+          {/* No amount here: the card shows prices, never a deposit (business
+              rule), and the banner on the payment page already carries it. */}
+          <Link
+            href="/account/payment-methods"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+          >
+            Confirmer le paiement →
           </Link>
         </div>
       )}

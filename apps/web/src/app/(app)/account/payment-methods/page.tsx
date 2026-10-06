@@ -93,7 +93,10 @@ export default async function PaymentMethodsPage() {
               Les cartes utilisées pour régler l’acompte de vos demandes.
             </p>
           </div>
-          <AddCardSection />
+          {/* `hasDepositAwaiting` comes from the read above — no extra call. A
+              failed read (`null`) counts as « none »: the confirmation then
+              promises nothing rather than a button that may not be there. */}
+          <AddCardSection hasDepositAwaiting={deposits !== null && deposits.length > 0} />
         </header>
 
         {deposits && deposits.length > 0 && (
@@ -152,8 +155,14 @@ export default async function PaymentMethodsPage() {
             broken page at the worst possible moment.
           */
           <StateCard title="Aucun moyen de paiement enregistré">
-            Enregistrez une carte pour régler l’acompte de vos demandes. Le
-            prestataire pourra ensuite relancer le prélèvement.
+            {/* ⚠️ It said « Le prestataire pourra ensuite relancer le prélèvement »
+                until D1 — false for anyone with no failed deposit, and not the
+                way out when one awaits: the client confirms it here. Same
+                condition as the « Carte enregistrée » confirmation; a failed
+                read (`null`) counts as « none » and promises nothing. */}
+            {deposits !== null && deposits.length > 0
+              ? 'Enregistrez une carte, puis confirmez l’acompte en attente avec le bouton « Confirmer le paiement ».'
+              : 'Enregistrez une carte pour régler l’acompte de vos demandes.'}
           </StateCard>
         ) : (
           <ul className="space-y-4">

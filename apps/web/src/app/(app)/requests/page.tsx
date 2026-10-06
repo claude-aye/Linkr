@@ -27,10 +27,12 @@ function Section({
   title,
   requests,
   reviews,
+  depositsAwaiting,
 }: {
   title: string;
   requests: ClientRequest[];
   reviews: Map<string, MyReview>;
+  depositsAwaiting: Set<string>;
 }) {
   return (
     <section>
@@ -41,6 +43,7 @@ function Section({
             key={request.id}
             request={request}
             review={reviews.get(request.id) ?? null}
+            depositAwaiting={depositsAwaiting.has(request.id)}
           />
         ))}
       </ul>
@@ -58,10 +61,20 @@ const PUBLISHED_TENDER_FLAG = 'appel-offres';
 /**
  * Set by « Devis reçus » after an accepted quote (PR 4b), one flag per HTTP
  * success the API can answer. The two are NOT the same news: on 202 the job is
- * the provider's but the deposit was not taken, and this banner is the ONLY
- * place the client is told — the request card has no deposit field (the client
- * DTO carries none). No retry button: `retry-deposit` is the assigned
- * provider's, a client would get 403.
+ * the provider's but the deposit was not taken. No retry button: `retry-deposit`
+ * is the assigned provider's, a client would get 403.
+ *
+ * ⚠️ THE 202 BANNER HAS TWO TEXTS, AND THE CHOICE IS NOT COSMETIC (D1). A 202
+ * covers every exception of `captureDeposit`, and not all of them leave a
+ * PaymentIntent the client can confirm: a Stripe error that carries no intent
+ * (connection, rate limit, « No such PaymentMethod ») records the row FAILED
+ * with `stripe_payment_intent_id` NULL, and a commit/capture race (card removed,
+ * Connect disabled) throws before any `payments` row exists. Neither is listed
+ * by `deposits-awaiting-confirmation`, so `/account/payment-methods` shows NO
+ * button for them — promising « Confirmez le paiement » there would send the
+ * client to a page that cannot do it. The flag carries no request id, so the
+ * banner keys on « at least one deposit awaits » — an approximation that holds
+ * because the request was accepted a second ago.
  */
 const QUOTE_ACCEPTED_FLAG = 'accepte';
 const QUOTE_ACCEPTED_DEPOSIT_FAILED_FLAG = 'acompte-en-echec';
@@ -128,6 +141,30 @@ export default async function RequestsPage({
     // Map stays empty — see above.
   }
 
+  /**
+   * Deposits the client can confirm themselves (3-D Secure chantier, D1) —
+   * the source of the « Paiement à confirmer » badge and of the 202 banner's
+   * text. Same read as `/account/payment-methods`, LOCAL DATABASE ONLY on the
+   * API side: no Stripe round trip on this render.
+   *
+   * Degraded on its own, exactly like the reviews read above: a failure leaves
+   * the set empty, so no badge shows and the 202 banner falls back to the text
+   * that promises no button. It never touches `requests`.
+   */
+  const depositsAwaiting = new Set<string>();
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-requests/deposits-awaiting-confirmation',
+    );
+    if (!error && response.ok && data && Array.isArray(data.items)) {
+      for (const deposit of data.items) {
+        depositsAwaiting.add(deposit.serviceRequestId);
+      }
+    }
+  } catch {
+    // Set stays empty — see above.
+  }
+
   // API guarantees `created_at DESC` — `filter` preserves that order per section.
   const active = requests?.filter((r) => ACTIVE_STATUSES.has(r.status)) ?? [];
   const done = requests?.filter((r) => !ACTIVE_STATUSES.has(r.status)) ?? [];
@@ -167,12 +204,31 @@ export default async function RequestsPage({
 
         {quoteAcceptedDepositFailed && (
           <p className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-            Le devis est accepté et le travail est confié au prestataire. Toutefois, le
-            prélèvement de l’acompte a échoué. Vérifiez votre{' '}
-            <Link href="/account/payment-methods" className="font-medium underline underline-offset-2">
-              moyen de paiement
-            </Link>{' '}
-            ; le prestataire pourra relancer le prélèvement depuis son espace.
+            Le devis est accepté et le travail est confié au prestataire. Toutefois,
+            l’acompte n’a pas pu être prélevé.{' '}
+            {depositsAwaiting.size > 0 ? (
+              <>
+                Confirmez le paiement depuis vos{' '}
+                <Link
+                  href="/account/payment-methods"
+                  className="font-medium underline underline-offset-2"
+                >
+                  moyens de paiement
+                </Link>{' '}
+                ; votre banque peut vous demander une vérification.
+              </>
+            ) : (
+              <>
+                Vérifiez vos{' '}
+                <Link
+                  href="/account/payment-methods"
+                  className="font-medium underline underline-offset-2"
+                >
+                  moyens de paiement
+                </Link>{' '}
+                ; le prestataire relancera ensuite le prélèvement.
+              </>
+            )}
           </p>
         )}
 
@@ -204,10 +260,20 @@ export default async function RequestsPage({
             {/* A section header renders only when its bucket has ≥1 item — no
                 orphan « Terminées » heading above an empty list. */}
             {active.length > 0 && (
-              <Section title="En cours" requests={active} reviews={reviews} />
+              <Section
+                title="En cours"
+                requests={active}
+                reviews={reviews}
+                depositsAwaiting={depositsAwaiting}
+              />
             )}
             {done.length > 0 && (
-              <Section title="Terminées" requests={done} reviews={reviews} />
+              <Section
+                title="Terminées"
+                requests={done}
+                reviews={reviews}
+                depositsAwaiting={depositsAwaiting}
+              />
             )}
           </div>
         )}
