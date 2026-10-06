@@ -22,6 +22,22 @@ import { PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
  * deposit-failure emails. The client is told what to do, not what Stripe said.
  */
 
+/**
+ * ⚠️ LINK IS OFF, BY PRODUCT DECISION (chantier 3D Secure, after the D1 lot).
+ * The SetupIntent is `payment_method_types: ['card']`, so Link never shows as a
+ * method of its own — it shows as AUTOFILL tied to a Link session in the
+ * browser, and the smoke saw it prefill the billing email of ANOTHER account.
+ * On the screen that is supposed to show the client their own cards only, a
+ * stranger's identity is a trust problem, not a convenience one. Prefilling
+ * the Linkr account email was rejected: nothing guarantees it wins over an
+ * open Link session. Cost: Link users lose autofill, on a form filled once.
+ *
+ * Module-level constant on purpose: `wallets` is NOT among the options the
+ * Payment Element accepts as an update, so the object must not change between
+ * renders. The option only shapes this form: cards already saved are untouched.
+ */
+const PAYMENT_ELEMENT_OPTIONS = { wallets: { link: 'never' } } as const;
+
 /** Frozen FR copy — mapped by outcome / HTTP status alone, never by body. */
 const AUTHENTICATION_FAILED =
   "Votre carte n'a pas pu être vérifiée. Vérifiez les informations saisies ou utilisez une autre carte.";
@@ -138,7 +154,7 @@ export function CardForm({ onCancel, onSaved }: CardFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="mt-4">
-      <PaymentElement onReady={() => setReady(true)} />
+      <PaymentElement options={PAYMENT_ELEMENT_OPTIONS} onReady={() => setReady(true)} />
 
       {error && (
         <p
