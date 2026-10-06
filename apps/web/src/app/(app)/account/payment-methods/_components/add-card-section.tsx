@@ -43,7 +43,18 @@ const CARD_ENTRY_UNAVAILABLE =
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
-export function AddCardSection() {
+export function AddCardSection({
+  hasDepositAwaiting,
+}: {
+  /**
+   * At least one deposit on this page awaits the client's confirmation (3-D
+   * Secure chantier, D1). Read by the Server Component from the list it already
+   * renders — no extra call — and refreshed with it by `router.refresh()`. The
+   * « Carte enregistrée » confirmation keys on it: without a deposit waiting,
+   * a client who simply adds a card must not be told about one.
+   */
+  hasDepositAwaiting: boolean;
+}) {
   const router = useRouter();
   const titleId = useId();
 
@@ -190,8 +201,14 @@ export function AddCardSection() {
             Carte enregistrée
           </p>
           <p className="mt-1 text-emerald-800 dark:text-emerald-300">
-            Elle est désormais votre moyen de paiement par défaut. Le prestataire
-            pourra relancer le prélèvement de l’acompte.
+            Elle est désormais votre moyen de paiement par défaut.
+            {/* ⚠️ It said « Le prestataire pourra relancer le prélèvement » until
+                D1 — false for a card that demands 3-D Secure on every payment
+                (the provider's retry is off-session and fails the same way),
+                and false for anyone with no failed deposit at all. The way out
+                is the client's own « Confirmer le paiement », below. */}
+            {hasDepositAwaiting &&
+              ' Vous pouvez maintenant confirmer l’acompte en attente avec le bouton « Confirmer le paiement » ci-dessous.'}
           </p>
           <Link
             href="/requests"
