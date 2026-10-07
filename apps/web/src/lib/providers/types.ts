@@ -127,6 +127,48 @@ export interface ProviderCategory {
 }
 
 /**
+ * Pricing model of a provider's service — DERIVED from the generated schema
+ * (`CreateProfessionalServiceDto` spells the enum out), never hand-written.
+ */
+export type PricingModel = components['schemas']['CreateProfessionalServiceDto']['pricingModel'];
+
+/**
+ * Mirror of `ProfessionalServiceResponseDto` — one service a provider offers, as
+ * returned by `GET /service-providers/{providerId}/services/owner` (owner view:
+ * active AND disabled, soft-deleted rows excluded, oldest first).
+ *
+ * A FULL hand-mirror, same reason as {@link ProviderCategory}: the owner list,
+ * the POST and the PATCH all ship `content?: never`, and the DTO is not even
+ * emitted in `components.schemas`. Only the pricing-model union is derived.
+ *
+ * ⚠️ It carries `serviceItemId` and NO label: the name is joined against the
+ * trade's catalogue items (`GET /service-categories/{slug}/items`). And
+ * `priceAmount` is a NUMBER here (the repository does `Number(price_amount)`),
+ * unlike the request DTOs' decimal strings.
+ *
+ * NB `findAllByProviderId` does not filter soft-deleted TRADE claims: services
+ * attached to a retired trade still come back, with a `professionalServiceCategoryId`
+ * no listed trade carries — they are simply not displayed.
+ *
+ * Source of truth:
+ * apps/api/src/modules/service-providers/dto/professional-service-response.dto.ts
+ */
+export interface ProviderService {
+  id: string;
+  /** The trade claim (junction row) this service hangs off — NOT the catalogue trade id. */
+  professionalServiceCategoryId: string;
+  serviceItemId: string;
+  pricingModel: PricingModel;
+  priceAmount: number | null;
+  priceCurrency: string;
+  estimatedDurationMinutes: number | null;
+  descriptionOverride: string | null;
+  isActive: boolean;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+/**
  * Mirror of `ProviderServiceRequestItemDto` (Vision B item: assigned job OR
  * OPEN direct booking targeted at the provider). Amounts are decimal strings
  * (e.g. `"150.00"`); GPS and `clientUserId` are excluded upstream (Loi 25).

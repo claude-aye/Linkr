@@ -77,9 +77,33 @@ export interface DiscoveredProviderList {
  */
 export interface CategoryOption {
   id: string;
+  /**
+   * URL slug (`plomberie`, `coiffure`…) — the key of
+   * `GET /service-categories/{slug}/items`, which the dashboard's « Mes
+   * services » reads per declared trade. On the wire for the same reason as
+   * `regulationLevel` below (whole entity serialized).
+   */
+  slug: string;
   /** Trade i18n name map; resolve via `pickTranslation`. */
   nameTranslations: Record<string, string>;
   sortOrder: number;
   /** REGULATED → the API would file the claim as PENDING; INFORMAL → NOT_REQUIRED. */
   regulationLevel: RegulationLevel;
+}
+
+/**
+ * One APPROVED catalogue item of a trade, as returned by
+ * `GET /service-categories/{slug}/items` (approved, active, non-deleted, by
+ * `sortOrder` then creation). Same contract gap as `GET /service-categories`:
+ * no response schema (`content: never`), the whole `ServiceItem` entity is
+ * serialized — so a minimal mirror of what « Mes services » reads.
+ *
+ * Source of truth:
+ * apps/api/src/modules/services-catalog/entities/service-item.entity.ts
+ */
+export interface CatalogServiceItem {
+  id: string;
+  /** Item i18n name map; resolve via `pickTranslation`. */
+  nameTranslations: Record<string, string>;
+  sortOrder: number;
 }
