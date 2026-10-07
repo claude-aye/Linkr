@@ -27,11 +27,15 @@ export function acceptErrorMessage(status: number, supportEmail: string): string
     // prestataire ciblé » (`NotRequestOwnerException`). Elles partagent ce
     // message, délibérément : la seconde est quasi inatteignable depuis
     // l'interface, qui ne propose « Accepter » qu'au prestataire ciblé.
-    // L'adresse est là parce qu'aucun écran ne permet de rétablir un métier.
+    // Depuis « Métiers — PR B », la pause et le retrait se défont dans l'onglet
+    // Mes métiers (le composant y ajoute un lien). L'adresse ne reste que pour
+    // la vérification qui n'est plus valide, que le prestataire ne peut pas
+    // rétablir seul.
     case 403:
       return (
-        'Vous ne pouvez plus accepter cette demande : ce métier est en pause sur votre profil ' +
-        `ou sa vérification n'est plus valide. Écrivez-nous à ${supportEmail} pour le rétablir.`
+        'Vous ne pouvez plus accepter cette demande : ce métier est en pause ou a été retiré ' +
+        "de votre profil. Vous pouvez le réactiver ou l'ajouter à nouveau dans l'onglet " +
+        `Mes métiers. Si votre vérification n'est plus valide, écrivez-nous à ${supportEmail}.`
       );
     case 409:
       return "Cette demande n'est plus disponible ou un problème de paiement empêche l'acceptation. Veuillez rafraîchir la page et réessayer.";
