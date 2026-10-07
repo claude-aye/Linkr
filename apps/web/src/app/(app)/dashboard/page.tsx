@@ -19,11 +19,19 @@ import type {
   ServiceRequestStatus,
 } from '@/lib/providers/types';
 import { itemsNotYetOffered } from '@/lib/provider-services/service-rules';
+import {
+  ACTIVE_JOB_STATUSES,
+  PENDING_BOOKING_STATUSES,
+  countForTrade,
+  mergeSnapshots,
+  type RequestSnapshot,
+} from '@/lib/provider-trades/trade-lifecycle';
 
 import { AcceptRequestAction } from './_actions/accept-request-action';
 import { AddCategoryForm, type TradeOption } from './_actions/add-category-form';
 import { AddServiceForm } from './_actions/add-service-form';
 import { ServiceRow } from './_actions/service-row';
+import { TradeActions } from './_actions/trade-actions';
 import { DeclineRequestAction } from './_actions/decline-request-action';
 import { JobPipelineAction } from './_actions/job-pipeline-action';
 import { RetryDepositAction } from './_actions/retry-deposit-action';
@@ -246,6 +254,10 @@ function tradeAddBlockedReason(trade: ProviderCategory): string | null {
  * and the trade itself still renders. `items === null` means this trade's
  * catalogue could not be read: labels fall back to « — » and no add form is
  * offered (its menu would be empty for the wrong reason).
+ *
+ * Since Métiers — PR B the card also carries the trade's own actions (pause,
+ * resume, retire). `pendingBookings` / `activeJobs` are counted server-side for
+ * THIS trade; `null` means unknown and is never shown as a zero.
  */
 function TradeRow({
   trade,
@@ -253,12 +265,16 @@ function TradeRow({
   providerId,
   services,
   items,
+  pendingBookings,
+  activeJobs,
 }: {
   trade: ProviderCategory;
   label: string;
   providerId: string;
   services: ProviderService[] | null;
   items: CatalogServiceItem[] | null;
+  pendingBookings: number | null;
+  activeJobs: number | null;
 }) {
   const badge = trade.isActive ? TRADE_BADGES[trade.verificationStatus] : PAUSED_BADGE;
   const blockedReason = tradeAddBlockedReason(trade);
@@ -288,6 +304,17 @@ function TradeRow({
           {badge.label}
         </span>
       </div>
+
+      <TradeActions
+        providerId={providerId}
+        pscId={trade.id}
+        tradeLabel={label}
+        status={trade.verificationStatus}
+        isActive={trade.isActive}
+        pendingBookings={pendingBookings}
+        activeJobs={activeJobs}
+        serviceCount={services === null ? null : services.length}
+      />
 
       {services !== null && (
         <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
@@ -766,6 +793,10 @@ export default async function DashboardPage({
   // Pagination is deliberately deferred (limit 100 covers seeds + early MVP).
   let pending: ProviderServiceRequestItem[] = [];
   let jobs: ProviderServiceRequestItem[] = [];
+  // Per-trade counts for « Mes métiers » (Métiers — PR B): pending bookings
+  // gate the pause confirmation, active jobs block retiring. `null` = UNKNOWN.
+  let pendingSnapshot: RequestSnapshot | null = null;
+  let activeJobsSnapshot: RequestSnapshot | null = null;
 
   if (provider) {
     try {
@@ -785,9 +816,47 @@ export default async function DashboardPage({
         // Server-side split: OPEN = awaiting my answer (inbox), rest = my jobs.
         pending = items.filter((item) => item.status === 'OPEN');
         jobs = items.filter((item) => item.status !== 'OPEN');
+        // The page is the WHOLE set only when it holds every row. Then the
+        // per-trade counts come from it, with no extra call (the usual case).
+        const complete = data.total <= data.items.length;
+        const snapshot: RequestSnapshot = { items, complete };
+        pendingSnapshot = snapshot;
+        activeJobsSnapshot = snapshot;
       }
     } catch {
       failed = true;
+    }
+
+    // ⚠️ TRUNCATED page (more than 100 rows, history included, newest first):
+    // a count over it would be too LOW — an older active job fallen off the
+    // page would let a retire through. Re-read ONLY the statuses that matter,
+    // one filtered call each; a failed or itself-truncated read leaves the
+    // count UNKNOWN (retire blocked, pause confirmed without a number).
+    if (!failed && pendingSnapshot !== null && !pendingSnapshot.complete) {
+      // `provider` is a `let`: its narrowing does not reach into a closure.
+      const providerId = provider.id;
+      const readStatus = async (
+        status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS',
+      ): Promise<RequestSnapshot | null> => {
+        try {
+          const { data, error, response } = await client.GET(
+            '/service-providers/{id}/service-requests',
+            { params: { path: { id: providerId }, query: { status, limit: 100 } } },
+          );
+          if (error || !response.ok || !data || !Array.isArray(data.items)) return null;
+          const items = data.items as unknown as ProviderServiceRequestItem[];
+          return { items, complete: data.total <= data.items.length };
+        } catch {
+          return null;
+        }
+      };
+      const [open, assigned, inProgress] = await Promise.all([
+        readStatus('OPEN'),
+        readStatus('ASSIGNED'),
+        readStatus('IN_PROGRESS'),
+      ]);
+      pendingSnapshot = open;
+      activeJobsSnapshot = mergeSnapshots(assigned, inProgress);
     }
   }
 
@@ -1247,6 +1316,16 @@ export default async function DashboardPage({
                         )
                   }
                   items={itemsByCategory.get(trade.serviceCategoryId) ?? null}
+                  pendingBookings={countForTrade(
+                    pendingSnapshot,
+                    PENDING_BOOKING_STATUSES,
+                    trade.serviceCategoryId,
+                  )}
+                  activeJobs={countForTrade(
+                    activeJobsSnapshot,
+                    ACTIVE_JOB_STATUSES,
+                    trade.serviceCategoryId,
+                  )}
                 />
               ))}
             </ul>

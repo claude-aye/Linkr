@@ -18,11 +18,12 @@ import { acceptErrorMessage } from './accept-error-message.ts';
 
 const FAKE_SUPPORT = 'aide@exemple.test';
 
-test('403 : le métier perdu, avec l\'adresse de support passée', () => {
+test('403 : le métier en pause ou retiré, avec l\'adresse de support passée', () => {
   assert.equal(
     acceptErrorMessage(403, FAKE_SUPPORT),
-    'Vous ne pouvez plus accepter cette demande : ce métier est en pause sur votre profil ' +
-      'ou sa vérification n\'est plus valide. Écrivez-nous à aide@exemple.test pour le rétablir.',
+    'Vous ne pouvez plus accepter cette demande : ce métier est en pause ou a été retiré ' +
+      'de votre profil. Vous pouvez le réactiver ou l\'ajouter à nouveau dans l\'onglet ' +
+      'Mes métiers. Si votre vérification n\'est plus valide, écrivez-nous à aide@exemple.test.',
   );
 });
 

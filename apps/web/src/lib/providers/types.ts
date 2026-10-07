@@ -120,7 +120,7 @@ export interface ProviderCategory {
   requestedAtUtc: string;
   verifiedAtUtc: string | null;
   rejectionReason: string | null;
-  /** The provider can pause a trade (`PATCH …/categories/{pscId}`; no web UI yet). */
+  /** The provider can pause a trade (`PATCH …/categories/{pscId}`, « Mes métiers » since PR B). */
   isActive: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;

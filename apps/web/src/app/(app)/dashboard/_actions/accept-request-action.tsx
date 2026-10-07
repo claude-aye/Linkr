@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -104,6 +105,10 @@ export function AcceptRequestAction({
   // accept on a request that is no longer OPEN and answer 409, contradicting
   // the message the provider had just been shown.
   const [assigned, setAssigned] = useState(false);
+  // Set on a 403: the trade is paused or retired (or no longer verified). The
+  // error text says where to fix it; this adds the way there, in the body,
+  // because ConfirmDialog's error channel only carries plain text.
+  const [tradeLost, setTradeLost] = useState(false);
 
   // A request with no agreed amount would be rejected 422 by the API (no deposit
   // basis). Guard it: the confirm button is disabled and, defensively, the
@@ -138,6 +143,7 @@ export function AcceptRequestAction({
     }
 
     if (!response.ok) {
+      setTradeLost(response.status === 403);
       // Status-only mapping (locked), in `lib/service-requests/accept-error-message`
       // so `node --test` can pin it. ConfirmDialog shows this verbatim.
       throw new Error(acceptErrorMessage(response.status, SUPPORT_EMAIL));
@@ -179,7 +185,10 @@ export function AcceptRequestAction({
     <>
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setTradeLost(false);
+          setIsOpen(true);
+        }}
         className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Accepter
@@ -232,6 +241,16 @@ export function AcceptRequestAction({
             >
               {MISSING_AMOUNT_MESSAGE}
             </p>
+          )}
+
+          {tradeLost && (
+            <Link
+              href="/dashboard?onglet=metiers"
+              onClick={() => setIsOpen(false)}
+              className="inline-flex min-h-11 items-center font-medium text-zinc-900 underline underline-offset-2 hover:text-zinc-600 dark:text-zinc-50 dark:hover:text-zinc-300"
+            >
+              Ouvrir l’onglet Mes métiers →
+            </Link>
           )}
         </div>
       </ConfirmDialog>
