@@ -9,17 +9,21 @@ import {
   LOCATION_PRECISION_NOTICE_CLASS,
   providerLocationPrecisionNotice,
 } from '@/lib/service-requests/location-precision';
-import type { CategoryOption } from '@/lib/providers/discovery-types';
+import type { CatalogServiceItem, CategoryOption } from '@/lib/providers/discovery-types';
 import type {
   ProviderCategory,
   ProviderProfile,
+  ProviderService,
   ProviderServiceRequestItem,
   PscVerificationStatus,
   ServiceRequestStatus,
 } from '@/lib/providers/types';
+import { itemsNotYetOffered } from '@/lib/provider-services/service-rules';
 
 import { AcceptRequestAction } from './_actions/accept-request-action';
 import { AddCategoryForm, type TradeOption } from './_actions/add-category-form';
+import { AddServiceForm } from './_actions/add-service-form';
+import { ServiceRow } from './_actions/service-row';
 import { DeclineRequestAction } from './_actions/decline-request-action';
 import { JobPipelineAction } from './_actions/job-pipeline-action';
 import { RetryDepositAction } from './_actions/retry-deposit-action';
@@ -209,24 +213,127 @@ const PAUSED_BADGE = {
   className: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
 };
 
-/** One declared trade: its name (joined from the catalog) and its real status. */
-function TradeRow({ trade, label }: { trade: ProviderCategory; label: string }) {
+/**
+ * Why no service can be added under a trade — `null` when one can.
+ *
+ * Mirrors the public listing's predicate (`findPublicCatalogByProviderId`:
+ * claim active AND VERIFIED/NOT_REQUIRED). ⚠️ The API does NOT check it on
+ * creation — it would accept a service on a PENDING, REJECTED or paused trade —
+ * so this is the ONLY lock, interface-side. A service added there would sit
+ * invisible on the public profile, which is exactly the dead end this avoids.
+ */
+function tradeAddBlockedReason(trade: ProviderCategory): string | null {
+  if (!trade.isActive) {
+    return 'Métier en pause : aucun service ne peut y être ajouté.';
+  }
+  switch (trade.verificationStatus) {
+    case 'VERIFIED':
+    case 'NOT_REQUIRED':
+      return null;
+    case 'PENDING':
+      return 'Ajout de services possible une fois le métier vérifié.';
+    case 'REJECTED':
+      return 'Vérification refusée : aucun service ne peut être ajouté à ce métier.';
+  }
+}
+
+/**
+ * One declared trade: its name (joined from the catalog), its real status, and
+ * — since « Mes services » (PR A) — the services hung under it.
+ *
+ * `services === null` means the owner list could not be read: the services
+ * block is then omitted entirely (the section says so once, above the list),
+ * and the trade itself still renders. `items === null` means this trade's
+ * catalogue could not be read: labels fall back to « — » and no add form is
+ * offered (its menu would be empty for the wrong reason).
+ */
+function TradeRow({
+  trade,
+  label,
+  providerId,
+  services,
+  items,
+}: {
+  trade: ProviderCategory;
+  label: string;
+  providerId: string;
+  services: ProviderService[] | null;
+  items: CatalogServiceItem[] | null;
+}) {
   const badge = trade.isActive ? TRADE_BADGES[trade.verificationStatus] : PAUSED_BADGE;
+  const blockedReason = tradeAddBlockedReason(trade);
+  const itemLabels = new Map(
+    (items ?? []).map((item) => [item.id, pickTranslation(item.nameTranslations)]),
+  );
+  const options = items
+    ? itemsNotYetOffered(
+        [...items].sort((a, b) => a.sortOrder - b.sortOrder),
+        services ?? [],
+      ).map((item) => ({ id: item.id, label: pickTranslation(item.nameTranslations) }))
+    : [];
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      {/* UUID on hover, same affordance as the request cards above. */}
-      <span
-        className="font-medium text-zinc-900 dark:text-zinc-50"
-        title={trade.serviceCategoryId}
-      >
-        {label}
-      </span>
-      <span
-        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
-      >
-        {badge.label}
-      </span>
+    <li className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* UUID on hover, same affordance as the request cards above. */}
+        <span
+          className="font-medium text-zinc-900 dark:text-zinc-50"
+          title={trade.serviceCategoryId}
+        >
+          {label}
+        </span>
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
+        >
+          {badge.label}
+        </span>
+      </div>
+
+      {services !== null && (
+        <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Services</h3>
+
+          {services.length === 0 ? (
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              Aucun service pour ce métier.
+              {/* Only true of an eligible trade: a paused or unverified one is
+                  not discoverable at all, so « on vous trouve » would be false. */}
+              {blockedReason === null &&
+                ' Sans service, les clients peuvent vous trouver mais ne peuvent pas vous réserver.'}
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {services.map((service) => (
+                <ServiceRow
+                  key={service.id}
+                  providerId={providerId}
+                  service={service}
+                  label={itemLabels.get(service.serviceItemId) ?? '—'}
+                />
+              ))}
+            </ul>
+          )}
+
+          {blockedReason !== null ? (
+            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">{blockedReason}</p>
+          ) : items === null ? (
+            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+              Le catalogue de ce métier n’a pas pu être chargé. Veuillez réessayer plus tard.
+            </p>
+          ) : options.length === 0 ? (
+            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+              Vous offrez déjà tous les services du catalogue pour ce métier.
+            </p>
+          ) : (
+            <AddServiceForm
+              providerId={providerId}
+              pscId={trade.id}
+              tradeLabel={label}
+              options={options}
+            />
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -718,6 +825,71 @@ export default async function DashboardPage({
     }
   }
 
+  /**
+   * « Mes services » (PR A) — the services hung under each declared trade.
+   *
+   * The owner list (`…/services/owner`: active AND disabled, soft-deleted rows
+   * excluded) has its OWN try/catch and degrades to `null`: a services outage
+   * hides the services, never « Mes métiers » itself, and never touches the
+   * page-wide `failed`. Same contract gap as the categories read
+   * (`content: never`) → cast through the faithful mirror.
+   */
+  let services: ProviderService[] | null = null;
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET(
+        '/service-providers/{providerId}/services/owner',
+        { params: { path: { providerId: provider.id } } },
+      );
+      if (!error && response.ok && Array.isArray(data)) {
+        services = data as unknown as ProviderService[];
+      }
+    } catch {
+      services = null;
+    }
+  }
+
+  /**
+   * The catalogue items of EACH declared trade — one read per trade, keyed by
+   * the catalogue trade id. They do two jobs: name the existing services (the
+   * owner DTO carries only `serviceItemId`) and fill the add form's menu.
+   *
+   * Read for every declared trade, eligible or not: a paused or PENDING trade
+   * offers no add form, but its existing services still need a name.
+   *
+   * In PARALLEL, each in its OWN try/catch: one trade's catalogue outage costs
+   * that trade its labels (« — ») and its add form, nothing else. The endpoint
+   * is keyed by SLUG (`GET /service-categories/{slug}/items`) — no batch read
+   * exists, and this slice does not change the API. Same contract gap as
+   * `/service-categories` → cast through `CatalogServiceItem`.
+   */
+  const catalogById = new Map(catalog.map((category) => [category.id, category]));
+  const itemsByCategory = new Map<string, CatalogServiceItem[] | null>();
+
+  if (provider && trades && trades.length > 0) {
+    const results = await Promise.all(
+      trades.map(async (trade): Promise<[string, CatalogServiceItem[] | null]> => {
+        const category = catalogById.get(trade.serviceCategoryId);
+        // Not in the active catalogue (or catalogue read failed): no slug to ask with.
+        if (!category) return [trade.serviceCategoryId, null];
+        try {
+          const { data, error, response } = await client.GET(
+            '/service-categories/{slug}/items',
+            { params: { path: { slug: category.slug } } },
+          );
+          if (!error && response.ok && Array.isArray(data)) {
+            return [trade.serviceCategoryId, data as unknown as CatalogServiceItem[]];
+          }
+          return [trade.serviceCategoryId, null];
+        } catch {
+          return [trade.serviceCategoryId, null];
+        }
+      }),
+    );
+    for (const [categoryId, items] of results) itemsByCategory.set(categoryId, items);
+  }
+
   // « Notifications » — read exactly like every other section: Server Component
   // straight to the API, never a BFF GET (the BFF stays reserved for mutations;
   // the only relay this PR adds is the PATCH that marks one read).
@@ -1054,15 +1226,31 @@ export default async function DashboardPage({
             trouvé par des clients.
           </EmptyHint>
         ) : (
-          <ul className="space-y-3">
-            {trades.map((trade) => (
-              <TradeRow
-                key={trade.id}
-                trade={trade}
-                label={catalogLabels.get(trade.serviceCategoryId) ?? '—'}
-              />
-            ))}
-          </ul>
+          <>
+            {services === null && (
+              <EmptyHint>
+                Vos services n’ont pas pu être récupérés. Veuillez réessayer plus tard.
+              </EmptyHint>
+            )}
+            <ul className="space-y-3">
+              {trades.map((trade) => (
+                <TradeRow
+                  key={trade.id}
+                  trade={trade}
+                  label={catalogLabels.get(trade.serviceCategoryId) ?? '—'}
+                  providerId={provider.id}
+                  services={
+                    services === null
+                      ? null
+                      : services.filter(
+                          (service) => service.professionalServiceCategoryId === trade.id,
+                        )
+                  }
+                  items={itemsByCategory.get(trade.serviceCategoryId) ?? null}
+                />
+              ))}
+            </ul>
+          </>
         )}
 
         {tradeOptions.length === 0 ? (
