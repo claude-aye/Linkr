@@ -14,13 +14,14 @@ import { assembleCreateServiceBody } from '@/lib/provider-services/service-rules
  * under `node --test`) and never spread: `pricingModel: 'FLAT'` and
  * `priceCurrency: 'CAD'` are FROZEN there, never read from the browser, and any
  * other key is dropped — under `forbidNonWhitelisted: true` one stray key would
- * 400 the whole creation. The 5 $ floor is applied there too: the API only
- * enforces `>= 0`, and this relay is the one server-side point the web owns.
+ * 400 the whole creation. The 5 $ floor is applied there too, as defense in
+ * depth: since Verrous API — PR C1 the API enforces the same floor, and this
+ * relay is the one server-side point the web owns.
  *
- * ⚠️ THE API DOES NOT CHECK THE TRADE CLAIM'S STATUS on creation: it would
- * accept a service on a PENDING, REJECTED or paused trade. Refusing that is
- * the dashboard's job (no add form there) — this relay does not add a second,
- * weaker opinion; it does not know the claim's status without a lookup.
+ * The trade claim's eligibility (paused, PENDING, REJECTED) is refused by the
+ * API since Verrous API — PR C1 (409) and by the dashboard (no add form there).
+ * This relay adds no third, weaker opinion: it does not know the claim's
+ * status without a lookup.
  *
  * TRANSPARENT RELAY otherwise: the upstream status (201/400/401/403/404/409/
  * 422/…) and body go back verbatim; the FR mapping lives in the form, by HTTP

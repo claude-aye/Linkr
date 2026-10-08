@@ -225,10 +225,12 @@ const PAUSED_BADGE = {
  * Why no service can be added under a trade — `null` when one can.
  *
  * Mirrors the public listing's predicate (`findPublicCatalogByProviderId`:
- * claim active AND VERIFIED/NOT_REQUIRED). ⚠️ The API does NOT check it on
- * creation — it would accept a service on a PENDING, REJECTED or paused trade —
- * so this is the ONLY lock, interface-side. A service added there would sit
+ * claim active AND VERIFIED/NOT_REQUIRED). A service added elsewhere would sit
  * invisible on the public profile, which is exactly the dead end this avoids.
+ * Since Verrous API — PR C1 the API refuses it too (409,
+ * `ProviderCategoryNotEligibleException`, same predicate: paused, PENDING and
+ * REJECTED are all refused) — this function is the reference the API copied,
+ * so the two must move together.
  */
 function tradeAddBlockedReason(trade: ProviderCategory): string | null {
   if (!trade.isActive) {
