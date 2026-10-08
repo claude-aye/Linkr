@@ -1495,6 +1495,12 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "400": {
+            "description": "isActive is missing or not a boolean, or an id is malformed"
+          },
+          "409": {
+            "description": "Pausing a trade whose verification is PENDING or REJECTED is not allowed"
           }
         },
         "summary": "Toggle a provider category active/inactive (owner only).",
@@ -1525,6 +1531,12 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "An id is malformed"
+          },
+          "409": {
+            "description": "The trade still has ASSIGNED or IN_PROGRESS jobs for this provider"
           }
         },
         "summary": "Soft-delete a provider category (owner only).",
@@ -4550,7 +4562,10 @@
             "type": "boolean",
             "description": "Pause or resume this category for the provider"
           }
-        }
+        },
+        "required": [
+          "isActive"
+        ]
       },
       "CreateProfessionalServiceDto": {
         "type": "object",

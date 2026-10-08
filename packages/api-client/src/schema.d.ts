@@ -1896,7 +1896,7 @@ export interface components {
         };
         UpdateProviderCategoryDto: {
             /** @description Pause or resume this category for the provider */
-            isActive?: boolean;
+            isActive: boolean;
         };
         CreateProfessionalServiceDto: {
             /** Format: uuid */
@@ -3911,6 +3911,20 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description An id is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The trade still has ASSIGNED or IN_PROGRESS jobs for this provider */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     ProfessionalServiceCategoriesController_updateCategory: {
@@ -3930,6 +3944,20 @@ export interface operations {
         };
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description isActive is missing or not a boolean, or an id is malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Pausing a trade whose verification is PENDING or REJECTED is not allowed */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

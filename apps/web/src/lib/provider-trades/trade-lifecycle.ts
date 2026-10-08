@@ -18,10 +18,13 @@ export type TradeVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NOT
  * La pause et la réactivation ne sont offertes que sur un métier ÉLIGIBLE
  * (`NOT_REQUIRED`, `VERIFIED`).
  *
- * ⚠️ L'API, elle, accepte la pause d'un métier `PENDING` ou `REJECTED` (dette
- * §6). On ne l'offre pas : le badge vient de `isActive ? statut : « En pause »`,
- * donc un métier refusé mis en pause afficherait « En pause » à la place de
- * « Vérification refusée » — le refus deviendrait invisible.
+ * Raison : le badge vient de `isActive ? statut : « En pause »`, donc un métier
+ * refusé mis en pause afficherait « En pause » à la place de « Vérification
+ * refusée » — le refus deviendrait invisible. Depuis Verrous API — PR C2,
+ * l'API refuse aussi cette pause (409, `ProviderCategoryPauseNotAllowedException`)
+ * et accepte toujours la RÉACTIVATION, quel que soit le statut : c'est la
+ * sortie d'un métier refusé mis en pause avant ce verrou. L'écran, lui,
+ * n'offre la réactivation que là où il offre la pause.
  */
 export function canTogglePause(status: TradeVerificationStatus): boolean {
   return status === 'NOT_REQUIRED' || status === 'VERIFIED';
@@ -38,8 +41,14 @@ export const PENDING_BOOKING_STATUSES = ['OPEN'] as const;
  * Statuts qui BLOQUENT le retrait d'un métier. `COMPLETED` n'en fait pas partie,
  * décision rendue : rien après la complétion ne lit le métier (solde, contestation,
  * cron d'auto-libération, relance de l'acompte), et une contestation peut garder
- * une demande en `COMPLETED` indéfiniment. Le blocage est un choix d'INTERFACE —
- * l'API permet de retirer un métier qui a des jobs actifs (dette §6).
+ * une demande en `COMPLETED` indéfiniment.
+ *
+ * ⚠️ MÊME LISTE que `TRADE_RETIREMENT_BLOCKING_JOB_STATUSES` côté API
+ * (`professional-service-category.repository.ts`) : depuis Verrous API — PR C2,
+ * l'API refuse elle aussi le retrait (409) tant qu'un job de ces statuts porte
+ * ce métier. Les deux listes bougent ensemble : un statut bloqué d'un seul côté
+ * donne soit un bouton qui répond 409, soit un appel direct qui passe ce que
+ * l'écran refuse.
  */
 export const ACTIVE_JOB_STATUSES = ['ASSIGNED', 'IN_PROGRESS'] as const;
 
@@ -206,13 +215,23 @@ export const TRADE_UNAVAILABLE_MESSAGE =
  * Message d'échec d'un `PATCH` (pause, réactivation) ou d'un `DELETE` (retrait),
  * par CODE HTTP SEUL (verrou 3.12b). Les statuts que l'API envoie
  * (`ProviderServicesService.updateCategory` / `deleteCategory`) : 400, 401,
- * 403, 404 — jamais de 409.
+ * 403, 404, et depuis Verrous API — PR C2 un 409 par action :
+ *   - `toggle` → `ProviderCategoryPauseNotAllowedException` : pause d'un métier
+ *     `PENDING` ou `REJECTED` ;
+ *   - `retire` → `ProviderCategoryHasActiveJobsException` : jobs `ASSIGNED` ou
+ *     `IN_PROGRESS` sur ce métier.
+ * L'écran ne propose ni l'un ni l'autre geste dans ces cas : le 409 n'arrive
+ * que sur une page périmée, d'où « Veuillez actualiser la page. ».
  */
 export function tradeActionMessageForStatus(
   status: number,
   action: 'toggle' | 'retire',
 ): string {
   switch (status) {
+    case 409:
+      return action === 'retire'
+        ? 'Ce métier a encore des jobs acceptés ou en cours. Terminez-les avant de le retirer. Veuillez actualiser la page.'
+        : 'Seul un métier vérifié, ou qui ne demande aucune vérification, peut être mis en pause. Veuillez actualiser la page.';
     case 404:
       // Inconnu, d'un autre prestataire, ou DÉJÀ retiré (`findById` exclut les
       // lignes supprimées) : l'écran est périmé dans les trois cas.
@@ -238,9 +257,9 @@ export function tradeActionMessageForStatus(
  * Corps du `PATCH` relayé, assemblé CHAMP PAR CHAMP : `isActive` booléen, et
  * rien d'autre. `null` = refusé (400 au relais).
  *
- * ⚠️ Un booléen EXIGÉ, pas seulement permis : côté API `isActive` est optionnel,
- * donc un `PATCH {}` passe la validation puis écrit `isActive: undefined` — un
- * risque de 500 (dette §6). Le relais ne le laisse jamais partir.
+ * Un booléen EXIGÉ, pas seulement permis. Depuis Verrous API — PR C2, l'API
+ * l'exige aussi (`PATCH {}` → 400) ; le relais garde son exigence en défense
+ * en profondeur, et un corps sans booléen ne part toujours jamais.
  */
 export function assembleTradeToggleBody(incoming: unknown): { isActive: boolean } | null {
   if (typeof incoming !== 'object' || incoming === null || Array.isArray(incoming)) return null;

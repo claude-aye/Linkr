@@ -23,13 +23,13 @@ type UpdateProviderCategoryBody = components['schemas']['UpdateProviderCategoryD
  *
  * The PATCH body is ASSEMBLED FIELD BY FIELD (`assembleTradeToggleBody`, tested
  * under `node --test`): `isActive`, a BOOLEAN, and nothing else. A boolean is
- * REQUIRED, not merely allowed — the API's field is optional, so a `PATCH {}`
- * would pass its validation and then write `isActive: undefined` (500 risk,
- * CLAUDE.md §6). It never leaves from here.
+ * REQUIRED, not merely allowed. Since Verrous API — PR C2 the API requires it
+ * too (`PATCH {}` → 400); the relay keeps the check as defense in depth.
  *
- * ⚠️ The API accepts pausing a PENDING or REJECTED trade, and retiring a trade
- * that still has active jobs. Both limits live in the interface only — this
- * relay is a pipe, not a second judge.
+ * Since Verrous API — PR C2 the API also refuses (409) pausing a PENDING or
+ * REJECTED trade, and retiring a trade that still has ASSIGNED / IN_PROGRESS
+ * jobs — the same limits the interface applies. This relay stays a pipe, not
+ * a second judge: the 409 goes back verbatim.
  *
  * TRANSPARENT RELAY otherwise; a 204 carries no body, hence the bare
  * `NextResponse` on the DELETE. It never logs the token.

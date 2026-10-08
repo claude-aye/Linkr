@@ -32,6 +32,8 @@ import {
   ProviderServiceConflictException,
   ServiceItemNotApprovedException,
   ServiceItemNotInCategoryException,
+  ProviderCategoryHasActiveJobsException,
+  ProviderCategoryPauseNotAllowedException,
 } from './exceptions/provider-exceptions';
 
 @Injectable()
@@ -103,7 +105,19 @@ export class ProviderServicesService {
     dto: UpdateProviderCategoryDto,
   ): Promise<ProviderCategoryResponseDto> {
     await this.providersService.loadOwnedProvider(currentUserId, providerId);
-    await this.loadProviderPsc(providerId, pscId);
+    const psc = await this.loadProviderPsc(providerId, pscId);
+
+    // Only an eligible trade can be PAUSED: on a PENDING or REJECTED claim the
+    // « En pause » badge would hide the real status. Resuming (`true`) stays
+    // allowed whatever the status — the way out for a claim paused before
+    // this guard existed.
+    if (
+      dto.isActive === false &&
+      (psc.verificationStatus === PscVerificationStatus.PENDING ||
+        psc.verificationStatus === PscVerificationStatus.REJECTED)
+    ) {
+      throw new ProviderCategoryPauseNotAllowedException();
+    }
 
     const updated = await this.pscRepo.update(pscId, { isActive: dto.isActive });
     if (!updated) throw new NotFoundException('Provider category not found');
@@ -116,7 +130,17 @@ export class ProviderServicesService {
     pscId: string,
   ): Promise<void> {
     await this.providersService.loadOwnedProvider(currentUserId, providerId);
-    await this.loadProviderPsc(providerId, pscId);
+    const psc = await this.loadProviderPsc(providerId, pscId);
+
+    // Count on the CATALOGUE id, which requests and claims share. ⚠️ Count
+    // then delete, without a lock: a job accepted between the two is not
+    // seen (race window, §6). Retiring never stops an accepted job anyway.
+    const activeJobs = await this.pscRepo.countActiveJobsForTrade(
+      providerId,
+      psc.serviceCategoryId,
+    );
+    if (activeJobs > 0) throw new ProviderCategoryHasActiveJobsException();
+
     await this.pscRepo.softDelete(pscId);
     this.logger.log(`Soft-deleted PSC ${pscId} from provider ${providerId}`);
   }

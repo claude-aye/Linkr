@@ -245,8 +245,28 @@ test('messages : par code HTTP seul', () => {
     tradeActionMessageForStatus(400, 'toggle'),
     'La requête est invalide. Veuillez actualiser la page.',
   );
-  for (const status of [500, 502, 409, 0]) {
+  for (const status of [500, 502, 0]) {
     assert.equal(tradeActionMessageForStatus(status, 'retire'), TRADE_UNAVAILABLE_MESSAGE);
+  }
+});
+
+test('messages : 409 au retrait — des jobs acceptés ou en cours portent encore ce métier', () => {
+  assert.equal(
+    tradeActionMessageForStatus(409, 'retire'),
+    'Ce métier a encore des jobs acceptés ou en cours. Terminez-les avant de le retirer. Veuillez actualiser la page.',
+  );
+});
+
+test('messages : 409 à la pause — seul un métier éligible peut être mis en pause', () => {
+  assert.equal(
+    tradeActionMessageForStatus(409, 'toggle'),
+    'Seul un métier vérifié, ou qui ne demande aucune vérification, peut être mis en pause. Veuillez actualiser la page.',
+  );
+});
+
+test('messages : le 409 n\'est plus le repli générique', () => {
+  for (const action of ['retire', 'toggle']) {
+    assert.notEqual(tradeActionMessageForStatus(409, action), TRADE_UNAVAILABLE_MESSAGE);
   }
 });
 

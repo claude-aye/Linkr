@@ -10,7 +10,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AddProviderCategoryDto } from './dto/add-provider-category.dto';
@@ -48,6 +48,14 @@ export class ProfessionalServiceCategoriesController {
 
   @Patch(':pscId')
   @ApiOperation({ summary: 'Toggle a provider category active/inactive (owner only).' })
+  // Any @ApiResponse REPLACES Swagger's default response: the 200 is restated
+  // exactly as it was generated before, or the contract would lose it.
+  @ApiResponse({ status: 200, description: '' })
+  @ApiResponse({ status: 400, description: 'isActive is missing or not a boolean, or an id is malformed' })
+  @ApiResponse({
+    status: 409,
+    description: 'Pausing a trade whose verification is PENDING or REJECTED is not allowed',
+  })
   updateCategory(
     @CurrentUser() user: JwtPayload,
     @Param('providerId', ParseUUIDPipe) providerId: string,
@@ -60,6 +68,13 @@ export class ProfessionalServiceCategoriesController {
   @Delete(':pscId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a provider category (owner only).' })
+  // Same reason as above: the 204 is restated as it was generated before.
+  @ApiResponse({ status: 204, description: '' })
+  @ApiResponse({ status: 400, description: 'An id is malformed' })
+  @ApiResponse({
+    status: 409,
+    description: 'The trade still has ASSIGNED or IN_PROGRESS jobs for this provider',
+  })
   deleteCategory(
     @CurrentUser() user: JwtPayload,
     @Param('providerId', ParseUUIDPipe) providerId: string,
