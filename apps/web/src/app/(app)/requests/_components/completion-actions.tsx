@@ -188,7 +188,7 @@ export function CompletionActions({ requestId }: CompletionActionsProps) {
         onConfirm={() => post('contest', contestMessageForStatus)}
       >
         <p>
-          Le versement au prestataire sera suspendu, le temps qu'un
+          Le versement au prestataire sera suspendu, le temps qu&apos;un
           administrateur examine votre dossier.
         </p>
         <p className="mt-2">
