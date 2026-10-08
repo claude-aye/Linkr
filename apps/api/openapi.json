@@ -1579,6 +1579,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "409": {
+            "description": "This catalogue item is already offered on this trade, or the trade is not eligible (paused, or verification neither NOT_REQUIRED nor VERIFIED)"
           }
         },
         "summary": "Create a service offering within a provider category (owner only).",
@@ -4584,8 +4587,8 @@
           },
           "priceAmount": {
             "type": "number",
-            "description": "Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 0.",
-            "minimum": 0
+            "description": "Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 5.",
+            "minimum": 5
           },
           "priceCurrency": {
             "type": "string",
@@ -4686,8 +4689,8 @@
           },
           "priceAmount": {
             "type": "number",
-            "description": "Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 0.",
-            "minimum": 0
+            "description": "Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 5.",
+            "minimum": 5
           },
           "priceCurrency": {
             "type": "string",

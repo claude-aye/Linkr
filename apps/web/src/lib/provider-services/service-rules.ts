@@ -15,10 +15,13 @@
  *     field on screen. HOURLY is hidden because the booking form sends the
  *     hourly rate as the agreed price (deposit and balance computed on one
  *     hour); QUOTE_ONLY because, without a price, there is no « Demander ».
- *   - A price of AT LEAST 5 $, on creation AND on edit. The API only enforces
- *     `>= 0`; a zero budget 400s at booking, a 0 ¢ deposit is refused, and
- *     Stripe has a per-charge minimum. The relays apply the floor too: they are
- *     the only server-side point the web controls.
+ *   - A price of AT LEAST 5 $, on creation AND on edit: a zero budget 400s at
+ *     booking, a 0 ¢ deposit is refused, and Stripe has a per-charge minimum.
+ *     Since Verrous API — PR C1 the API enforces the same floor
+ *     (`MIN_SERVICE_PRICE_AMOUNT` on `CreateProfessionalServiceDto`, inherited
+ *     by the edit DTO); the relays keep applying it as defense in depth — they
+ *     are the one server-side point the web owns. The two constants are kept
+ *     in step by hand.
  *   - Duration optional, entered as hours + minutes, sent as whole minutes.
  *     Both fields empty → the key is OMITTED. No fallback on the catalogue's
  *     `typical_duration_minutes`: nothing on the API side reads it.
@@ -210,9 +213,16 @@ export const UNAVAILABLE_MESSAGE = 'Service momentanément indisponible. Veuille
 /**
  * One table for create / edit / toggle / delete. The statuses the API can
  * actually send (`ProviderServicesService`):
- *   - 409 `ProviderServiceConflictException` — a non-deleted service already
- *     uses this catalogue item on this trade. `existsActive` counts DISABLED
- *     services too, hence the second sentence.
+ *   - 409 — TWO causes the status cannot tell apart:
+ *       · `ProviderServiceConflictException` — a non-deleted service already
+ *         uses this catalogue item on this trade. `existsActive` counts
+ *         DISABLED services too, hence the second sentence;
+ *       · `ProviderCategoryNotEligibleException` (creation only, since Verrous
+ *         API — PR C1) — the trade is paused, PENDING or REJECTED. The copy
+ *         below is then INACCURATE, knowingly: the dashboard offers no add
+ *         form on such a trade, so this cause is only reachable from a stale
+ *         page or a direct API call. Splitting the two needs distinct codes
+ *         API-side, not a second reading of the body (lock 3.12b).
  *   - 422 `ServiceItemNotApprovedException` / `ServiceItemNotInCategoryException`
  *     — the status cannot tell them apart, and both mean the same thing to the
  *     provider: the item left the catalogue between render and submit.
