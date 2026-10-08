@@ -25,6 +25,33 @@ export class ProviderCategoryConflictException extends HttpException {
   }
 }
 
+/**
+ * 409 — only an ELIGIBLE trade (verification NOT_REQUIRED or VERIFIED) can be
+ * paused. The dashboard's badge is `isActive ? status : « En pause »`, so a
+ * PENDING or REJECTED claim put on pause would hide its real status — a
+ * refusal would read as a mere pause. Resuming (`isActive: true`) is always
+ * allowed: it is the way out for a claim paused before this guard existed.
+ */
+export class ProviderCategoryPauseNotAllowedException extends HttpException {
+  constructor(
+    message = 'Only a trade whose verification is not required or verified can be paused',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 409 — a trade cannot be retired while it still carries ASSIGNED or
+ * IN_PROGRESS jobs for this provider. Pausing it stays possible.
+ */
+export class ProviderCategoryHasActiveJobsException extends HttpException {
+  constructor(
+    message = 'This trade still has assigned or in-progress jobs; finish them before retiring it',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
 /** 409 — this service item is already offered within this provider category. */
 export class ProviderServiceConflictException extends HttpException {
   constructor(message = 'This service is already offered in this category') {
