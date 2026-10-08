@@ -10,7 +10,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -31,6 +31,15 @@ export class PscServicesController {
 
   @Post()
   @ApiOperation({ summary: 'Create a service offering within a provider category (owner only).' })
+  // Any @ApiResponse REPLACES Swagger's default response: the 201 is restated
+  // exactly as it was generated before, or the contract would lose it.
+  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'This catalogue item is already offered on this trade, or the trade is not eligible ' +
+      '(paused, or verification neither NOT_REQUIRED nor VERIFIED)',
+  })
   createService(
     @CurrentUser() user: JwtPayload,
     @Param('providerId', ParseUUIDPipe) providerId: string,

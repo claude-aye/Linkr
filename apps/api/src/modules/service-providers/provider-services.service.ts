@@ -29,10 +29,32 @@ import { ProfessionalServiceResponseDto } from './dto/professional-service-respo
 import { ProviderServiceCatalogItemDto } from './dto/provider-service-catalog-item.dto';
 import {
   ProviderCategoryConflictException,
+  ProviderCategoryNotEligibleException,
   ProviderServiceConflictException,
   ServiceItemNotApprovedException,
   ServiceItemNotInCategoryException,
 } from './exceptions/provider-exceptions';
+
+/**
+ * True when a new service may be added under this trade claim: the claim is
+ * active (not paused) AND its verification is satisfied.
+ *
+ * ⚠️ Same predicate as the public listing (`findPublicCatalogByProviderId`)
+ * and as the dashboard's `tradeAddBlockedReason` (apps/web), which blocks a
+ * PAUSED trade as well as a PENDING or REJECTED one. The web is the reference:
+ * if it ever lets one of these through, this guard must follow, and vice versa.
+ *
+ * Creation only. `updateService` deliberately does not re-check it: editing,
+ * disabling or deleting a service under a paused or downgraded trade stays
+ * possible, and none of it makes the service visible.
+ */
+function isTradeOpenForServices(psc: PscRecord): boolean {
+  if (!psc.isActive) return false;
+  return (
+    psc.verificationStatus === PscVerificationStatus.NOT_REQUIRED ||
+    psc.verificationStatus === PscVerificationStatus.VERIFIED
+  );
+}
 
 @Injectable()
 export class ProviderServicesService {
@@ -131,6 +153,10 @@ export class ProviderServicesService {
   ): Promise<ProfessionalServiceResponseDto> {
     await this.providersService.loadOwnedProvider(currentUserId, providerId);
     const psc = await this.loadProviderPsc(providerId, pscId);
+    // Before any catalogue lookup: the answer depends on the claim alone.
+    if (!isTradeOpenForServices(psc)) {
+      throw new ProviderCategoryNotEligibleException();
+    }
 
     const item = await this.itemRepo.findById(dto.serviceItemId);
     if (!item) throw new NotFoundException('Service item not found');

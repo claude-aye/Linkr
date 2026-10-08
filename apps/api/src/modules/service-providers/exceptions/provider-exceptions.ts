@@ -47,3 +47,19 @@ export class ServiceItemNotApprovedException extends HttpException {
     super(message, HttpStatus.UNPROCESSABLE_ENTITY);
   }
 }
+
+/**
+ * 409 — a service can only be added under a trade the public listing would
+ * show: claim active (not paused) AND verification NOT_REQUIRED or VERIFIED.
+ *
+ * Same predicate as `findPublicCatalogByProviderId` and the dashboard's
+ * `tradeAddBlockedReason`: a service accepted anywhere else would sit
+ * invisible on the public profile, a dead end nobody would see.
+ */
+export class ProviderCategoryNotEligibleException extends HttpException {
+  constructor(
+    message = 'Services can only be added to an active, eligible trade (not paused; verification not required or verified)',
+  ) {
+    super(message, HttpStatus.CONFLICT);
+  }
+}

@@ -1903,7 +1903,7 @@ export interface components {
             serviceItemId: string;
             /** @enum {string} */
             pricingModel: "FLAT" | "HOURLY" | "QUOTE_ONLY";
-            /** @description Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 0. */
+            /** @description Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 5. */
             priceAmount?: number;
             /**
              * @description ISO 4217 currency code (3 uppercase letters)
@@ -1952,7 +1952,7 @@ export interface components {
         UpdateProfessionalServiceDto: {
             /** @enum {string} */
             pricingModel?: "FLAT" | "HOURLY" | "QUOTE_ONLY";
-            /** @description Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 0. */
+            /** @description Required for FLAT/HOURLY, must be absent for QUOTE_ONLY. Minimum 5. */
             priceAmount?: number;
             /**
              * @description ISO 4217 currency code (3 uppercase letters)
@@ -3954,6 +3954,13 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description This catalogue item is already offered on this trade, or the trade is not eligible (paused, or verification neither NOT_REQUIRED nor VERIFIED) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
