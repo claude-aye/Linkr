@@ -17,6 +17,14 @@ export interface CreateUserData {
   languagePreference?: string;
 }
 
+/** Proof of consent recorded at email signup (PR L2). */
+export interface TermsAcceptance {
+  /** Stamped by the server (`AuthService.signup`), never received from a client. */
+  acceptedAtUtc: Date;
+  /** `CURRENT_TERMS_VERSION`, already checked by `SignupDto`. */
+  version: string;
+}
+
 export interface UpdateUserProfileData {
   firstName?: string;
   lastName?: string;
@@ -178,9 +186,16 @@ export class UsersRepository {
     }
   }
 
+  /**
+   * `termsAcceptance` is a REQUIRED argument, not an optional field of
+   * `CreateUserData`: an email signup without a recorded acceptance must not
+   * compile. It lands on the same `INSERT` as the user row — the proof of
+   * consent and the account it belongs to exist together or not at all.
+   */
   async createWithEmailPassword(
     userData: CreateUserData,
     passwordHash: string,
+    termsAcceptance: TermsAcceptance,
   ): Promise<User> {
     const qr: QueryRunner = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -196,6 +211,8 @@ export class UsersRepository {
         phone: userData.phone ?? null,
         displayName: userData.displayName ?? null,
         languagePreference: userData.languagePreference ?? 'fr-CA',
+        termsAcceptedAtUtc: termsAcceptance.acceptedAtUtc,
+        termsVersion: termsAcceptance.version,
       });
       const savedUser = await qr.manager.save(User, user);
 

@@ -13,6 +13,7 @@ import { User } from '../users/entities/user.entity';
 import { UsersRepository } from '../users/users.repository';
 import { AuthResponseDto } from './dtos/auth-response.dto';
 import { SignupDto } from './dtos/signup.dto';
+import { CURRENT_TERMS_VERSION } from './terms-version';
 import { UserPublicDto } from './dtos/user-public.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { TokenType } from './enums/token-type.enum';
@@ -120,6 +121,12 @@ export class AuthService {
         languagePreference: dto.languagePreference ?? 'fr-CA',
       },
       passwordHash,
+      // The DATE is the server's, never the client's (`SignupDto` has no field
+      // for it, and `forbidNonWhitelisted` would 400 one). The version is the
+      // API's own constant: `SignupDto` has already refused any other value, so
+      // reading the constant rather than `dto.termsVersion` records exactly what
+      // was checked.
+      { acceptedAtUtc: new Date(), version: CURRENT_TERMS_VERSION },
     );
 
     this.logger.log(`New user registered: ${user.id}`);
