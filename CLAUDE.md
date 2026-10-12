@@ -1712,6 +1712,19 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 
 **Dettes** : OAuth sans acceptation (**bloquante**, §6) ; réacceptation au changement de `LEGAL_VERSION` (§6) ; schéma partiel de `SignupDto` (ci-dessus) ; repli 502 du relais toujours **tutoyant** (hérité).
 
+**Chantier 3D Secure — solde (80 %) à confirmer par le client (branche `feat/3ds-solde`)** : autorisation inscrite **avant** toute modification de code, comme l'exige la règle de ratification (§11, entrée « Atomicité de `acceptRequest` »). Le récit du chantier suit dans la même PR.
+
+> **AUTORISATION ÉCRITE PRÉALABLE — recopiée telle quelle depuis le mandat (`MANDAT_3DS_SOLDE.md`, non commité).**
+>
+> **Autorisation du 12 octobre 2026 — solde 3D Secure.** Ayé Claude BROU, Jr. lève l'arrêt dur **uniquement** pour :
+> (a) la lecture `deposits-awaiting-confirmation` étendue au solde (champ `paymentType`) ;
+> (b) l'endpoint `POST :id/balance-confirmation` et sa réconciliation ;
+> (c) la réponse 202 de `confirm-completion` et le courriel `balance-failed-client` ;
+> (d) le front correspondant (`/account/payment-methods`, écran de confirmation de fin de prestation).
+> `chargeAndPersist`, toute l'arithmétique des montants, les remboursements et le verrou restent sous arrêt dur. Cette autorisation s'éteint au merge de la PR `feat/3ds-solde`.
+>
+> *Note de portage, hors texte de la décision* : **comme la ratification du 10 septembre et l'autorisation du 4 octobre, elle ne crée aucun précédent** et ne s'étend à rien par analogie.
+
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
