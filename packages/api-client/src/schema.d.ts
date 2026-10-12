@@ -891,7 +891,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read. */
+        /** Payments the caller, as the client, can still confirm from their browser: FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent — a DEPOSIT on a live request (ASSIGNED / IN_PROGRESS / COMPLETED), or a BALANCE on a COMPLETED, non-contested request. `paymentType` tells them apart and selects the confirmation endpoint. Local database only — no Stripe read. */
         get: operations["ServiceRequestsController_listDepositsAwaitingConfirmation"];
         put?: never;
         post?: never;
@@ -1046,8 +1046,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Client confirms a COMPLETED job, triggering the 80% balance capture. The request flips to PAID asynchronously once the balance settles (webhook). Client (request owner) only. */
+        /** Client confirms a COMPLETED job, triggering the 80% balance capture. The request flips to PAID asynchronously once the balance settles (webhook). 200 when the charge went through (or was already recorded), 202 when the bank wants the client to confirm the balance themselves (3-D Secure, or a declined card) — see POST :id/balance-confirmation. Client (request owner) only. */
         post: operations["ServiceRequestsController_confirmCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-requests/{id}/balance-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Client only. Prepare the browser-side confirmation of the BALANCE’s EXISTING PaymentIntent (3-D Secure, or a declined card since replaced). Twin of POST :id/deposit-confirmation: reads the intent at Stripe, points the payment row at the client’s current default card, and returns the client secret. Creates and confirms nothing server-side, and never moves the request (COMPLETED → PAID stays the webhook’s). */
+        post: operations["ServiceRequestsController_prepareBalanceConfirmation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2187,9 +2204,14 @@ export interface components {
         DepositAwaitingConfirmationItemDto: {
             /** Format: uuid */
             serviceRequestId: string;
+            /**
+             * @description DEPOSIT (20 %, at acceptance) or BALANCE (80 %, at completion) — selects the confirmation endpoint
+             * @enum {string}
+             */
+            paymentType: "DEPOSIT" | "BALANCE";
             /** @description Title of the service request, as the client wrote it */
             title: string;
-            /** @description Deposit amount, decimal string (e.g. "30.00") */
+            /** @description Amount of this payment (deposit or balance), decimal string (e.g. "30.00") */
             grossAmount: string;
             /** @description ISO 4217, upper-case */
             currency: string;
@@ -2230,6 +2252,18 @@ export interface components {
         DeclineServiceRequestDto: {
             /** @description Optional reason for declining the request */
             reason?: string;
+        };
+        BalanceConfirmationResponseDto: {
+            /** Format: uuid */
+            serviceRequestId: string;
+            /** @description Client secret of the balance PaymentIntent (browser-side confirmation) */
+            clientSecret: string;
+            /** @description Stripe id of the card to confirm with (the client’s current default) */
+            stripePaymentMethodId: string;
+            /** @description Balance amount, decimal string (e.g. "120.00") */
+            grossAmount: string;
+            /** @description ISO 4217, upper-case */
+            currency: string;
         };
         ServiceRequestAttachmentResponseDto: {
             id: string;
@@ -4788,6 +4822,15 @@ export interface operations {
                     "application/json": components["schemas"]["ServiceRequestResponseDto"];
                 };
             };
+            /** @description Completion confirmed, but the balance awaits the client’s own confirmation (3-D Secure, or a declined card): it is listed by GET deposits-awaiting-confirmation and confirmable via POST :id/balance-confirmation. The request stays COMPLETED. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceRequestResponseDto"];
+                };
+            };
             /** @description Caller is not the request owner */
             403: {
                 headers: {
@@ -4809,7 +4852,63 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Stripe rejected the balance charge */
+            /** @description Stripe rejected the balance charge and left nothing the client could confirm */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ServiceRequestsController_prepareBalanceConfirmation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceConfirmationResponseDto"];
+                };
+            };
+            /** @description Caller is not the client of this request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing to confirm: request not COMPLETED or contested, balance neither FAILED nor REQUIRES_ACTION, or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The client has no default card to confirm with */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The PaymentIntent could not be read at Stripe */
             502: {
                 headers: {
                     [name: string]: unknown;
