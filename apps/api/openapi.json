@@ -3861,7 +3861,28 @@
       },
       "SignupDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "acceptTerms": {
+            "type": "boolean",
+            "description": "Must be the boolean true: the person accepts the terms of use and the privacy policy. The acceptance date is set by the server, never sent.",
+            "enum": [
+              true
+            ],
+            "example": true
+          },
+          "termsVersion": {
+            "type": "string",
+            "description": "Version (civil date YYYY-MM-DD) of the legal texts accepted. Must equal the current version, otherwise 400.",
+            "enum": [
+              "2026-10-11"
+            ],
+            "example": "2026-10-11"
+          }
+        },
+        "required": [
+          "acceptTerms",
+          "termsVersion"
+        ]
       },
       "RefreshTokenDto": {
         "type": "object",

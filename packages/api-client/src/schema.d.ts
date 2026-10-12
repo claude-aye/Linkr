@@ -1555,7 +1555,20 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         UpdateUserDto: Record<string, never>;
-        SignupDto: Record<string, never>;
+        SignupDto: {
+            /**
+             * @description Must be the boolean true: the person accepts the terms of use and the privacy policy. The acceptance date is set by the server, never sent.
+             * @example true
+             * @enum {boolean}
+             */
+            acceptTerms: true;
+            /**
+             * @description Version (civil date YYYY-MM-DD) of the legal texts accepted. Must equal the current version, otherwise 400.
+             * @example 2026-10-11
+             * @enum {string}
+             */
+            termsVersion: "2026-10-11";
+        };
         RefreshTokenDto: Record<string, never>;
         ForgotPasswordDto: {
             /**

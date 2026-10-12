@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
@@ -11,6 +12,15 @@ import { SystemRole } from '../enums/system-role.enum';
 import { VerificationLevel } from '../enums/verification-level.enum';
 import { UserAuthProvider } from './user-auth-provider.entity';
 
+/**
+ * `chk_users_terms_acceptance_paired` mirrors migration 1780540000000: the
+ * acceptance date and the accepted version are NULL together or set together.
+ * Without this mirror the next `migration:generate` would propose dropping it.
+ */
+@Check(
+  'chk_users_terms_acceptance_paired',
+  `("terms_accepted_at_utc" IS NULL) = ("terms_version" IS NULL)`,
+)
 @Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -105,6 +115,35 @@ export class User {
       'Refresh tokens issued before this instant are rejected. A revocation bound, NOT a mirror of the password: the password lives on user_auth_providers.password_hash, and this column must also be written by a future authenticated password change and by a future "sign out everywhere". Compared against the JWT iat in SECONDS.',
   })
   sessionsInvalidatedAtUtc!: Date;
+
+  /**
+   * Proof of consent (PR L2). Set ONCE, by the server, in the same transaction
+   * as the user row (`UsersRepository.createWithEmailPassword`). Never received
+   * from the client: the browser sends only its consent, the BFF adds the
+   * version, the API checks it and stamps the date itself.
+   *
+   * ⚠️ NULL MEANS "NEVER ACCEPTED", NOT "UNKNOWN". Accounts created before L2 and
+   * OAuth accounts carry NULL, and nothing backfills them — an invented date
+   * would be a false proof. Never exposed in a response DTO.
+   *
+   * The `comment` options mirror the migration's `COMMENT ON COLUMN`.
+   */
+  @Column({
+    type: 'timestamp with time zone',
+    nullable: true,
+    comment:
+      'When the user accepted the terms and privacy policy, set by the server at signup. NULL = never accepted (accounts created before PR L2, and OAuth accounts). Never backfilled.',
+  })
+  termsAcceptedAtUtc!: Date | null;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+    comment:
+      'Civil date (YYYY-MM-DD) of the legal texts accepted: LEGAL_VERSION on the web, CURRENT_TERMS_VERSION on the API. NULL = never accepted.',
+  })
+  termsVersion!: string | null;
 
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAtUtc!: Date;
