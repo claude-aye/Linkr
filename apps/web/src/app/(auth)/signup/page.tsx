@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -72,6 +72,9 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [termsError, setTermsError] = useState(false);
+  const termsRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<FormError | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -82,6 +85,12 @@ export default function SignupPage() {
     const trimmedEmail = email.trim();
     const trimmedFirstName = firstName.trim();
     const trimmedLastName = lastName.trim();
+
+    // Consent (PR L2). The button is NEVER disabled: an unticked box is
+    // reported at the field on submit, with focus moved to it, and nothing is
+    // sent. Evaluated up front so the message shows alongside any other one.
+    const termsMissing = !acceptTerms;
+    setTermsError(termsMissing);
 
     // Light client validation — the API stays the real judge. No network call
     // on failure.
@@ -103,6 +112,10 @@ export default function SignupPage() {
       });
       return;
     }
+    if (termsMissing) {
+      termsRef.current?.focus();
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -114,6 +127,9 @@ export default function SignupPage() {
           password,
           firstName: trimmedFirstName,
           lastName: trimmedLastName,
+          // Consent only. The version of the texts is added by the BFF,
+          // server-side; the date by the API.
+          acceptTerms: true,
         }),
       });
 
@@ -232,6 +248,62 @@ export default function SignupPage() {
             >
               Au moins {PASSWORD_MIN} caractères.
             </p>
+          </div>
+
+          {/* Consent (PR L2). The whole row is the label, so the tap target is
+              ≥ 44px (`min-h-11`), not just the 20px box. The two links open a
+              NEW TAB so reading the texts never loses what was typed; a click
+              on a link inside a label follows the link and does not toggle the
+              box. */}
+          <div>
+            <label
+              htmlFor="acceptTerms"
+              className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm text-zinc-700 dark:text-zinc-300"
+            >
+              <input
+                ref={termsRef}
+                id="acceptTerms"
+                name="acceptTerms"
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(event) => {
+                  setAcceptTerms(event.target.checked);
+                  if (event.target.checked) setTermsError(false);
+                }}
+                aria-invalid={termsError}
+                aria-describedby={termsError ? 'acceptTerms-error' : undefined}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-zinc-300 accent-zinc-900 dark:border-zinc-700 dark:accent-zinc-50"
+              />
+              <span>
+                J&apos;ai 18 ans ou plus et j&apos;accepte les{' '}
+                <Link
+                  href="/conditions"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-50"
+                >
+                  conditions d&apos;utilisation
+                </Link>{' '}
+                et la{' '}
+                <Link
+                  href="/confidentialite"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-50"
+                >
+                  politique de confidentialité
+                </Link>
+                .
+              </span>
+            </label>
+            {termsError && (
+              <p
+                id="acceptTerms-error"
+                className="mt-1 text-sm text-red-700 dark:text-red-400"
+              >
+                Veuillez cocher cette case pour créer votre compte.
+              </p>
+            )}
           </div>
 
           {/* `role="alert"` is the app-wide error convention (implicitly an

@@ -19,6 +19,8 @@ on:
       - 'apps/web/src/lib/service-requests/tender-rules.ts'
       - 'apps/api/src/common/email/templates/request-declined.template.ts'
       - 'apps/web/src/app/**/decline-request-action.tsx'
+      - 'apps/api/src/modules/auth/terms-version.ts'
+      - 'apps/web/src/lib/legal/legal-pages.ts'
       - 'scripts/check-mirrored-constants.mjs'
       - '.github/workflows/mirror-guard.yml'
 

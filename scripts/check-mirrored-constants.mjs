@@ -45,6 +45,8 @@ const DECLINED_TEMPLATE =
   'apps/api/src/common/email/templates/request-declined.template.ts';
 const DECLINE_ACTION =
   'apps/web/src/app/(app)/dashboard/_actions/decline-request-action.tsx';
+const API_TERMS_VERSION = 'apps/api/src/modules/auth/terms-version.ts';
+const WEB_LEGAL_PAGES = 'apps/web/src/lib/legal/legal-pages.ts';
 
 /**
  * Every constant that must hold the same value in more than one place.
@@ -90,12 +92,24 @@ const MIRRORS = [
     why: "decline reason — the box must not accept more than the email will print, or the provider's message reaches the client cut mid-sentence",
     files: [DECLINED_TEMPLATE, DECLINE_ACTION],
   },
+  {
+    // The only STRING mirror. Unlike the others, a drift here is not a
+    // confusing 400 on one field: the BFF sends LEGAL_VERSION and SignupDto
+    // refuses anything but CURRENT_TERMS_VERSION, so EVERY signup would fail.
+    names: ['CURRENT_TERMS_VERSION', 'LEGAL_VERSION'],
+    why: 'PR L2 — the version the BFF sends must be the one SignupDto accepts, or no one can sign up',
+    files: [API_TERMS_VERSION, WEB_LEGAL_PAGES],
+  },
 ];
 
-/** `export const NAME = 24;` and `const NAME: number = 24;` both count. */
+/**
+ * `export const NAME = 24;` and `const NAME: number = 24;` both count, and so
+ * does a single-quoted string literal (`export const NAME = '2026-10-11';`).
+ * A string is returned WITH its quotes, so `'24'` never equals `24`.
+ */
 function declarationsOf(name, source) {
   const re = new RegExp(
-    `(?:export\\s+)?const\\s+${name}\\s*(?::\\s*number\\s*)?=\\s*(-?\\d+(?:\\.\\d+)?)\\s*;`,
+    `(?:export\\s+)?const\\s+${name}\\s*(?::\\s*(?:number|string)\\s*)?=\\s*(-?\\d+(?:\\.\\d+)?|'[^'\\n]*')\\s*;`,
     'g',
   );
   return [...source.matchAll(re)].map((m) => m[1]);
@@ -116,30 +130,33 @@ function main() {
   for (const mirror of MIRRORS) {
     const found = [];
 
-    for (const rel of mirror.files) {
+    for (const [i, rel] of mirror.files.entries()) {
+      // A mirror may carry a different name on each side (`names`, aligned
+      // with `files`); most share one (`name`).
+      const name = mirror.names ? mirror.names[i] : mirror.name;
       const source = read(rel);
 
       if (source === null) {
-        problems.push(`${mirror.name}: file not found — ${rel}`);
+        problems.push(`${name}: file not found — ${rel}`);
         continue;
       }
 
-      const values = declarationsOf(mirror.name, source);
+      const values = declarationsOf(name, source);
 
       if (values.length === 0) {
         problems.push(
-          `${mirror.name}: no numeric declaration found in ${rel} — moved, renamed, or no longer a literal`,
+          `${name}: no literal declaration found in ${rel} — moved, renamed, or no longer a literal`,
         );
         continue;
       }
       if (values.length > 1) {
         problems.push(
-          `${mirror.name}: ${values.length} declarations in ${rel} — ambiguous, cannot compare`,
+          `${name}: ${values.length} declarations in ${rel} — ambiguous, cannot compare`,
         );
         continue;
       }
 
-      found.push({ rel, value: values[0] });
+      found.push({ rel, name, value: values[0] });
     }
 
     if (found.length !== mirror.files.length) continue;
@@ -147,8 +164,8 @@ function main() {
     const distinct = new Set(found.map((f) => f.value));
     if (distinct.size > 1) {
       problems.push(
-        `${mirror.name}: values disagree — ` +
-          found.map((f) => `${f.value} in ${f.rel}`).join(' vs '),
+        `${mirror.name ?? mirror.names.join(' / ')}: values disagree — ` +
+          found.map((f) => `${f.name} = ${f.value} in ${f.rel}`).join(' vs '),
       );
     }
   }

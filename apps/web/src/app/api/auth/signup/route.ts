@@ -8,7 +8,9 @@ import {
   REFRESH_MAX_AGE,
   baseCookieOptions,
 } from '@/lib/auth/cookies';
+import { assembleSignupBody } from '@/lib/auth/signup-body';
 import { withClientIp } from '@/lib/http/client-ip';
+import { LEGAL_VERSION } from '@/lib/legal/legal-pages';
 import type { AuthResponse } from '@/lib/auth/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
@@ -29,12 +31,6 @@ const QUEBEC_LOCALE_DEFAULTS = {
   preferredCurrency: 'CAD',
 } as const;
 
-interface SignupRequestBody {
-  email?: unknown;
-  password?: unknown;
-  firstName?: unknown;
-  lastName?: unknown;
-}
 
 /**
  * BFF signup proxy. Twin of `api/auth/login` — same cookie names, same options,
@@ -52,20 +48,18 @@ interface SignupRequestBody {
  * matches login's exactly.
  */
 export async function POST(request: Request) {
-  let body: SignupRequestBody;
+  let incoming: unknown;
   try {
-    body = (await request.json()) as SignupRequestBody;
+    incoming = await request.json();
   } catch {
     return NextResponse.json({ message: 'Requête invalide.' }, { status: 400 });
   }
 
-  const { email, password, firstName, lastName } = body;
-  if (
-    typeof email !== 'string' ||
-    typeof password !== 'string' ||
-    typeof firstName !== 'string' ||
-    typeof lastName !== 'string'
-  ) {
+  // Consent (PR L2): the browser sends only `acceptTerms: true`; the version of
+  // the texts is added HERE, server-side, from `LEGAL_VERSION` — the person
+  // cannot choose it. No consent → 400 without calling the API, so no row.
+  const apiBody = assembleSignupBody(incoming, QUEBEC_LOCALE_DEFAULTS, LEGAL_VERSION);
+  if (apiBody === null) {
     return NextResponse.json({ message: 'Requête invalide.' }, { status: 400 });
   }
 
@@ -73,10 +67,10 @@ export async function POST(request: Request) {
   // `POST /auth/signup` with an empty Swagger DTO, so the typed api-client cannot
   // carry this body. Signup is `@Public()` — no token here.
   //
-  // The payload is assembled FIELD BY FIELD, never spread from the incoming body:
-  // the API runs `ValidationPipe({ forbidNonWhitelisted: true })`, so any extra
-  // key a caller slipped in would 400 the whole signup — and `phone` /
-  // `displayName` / `languagePreference` must not be settable from here.
+  // The payload is assembled FIELD BY FIELD in `assembleSignupBody`, never
+  // spread from the incoming body: the API runs `forbidNonWhitelisted`, so any
+  // extra key would 400 the whole signup — and `phone` / `displayName` /
+  // `languagePreference` must not be settable from here.
   let apiResponse: Response;
   try {
     apiResponse = await fetch(`${API_BASE_URL}/auth/signup`, {
@@ -84,13 +78,7 @@ export async function POST(request: Request) {
       // Carries the visitor's address so the API's per-IP budget meters a
       // PERSON rather than this server — see `lib/http/client-ip`.
       headers: withClientIp({ 'Content-Type': 'application/json' }, request),
-      body: JSON.stringify({
-        email,
-        password,
-        firstName,
-        lastName,
-        ...QUEBEC_LOCALE_DEFAULTS,
-      }),
+      body: JSON.stringify(apiBody),
       cache: 'no-store',
     });
   } catch {
