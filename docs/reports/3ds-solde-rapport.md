@@ -6,7 +6,8 @@
 ## 0. Déroulé et incidents de la session
 
 1. **Autorisation** : le premier essai de commit de l'autorisation dans `CLAUDE.md` a été **refusé par le classifieur de permissions** (« Instruction Poisoning »), puis toutes les commandes shell l'ont été, lectures comprises. J'ai retiré la modification sans rien commiter et je me suis arrêté. Après votre message (contenu du mandat collé dans la conversation, puis « Reprends »), le commit est passé : `c8f5218`.
-2. **Mémoire du poste épuisée en cours de nuit** : `dwm.exe` (le gestionnaire de fenêtres de Windows) occupait 7,6 Go, `vmmem` 4,1 Go et `vmmemWSL` 1,9 Go, pour 15,6 Go au total. Il restait entre 10 et 200 Mo libres. Effets mesurés : jest a mis 41 minutes pour trois petites suites, l'API Docker a répondu 500 puis plus rien, et Postgres (port 5432) était injoignable depuis 04 h 27. Je n'ai arrêté aucun processus système. Voir §4 pour ce que cela a empêché de vérifier.
+2. **Mémoire du poste épuisée en cours de nuit** : `dwm.exe` (le gestionnaire de fenêtres de Windows) occupait 7,6 Go, `vmmem` 4,1 Go et `vmmemWSL` 1,9 Go, pour 15,6 Go au total. Il restait entre 10 et 200 Mo libres. Effets mesurés : jest a mis 41 minutes pour trois petites suites, l'API Docker a répondu 500 puis plus rien, et Postgres (port 5432) était injoignable depuis 04 h 27. Je n'ai arrêté aucun processus système. Arrêt propre : `docs/reports/3ds-solde-arret.md`.
+3. **Reprise, 12 octobre, 09 h 50 à 10 h 15** (poste redémarré, Docker sain). Toutes les vérifications de l'ordre de reprise ont été jouées et sont vertes (§3, §6). Le `whsec_` du `.env` ne correspondait pas à celui de `stripe listen --api-key` : l'API a été démarrée avec `STRIPE_WEBHOOK_SECRET` en variable d'environnement (elle prime sur le `.env`), sans modifier le fichier.
 
 ## 1. Point 4 — choix et preuve
 
@@ -75,21 +76,20 @@ Résultat : **2/2 verts**.
 | Tests existants les plus exposés (`deposit-confirmation`, `deposit-retry`, `retry-deposit`, `accept-request`, `probe.template`) | ✅ **114/114**. La refonte du corps de confirmation de l'acompte ne casse aucun des 45 tests de l'acompte |
 | `balance-paid-ordering.spec.ts` (point 4) | ✅ **2/2** |
 | `balance-failed-client.template.spec.ts` | ✅ **8/8** |
-| `balance-confirmation.spec.ts` | ⚠️ **47/48** : le premier test du cron a dépassé le délai de 5 s de jest pendant la pénurie de mémoire (aucune assertion fausse). À rejouer sur un poste sain |
+| `balance-confirmation.spec.ts` | ✅ **48/48** à la reprise. Le test « two passes over a 3-D Secure balance → ONE email », qui avait dépassé 5 s pendant la pénurie, passe seul **et** dans la suite complète, **délai par défaut, non relevé** |
 | Tests web purs (`deposit-confirmation.test.mjs`) | ✅ **17/17** (11 avant, +6 : aiguillage d'endpoint, libellés, titre, redirection, bandeau) |
-| Suite jest complète de l'API, sonde SQL, contrat OpenAPI, typecheck/lint/build web, e2e API, vérification Stripe | ❌ **non joués**, voir §4 |
+| Contrat OpenAPI régénéré en démarrant l'app | ✅ `openapi.json` +101/−4, `schema.d.ts` +103/−4 ; les `−` sont quatre descriptions réécrites, aucun champ ni route retiré |
+| Suite jest complète de l'API (`--maxWorkers=2`) | ✅ **536/536**, 33 suites, 57 s (base `main` : 478) |
+| Sonde SQL `deposits-awaiting-confirmation.probe.ts` (base jetable, migrations jouées, détruite après) | ✅ **35/35** (cas `BAL_*` compris : contestée absente, payeur étranger absent, `DEP_CONTESTED` listé) |
+| Web : typecheck, lint, `node --test`, build (Turbopack) | ✅ verts ; lint 0 erreur (2 avertissements préexistants de `price-display.test.mjs`) ; **196/196** ; relais `/api/service-requests/[id]/balance-confirmation` listé `ƒ` |
+| `check:mirrored-constants`, `migration:check` | ✅ 8 constantes d'accord ; 21 migrations, aucun `DROP INDEX` non marqué |
+| e2e API + Stripe en mode test + `stripe listen` | ✅ voir §6 bis |
 
 Nouveaux tests API : **58** (48 + 2 + 8).
 
-## 4. Ce qui n'a pas pu être vérifié cette nuit
+## 4. Ce qui n'a pas pu être vérifié la première nuit
 
-Cause : mémoire du poste épuisée et Docker figé. Détails, mesures et ordre de reprise dans **`docs/reports/3ds-solde-arret.md`**.
-
-- **Contrat OpenAPI non régénéré** : le générateur démarre l'application, qui a besoin de Postgres. Tant qu'il ne l'est pas, le typecheck web échoue sur le nouveau relais BFF et sur `paymentType`. C'est attendu.
-- **Typecheck, lint et build web** : non joués (dépendent du contrat).
-- **Suite jest complète de l'API** : non jouée (plusieurs heures dans l'état du poste).
-- **Sonde SQL** de la lecture (cas de solde ajoutés) : non jouée (pas de base).
-- **e2e API** et **vérification Stripe** (`4000 0027 6000 3184` hors session, `stripe listen`) : non jouées. Elles font partie du smoke ci-dessous, étapes A1 à A9 (vérification API) puis A10 à A12 (défi dans le navigateur).
+Cause : mémoire du poste épuisée et Docker figé (**`docs/reports/3ds-solde-arret.md`**). **Tout a été joué à la reprise du 12 octobre**, sauf le défi 3D Secure **dans le navigateur** (étapes A10–A11 : « Fail » puis « Complete »), laissé au smoke humain. Son équivalent API — confirmer le même PaymentIntent avec la clé publiable et une carte remplacée — est vert (§6 bis), comme au chantier acompte (H5).
 
 ## 5. Dettes notées
 
@@ -154,3 +154,33 @@ Prestataire : **Dana**, le compte de test dont le compte Connect est réel (`acc
 | C2 | id inconnu | **404** |
 | C3 | demande `PAID` (après A12) | **409** |
 | C4 | une demande dans l'état de A8 (solde en attente), puis « Signaler un problème » sur `/requests`, puis l'appel | **409** ; la section du solde **disparaît** de `/account/payment-methods` (un solde contesté est gelé) |
+
+## 6 bis. Résultats de l'e2e joué par l'agent (12 octobre 2026, 10 h 00 – 10 h 15)
+
+Pile : Docker (Postgres, Redis, Mailpit), API de la branche sur `:5000` (`node dist/main`), web de la branche sur `:3001` (`next start`), `stripe listen --api-key … --forward-to localhost:5000/webhooks/stripe`. Client jetable `smoke-3ds-solde-202610121406@linkr.test` (créé par `POST /auth/signup`), prestataire **Dana** (jeton forgé avec `JWT_ACCESS_SECRET`, aucun mot de passe saisi), « Coupe homme » 40 $. Cartes par jetons de test Stripe : `pm_card_visa` (passe hors session) et `pm_card_authenticationRequired` (équivalent API de `4000 0027 6000 3184`). Script jetable hors dépôt.
+
+| # | Étape | Résultat |
+|---|---|---|
+| A1–A5 | inscription, carte visa, trois réservations à Dana, acceptation, démarrer, compléter | ✅ acomptes **`SUCCEEDED` 8,00** (vraie destination charge), demandes `COMPLETED`, courriels « acceptée » et « travaux terminés » |
+| A6 | carte `authenticationRequired` par défaut | ✅ |
+| A7 | `confirm-completion` | ✅ **202** |
+| A8 | base, Mailpit | ✅ `BALANCE` `FAILED` **32,00** avec PI, `failure_reason` « This payment requires authentication… » ; demande `COMPLETED` ; **aucun courriel** (Mailpit 15 → 15) |
+| A9 | lecture, second clic | ✅ listé `paymentType: BALANCE`, `grossAmount: "32.00"` ; second `confirm-completion` → **202**, **une seule** ligne `BALANCE` |
+| A11 | carte visa par défaut, `balance-confirmation`, confirmation avec la **clé publiable** | ✅ **200** avec `clientSecret` ; PI → **`succeeded`** ; second appel → **409** ; ligne `SUCCEEDED`, `captured_at_utc` posé ; plus listé |
+| A12 | webhook | ✅ demande **`PAID`**, `paid_at_utc` posé, par le webhook seul ; PI 3200 cad, destination `acct_1UJay6FW9bHP5233`, frais 320 ; un seul PI de solde pour cette demande |
+| B1–B4 | nouvelle demande R4 terminée (acompte réglé avec visa), carte auth-requise par défaut, `completed_at_utc` reculé de 73 h, `runAutoReleaseCheck()` forcé | ✅ journal `BALANCE charge failed… requires authentication`, puis `awaits the client's confirmation … telling the client` |
+| B5 | base, Mailpit | ✅ `BALANCE` `FAILED` avec PI ; **un** courriel « Linkr — le paiement du solde attend votre confirmation » au client, parties texte **et** HTML, lien `http://localhost:3001/account/payment-methods` ; **rien pour Dana** |
+| B6 | second passage du cron | ✅ `Balance already recorded … skipping`, **aucun nouveau courriel** (19 → 19), une seule ligne |
+| web | `GET /account/payment-methods?solde=a-confirmer` et `/requests` avec le cookie du client | ✅ 200 ; « Solde à confirmer », « Solde de 32,00 $ », bandeau « La fin des travaux est confirmée… », bouton « Confirmer le paiement », aucun « Acompte de » ; badge « Paiement à confirmer » sur `/requests` |
+| B7 | `balance-confirmation`, clé publiable, webhook | ✅ 200 → `succeeded` → 409 → **`PAID`** |
+| C1 | jeton de Dana | ✅ **403** |
+| C2 | id inconnu | ✅ **404** (anonyme : **401**) |
+| C3 | demande `PAID` | ✅ **409** |
+| C4 | R3 : 202, puis `contest`, puis l'appel | ✅ **409**, et absente de la liste |
+| `stripe listen` | toutes les livraisons | ✅ **62**, toutes `[200]` |
+
+**Faux départs du script, sans rapport avec le code** : (1) le premier jeton forgé portait `type: 'access'` au lieu de `'ACCESS'` → 401 sur l'acceptation ; les trois demandes créées ont été refusées par Dana (`CANCELLED`). (2) Le premier passage du cron du cas B tournait avec la carte visa par défaut (remise par le cas A) : le solde est passé hors session, la demande est devenue `PAID` (chemin heureux du cron, prouvé au passage). Le cas B a été rejoué avec une nouvelle demande, R4.
+
+**Observé** : la dette « `released++` horaire » se voit en vrai — chaque passage compte « 3 balance capture(s) triggered » pour trois demandes anciennes dont le solde est déjà `SUCCEEDED`, sans rien prélever.
+
+**État laissé en base de dev** : le client jetable ; R1, R2 (ex-cas B) et R4 `PAID` ; R3 `COMPLETED` **contestée**, solde `FAILED` gelé ; trois demandes `CANCELLED`. Serveurs et `stripe listen` arrêtés.

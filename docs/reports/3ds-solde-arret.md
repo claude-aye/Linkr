@@ -1,5 +1,7 @@
 # Arrêt — solde 3D Secure (branche `feat/3ds-solde`, 12 octobre 2026, 06 h)
 
+> **Levé le 12 octobre 2026, 10 h 15.** Poste redémarré ; l'ordre de reprise du §4 a été joué en entier et tout est vert (rapport : `docs/reports/3ds-solde-rapport.md`, §3 et §6 bis). Ce document reste comme récit de l'arrêt.
+
 > Arrêt propre au sens du mandat §7 : branche poussée, **aucune PR ouverte**.
 > Le code est écrit ; ce qui manque, ce sont les **vérifications** que le mandat exige avant la PR (§5).
 
