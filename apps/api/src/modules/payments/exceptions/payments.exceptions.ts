@@ -234,3 +234,54 @@ export class DepositIntentUnreadableException extends HttpException {
     super(`Could not read the deposit payment intent: ${detail}`, HttpStatus.BAD_GATEWAY);
   }
 }
+
+// --- client-side BALANCE confirmation (3-D Secure / replaced card) -----------
+//
+// Twins of the deposit classes above, SAME HTTP CODES on purpose: the web maps
+// its copy from the status alone (3.12b), so one mapping serves both buttons.
+// Separate classes only so that a log line or a stack trace never says
+// "deposit" about a balance.
+
+/**
+ * 409 — nothing for the client to confirm on this balance: no BALANCE row, the
+ * row is neither FAILED nor REQUIRES_ACTION, it carries no PaymentIntent, that
+ * intent was cancelled, or the request is no longer awaiting the balance
+ * (not COMPLETED, or contested — a contested balance is frozen).
+ */
+export class BalanceNotAwaitingConfirmationException extends HttpException {
+  constructor(message = 'This balance is not awaiting confirmation by the client') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 409 — the balance PaymentIntent has already settled (or is settling); the
+ * row has just been reconciled forward. The request itself is NOT moved here:
+ * COMPLETED → PAID stays the webhook's alone (see the 3ds-solde reports).
+ */
+export class BalanceAlreadySettledException extends HttpException {
+  constructor(message = 'This balance has already been paid') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/** 409 — the BALANCE ledger row and its PaymentIntent disagree; nothing returned. */
+export class BalanceIntentMismatchException extends HttpException {
+  constructor(message = 'The balance record and its payment intent disagree; nothing was confirmed') {
+    super(message, HttpStatus.CONFLICT);
+  }
+}
+
+/** 422 — the client has no default card to confirm the balance with. */
+export class BalanceConfirmationCardRequiredException extends HttpException {
+  constructor(message = 'Add a default card before confirming this balance') {
+    super(message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
+/** 502 — the balance PaymentIntent could not be read at Stripe; nothing written. */
+export class BalanceIntentUnreadableException extends HttpException {
+  constructor(detail: string) {
+    super(`Could not read the balance payment intent: ${detail}`, HttpStatus.BAD_GATEWAY);
+  }
+}

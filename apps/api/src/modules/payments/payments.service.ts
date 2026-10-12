@@ -18,11 +18,16 @@ import {
 import { PaymentRepository, PaymentRecord } from './repositories/payment.repository';
 import { PaymentMethodRepository } from './repositories/payment-method.repository';
 import { PaymentType } from './enums/payment-type.enum';
-import { CLIENT_CONFIRMABLE_DEPOSIT_STATUSES } from './client-confirmable-deposit';
+import { isAwaitingClientConfirmation } from './client-confirmable-deposit';
 import { PaymentStatus } from './enums/payment-status.enum';
 import {
+  BalanceAlreadySettledException,
   BalanceAmountUnavailableException,
   BalanceChargeFailedException,
+  BalanceConfirmationCardRequiredException,
+  BalanceIntentMismatchException,
+  BalanceIntentUnreadableException,
+  BalanceNotAwaitingConfirmationException,
   BalanceNotCapturableException,
   ClientPaymentMethodRequiredException,
   DepositAmountUnavailableException,
@@ -66,6 +71,52 @@ function intentIdFromError(err: unknown): string | null {
   const pi = (err as { payment_intent?: { id?: string } }).payment_intent;
   return pi?.id ?? null;
 }
+
+/**
+ * What the browser needs to confirm a payment's EXISTING PaymentIntent —
+ * `stripe.confirmCardPayment(clientSecret, { payment_method })` — for a
+ * deposit or a balance alike.
+ */
+export interface ClientIntentConfirmation {
+  clientSecret: string;
+  stripePaymentMethodId: string;
+  grossAmount: string;
+  currency: string;
+}
+
+/**
+ * The exceptions a client-side confirmation throws, per payment type. Same
+ * HTTP codes for both types (409/409/409/422/502): the web maps its copy from
+ * the status alone (3.12b), so one mapping serves both buttons.
+ */
+interface ClientConfirmationErrors {
+  /** 409 — nothing to confirm here (row state, cancelled intent, raced write). */
+  notAwaiting: (message?: string) => HttpException;
+  /** 409 — the intent has settled; the row was just reconciled forward. */
+  alreadySettled: () => HttpException;
+  /** 409 — the ledger row and the intent disagree on amount or currency. */
+  mismatch: () => HttpException;
+  /** 422 — no default card to confirm with. */
+  cardRequired: () => HttpException;
+  /** 502 — the intent could not be read (or carries no client secret). */
+  unreadable: (detail: string) => HttpException;
+}
+
+const DEPOSIT_CONFIRMATION_ERRORS: ClientConfirmationErrors = {
+  notAwaiting: (message) => new DepositNotAwaitingConfirmationException(message),
+  alreadySettled: () => new DepositAlreadySettledException(),
+  mismatch: () => new DepositIntentMismatchException(),
+  cardRequired: () => new DepositConfirmationCardRequiredException(),
+  unreadable: (detail) => new DepositIntentUnreadableException(detail),
+};
+
+const BALANCE_CONFIRMATION_ERRORS: ClientConfirmationErrors = {
+  notAwaiting: (message) => new BalanceNotAwaitingConfirmationException(message),
+  alreadySettled: () => new BalanceAlreadySettledException(),
+  mismatch: () => new BalanceIntentMismatchException(),
+  cardRequired: () => new BalanceConfirmationCardRequiredException(),
+  unreadable: (detail) => new BalanceIntentUnreadableException(detail),
+};
 
 export interface CaptureDepositParams {
   serviceRequestId: string;
@@ -739,61 +790,137 @@ export class PaymentsService {
   async prepareClientDepositConfirmation(
     serviceRequestId: string,
     clientUserId: string,
-  ): Promise<{
-    clientSecret: string;
-    stripePaymentMethodId: string;
-    grossAmount: string;
-    currency: string;
-  }> {
-    const deposit = await this.paymentRepo.findByServiceRequestAndType(
-      serviceRequestId,
+  ): Promise<ClientIntentConfirmation> {
+    return this.prepareClientConfirmation(
       PaymentType.DEPOSIT,
+      serviceRequestId,
+      clientUserId,
+      DEPOSIT_CONFIRMATION_ERRORS,
     );
+  }
+
+  /**
+   * The BALANCE twin of {@link prepareClientDepositConfirmation} — the way out
+   * when the 80% balance, charged off-session by `confirm-completion` or by the
+   * auto-release cron, was refused (3-D Secure demanded on every payment, or a
+   * declined card since replaced). Same mechanism, same guarantees: the
+   * browser confirms THE SAME PaymentIntent, nothing is created or confirmed
+   * here, and the only write on the happy path is `payment_method_id`.
+   *
+   * ⚠️ THE RECONCILIATION MOVES THE ROW, NEVER THE REQUEST. When the intent has
+   * already settled, the row is reconciled forward (`attachIntent`) and the
+   * call answers 409 « already paid » — exactly as for the deposit. The
+   * request's COMPLETED → PAID transition is NOT done here: it stays the
+   * webhook's alone (`StripeWebhookProcessor` → `markRequestPaid`), and a row
+   * this method already marked SUCCEEDED does not stop it, because
+   * {@link markSucceeded} re-reads the row when its conditional UPDATE is a
+   * no-op. One writer of that transition, whatever arrives first — choice (b)
+   * of `docs/reports/3ds-solde-recon.md`, proved in `balance-paid-ordering.spec.ts`.
+   *
+   * The caller (`ServiceRequestsService.prepareBalanceConfirmation`) has
+   * already established that the caller is the request's client and that the
+   * request is COMPLETED and not contested.
+   */
+  async prepareClientBalanceConfirmation(
+    serviceRequestId: string,
+    clientUserId: string,
+  ): Promise<ClientIntentConfirmation> {
+    return this.prepareClientConfirmation(
+      PaymentType.BALANCE,
+      serviceRequestId,
+      clientUserId,
+      BALANCE_CONFIRMATION_ERRORS,
+    );
+  }
+
+  /**
+   * Where the BALANCE of a request stands, for the two callers of the balance
+   * capture that must react to a refusal: `confirmCompletion` (202 instead of
+   * an error) and the auto-release cron (one email, at the real transition).
+   *
+   * `exists` — a BALANCE row exists (whatever its status).
+   * `awaitingClient` — that row awaits the client's confirmation
+   * ({@link isAwaitingClientConfirmation}: FAILED or REQUIRES_ACTION, with a
+   * PaymentIntent) — i.e. `/account/payment-methods` has a button for it.
+   *
+   * Local database only; no Stripe read.
+   */
+  async balanceConfirmationState(
+    serviceRequestId: string,
+  ): Promise<{ exists: boolean; awaitingClient: boolean }> {
+    const balance = await this.paymentRepo.findByServiceRequestAndType(
+      serviceRequestId,
+      PaymentType.BALANCE,
+    );
+    return {
+      exists: balance !== null,
+      awaitingClient: balance !== null && isAwaitingClientConfirmation(balance),
+    };
+  }
+
+  /**
+   * The body shared by the deposit and the balance confirmations. It depends
+   * on the payment type ONLY through the row it reads and the exceptions it
+   * throws; everything else — the guards, the Stripe read on the click, the
+   * equality guard, the current default card, the single conditional write —
+   * is one code path, so the two buttons cannot drift apart.
+   */
+  private async prepareClientConfirmation(
+    paymentType: PaymentType,
+    serviceRequestId: string,
+    clientUserId: string,
+    errors: ClientConfirmationErrors,
+  ): Promise<ClientIntentConfirmation> {
+    const label = paymentType === PaymentType.BALANCE ? 'balance' : 'deposit';
+    const row = await this.paymentRepo.findByServiceRequestAndType(serviceRequestId, paymentType);
     if (
-      !deposit ||
-      !CLIENT_CONFIRMABLE_DEPOSIT_STATUSES.includes(deposit.status) ||
-      !deposit.stripePaymentIntentId ||
-      deposit.payerUserId !== clientUserId
+      !row ||
+      !isAwaitingClientConfirmation(row) ||
+      !row.stripePaymentIntentId ||
+      row.payerUserId !== clientUserId
     ) {
-      // Same predicate as the « deposits to confirm » list, row-side — the
-      // status list is the SAME constant the list's SQL interpolates.
-      throw new DepositNotAwaitingConfirmationException();
+      // Same predicate as the « payments to confirm » list, row-side — the
+      // status list is the SAME constant the list's SQL interpolates. (The
+      // explicit intent test only narrows the type; the predicate holds it.)
+      throw errors.notAwaiting();
     }
 
-    const intentId = deposit.stripePaymentIntentId;
+    const intentId = row.stripePaymentIntentId;
     let intent: StripePaymentIntent;
     try {
       intent = await this.stripe.client.paymentIntents.retrieve(intentId);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Client confirmation: could not read PaymentIntent ${intentId} for request ${serviceRequestId}: ${detail}`,
+        `Client ${label} confirmation: could not read PaymentIntent ${intentId} for request ${serviceRequestId}: ${detail}`,
       );
       // Never a fresh intent: not knowing what that one did is exactly the
       // state in which creating a second one debits someone twice.
-      throw new DepositIntentUnreadableException(detail);
+      throw errors.unreadable(detail);
     }
 
     switch (intent.status) {
       case 'succeeded':
       case 'processing':
       case 'requires_capture': {
-        // Already paid (or paying): reconcile forward, exactly as the
-        // provider's retry does, and tell the client there is nothing to do.
+        // Already paid (or paying): reconcile the ROW forward, exactly as the
+        // provider's deposit retry does, and tell the client there is nothing
+        // to do. The request is never moved here (see the balance method).
         const status = mapPaymentIntentStatus(intent.status);
         const capturedAt = status === PaymentStatus.SUCCEEDED ? new Date() : null;
-        await this.paymentRepo.attachIntent(deposit.id, intent.id, status, capturedAt);
+        await this.paymentRepo.attachIntent(row.id, intent.id, status, capturedAt);
         this.logger.log(
-          `Client confirmation for request ${serviceRequestId}: PaymentIntent ` +
+          `Client ${label} confirmation for request ${serviceRequestId}: PaymentIntent ` +
             `${intent.id} is already ${intent.status} -> reconciled to ${status}`,
         );
-        throw new DepositAlreadySettledException();
+        throw errors.alreadySettled();
       }
       case 'canceled':
-        // A cancelled intent can never be confirmed. The provider's retry —
-        // which issues a fresh intent — is the only way forward from here.
-        throw new DepositNotAwaitingConfirmationException(
-          'The payment intent behind this deposit was cancelled; it can no longer be confirmed',
+        // A cancelled intent can never be confirmed. For a deposit, the
+        // provider's retry — which issues a fresh intent — is the only way
+        // forward from here; a balance has no such retry (open debt).
+        throw errors.notAwaiting(
+          `The payment intent behind this ${label} was cancelled; it can no longer be confirmed`,
         );
       case 'requires_payment_method':
       case 'requires_confirmation':
@@ -801,45 +928,46 @@ export class PaymentsService {
         break;
       default:
         this.logger.warn(
-          `Client confirmation for request ${serviceRequestId}: PaymentIntent ` +
+          `Client ${label} confirmation for request ${serviceRequestId}: PaymentIntent ` +
             `${intent.id} is in unexpected status ${intent.status}`,
         );
-        throw new DepositNotAwaitingConfirmationException();
+        throw errors.notAwaiting();
     }
 
-    if (!this.intentMatchesRow(intent, deposit)) {
+    if (!this.intentMatchesRow(intent, row)) {
       this.logger.error(
-        `Client confirmation REFUSED for request ${serviceRequestId}: payment ` +
-          `${deposit.id} records ${deposit.grossAmount} ${deposit.currency} but ` +
+        `Client ${label} confirmation REFUSED for request ${serviceRequestId}: payment ` +
+          `${row.id} records ${row.grossAmount} ${row.currency} but ` +
           `PaymentIntent ${intent.id} is ${intent.amount} ${intent.currency} — nothing returned`,
       );
-      throw new DepositIntentMismatchException();
+      throw errors.mismatch();
     }
 
     // A PaymentIntent does not follow a change of default card: the browser
     // confirms with the CURRENT default, passed explicitly (D2.2).
     const pm = await this.pmRepo.findDefaultByUserId(clientUserId);
-    if (!pm) throw new DepositConfirmationCardRequiredException();
+    if (!pm) throw errors.cardRequired();
 
     if (!intent.client_secret) {
-      throw new DepositIntentUnreadableException('the payment intent carries no client secret');
+      throw errors.unreadable('the payment intent carries no client secret');
     }
 
-    const touched = await this.paymentRepo.setPaymentMethodWhileAwaitingClient(deposit.id, pm.id);
+    const touched = await this.paymentRepo.setPaymentMethodWhileAwaitingClient(row.id, pm.id);
     if (!touched) {
-      // A provider retry re-armed the row between our read and this write.
-      throw new DepositNotAwaitingConfirmationException();
+      // The row moved between our read and this write (a deposit retry
+      // re-armed it, or a webhook settled it).
+      throw errors.notAwaiting();
     }
 
     this.logger.log(
-      `Client confirmation prepared for request ${serviceRequestId}: PaymentIntent ` +
-        `${intent.id} (${intent.status}), payment ${deposit.id} -> card ${pm.id}`,
+      `Client ${label} confirmation prepared for request ${serviceRequestId}: PaymentIntent ` +
+        `${intent.id} (${intent.status}), payment ${row.id} -> card ${pm.id}`,
     );
     return {
       clientSecret: intent.client_secret,
       stripePaymentMethodId: pm.stripePaymentMethodId,
-      grossAmount: deposit.grossAmount,
-      currency: deposit.currency,
+      grossAmount: row.grossAmount,
+      currency: row.currency,
     };
   }
 
