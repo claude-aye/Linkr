@@ -533,6 +533,54 @@ export class NotificationsService {
   }
 
   /**
+   * The email of `balance.failed` — the auto-release cron could not charge the
+   * 80% balance, and it now awaits the CLIENT's own confirmation on
+   * `/account/payment-methods` (3-D Secure demanded on every payment, or a
+   * declined card).
+   *
+   * ONE recipient, unlike `notifyDepositFailed`: the provider has no button on
+   * a balance and their work is done. Called ONCE per balance, by the cron, at
+   * the real transition — the caller owns that guarantee (see
+   * `ServiceRequestsService.runAutoReleaseCheck`).
+   *
+   * Same terms as `notifyJobCompleted`: one lookup on `clientUserId`, and
+   * NOTHING HERE MAY SPEAK FOR THE PAYMENT — every outcome is a log line.
+   */
+  async notifyBalanceFailed(serviceRequest: ServiceRequestRecord): Promise<void> {
+    if (emailTemplateFor('balance.failed') === null) {
+      return;
+    }
+
+    try {
+      const client = await this.usersRepo.findById(serviceRequest.clientUserId);
+
+      if (!client) {
+        this.logger.warn(
+          `notifyBalanceFailed: client ${serviceRequest.clientUserId} of request ${serviceRequest.id} not found — no email sent`,
+        );
+        return;
+      }
+
+      const baseUrl = this.config.get<string>('WEB_APP_BASE_URL');
+
+      await this.emailService.send({
+        to: client.email,
+        template: 'balance-failed-client',
+        vars: {
+          firstName: client.firstName,
+          requestTitle: serviceRequest.title,
+          // The page that lists the balance with its « Confirmer le paiement ».
+          paymentMethodsUrl: `${baseUrl}/account/payment-methods`,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `notifyBalanceFailed: could not queue the email for request ${serviceRequest.id}: ${String(err)}`,
+      );
+    }
+  }
+
+  /**
    * The email half of `quote.sent` — the client learns that a provider answered
    * their call for tenders. One email PER submitted quote.
    *

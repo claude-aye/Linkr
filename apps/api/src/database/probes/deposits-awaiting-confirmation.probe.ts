@@ -1,5 +1,6 @@
 /**
- * Probe: the client's « deposits to confirm » list, against a real Postgres.
+ * Probe: the client's « payments to confirm » list (deposits, and balances
+ * since the balance lot), against a real Postgres.
  *
  * Invocation (from apps/api, with DATABASE_URL pointing at a SCRATCH database):
  *
@@ -48,6 +49,8 @@ interface Case {
   paymentStatus: string;
   withIntent: boolean;
   requestDeleted?: boolean;
+  /** The request is contested (`contested_at_utc` set): a balance is frozen. */
+  contested?: boolean;
   /** Minutes ago the charge failed — drives the expected order. */
   failedMinutesAgo: number;
   expected: boolean;
@@ -70,7 +73,17 @@ const CASES: Case[] = [
   { key: 'RA_NO_INTENT', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'REQUIRES_ACTION', withIntent: false, failedMinutesAgo: 5, expected: false },
   // PENDING — a provider retry has just re-armed the row: in flight, not ours.
   { key: 'PENDING', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'PENDING', withIntent: true, failedMinutesAgo: 5, expected: false },
-  { key: 'BALANCE', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, failedMinutesAgo: 5, expected: false },
+  // BALANCE (balance lot) — listed on a COMPLETED, NON-contested request only.
+  { key: 'BAL_COMPLETED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, failedMinutesAgo: 25, expected: true },
+  { key: 'BAL_REQ_ACTION', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'REQUIRES_ACTION', withIntent: true, failedMinutesAgo: 12, expected: true },
+  { key: 'BAL_CONTESTED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, contested: true, failedMinutesAgo: 5, expected: false },
+  { key: 'BAL_PAID', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'PAID', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, failedMinutesAgo: 5, expected: false },
+  { key: 'BAL_IN_PROGRESS', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'IN_PROGRESS', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, failedMinutesAgo: 5, expected: false },
+  { key: 'BAL_NO_INTENT', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: false, failedMinutesAgo: 5, expected: false },
+  { key: 'BAL_SUCCEEDED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'SUCCEEDED', withIntent: true, failedMinutesAgo: 5, expected: false },
+  { key: 'BAL_STRANGER_PAYER', client: U_STRANGER, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'BALANCE', paymentStatus: 'FAILED', withIntent: true, failedMinutesAgo: 5, expected: false },
+  // The contested gate is the BALANCE's only — a deposit's predicate is unchanged.
+  { key: 'DEP_CONTESTED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'COMPLETED', paymentType: 'DEPOSIT', paymentStatus: 'FAILED', withIntent: true, contested: true, failedMinutesAgo: 35, expected: true },
   // Soft-deleted request.
   { key: 'DELETED', client: U_CLIENT, payer: U_CLIENT, requestStatus: 'ASSIGNED', paymentType: 'DEPOSIT', paymentStatus: 'FAILED', withIntent: true, requestDeleted: true, failedMinutesAgo: 5, expected: false },
   // Someone else's.
@@ -163,10 +176,18 @@ async function seed(ds: DataSource): Promise<void> {
       `INSERT INTO service_requests
          (id, client_user_id, request_type, status, service_category_id,
           title, description, service_address, service_location,
-          service_location_precision, deleted_at_utc)
+          service_location_precision, deleted_at_utc, contested_at_utc)
        VALUES ($1, $2, 'DIRECT_BOOKING', $3, $4, $5, 'Probe fixture.', '1 rue Probe',
-               ST_SetSRID(ST_MakePoint(-71.21, 46.81), 4326), 'GEOCODED', $6)`,
-      [reqId(i), c.client, c.requestStatus, CAT, `${TAG} ${c.key}`, c.requestDeleted ? new Date() : null],
+               ST_SetSRID(ST_MakePoint(-71.21, 46.81), 4326), 'GEOCODED', $6, $7)`,
+      [
+        reqId(i),
+        c.client,
+        c.requestStatus,
+        CAT,
+        `${TAG} ${c.key}`,
+        c.requestDeleted ? new Date() : null,
+        c.contested ? new Date() : null,
+      ],
     );
     await ds.query(
       `INSERT INTO payments
@@ -219,29 +240,56 @@ async function main(): Promise<void> {
     }
 
     console.log('\nOrdre et forme :');
-    check('ordre = échec le plus récent d’abord', keys, ['IN_PROGRESS', 'REQUIRES_ACTION', 'COMPLETED', 'ASSIGNED']);
+    check('ordre = échec le plus récent d’abord', keys, [
+      'IN_PROGRESS',
+      'BAL_REQ_ACTION',
+      'REQUIRES_ACTION',
+      'COMPLETED',
+      'BAL_COMPLETED',
+      'ASSIGNED',
+      'DEP_CONTESTED',
+    ]);
     const dto = DepositAwaitingConfirmationItemDto.from(records[0]);
     check('champs exposés (ni clientSecret, ni message Stripe)', Object.keys(dto).sort(), [
       'currency',
       'failedAtUtc',
       'grossAmount',
+      'paymentType',
       'serviceRequestId',
       'title',
     ]);
+    check(
+      'paymentType de chaque ligne listée',
+      records.map((r) => [r.title.replace(`${TAG} `, ''), r.paymentType]),
+      [
+        ['IN_PROGRESS', 'DEPOSIT'],
+        ['BAL_REQ_ACTION', 'BALANCE'],
+        ['REQUIRES_ACTION', 'DEPOSIT'],
+        ['COMPLETED', 'DEPOSIT'],
+        ['BAL_COMPLETED', 'BALANCE'],
+        ['ASSIGNED', 'DEPOSIT'],
+        ['DEP_CONTESTED', 'DEPOSIT'],
+      ],
+    );
     check('montant et devise de la ligne', [dto.grossAmount, dto.currency], ['30.00', 'CAD']);
     check('identifiant de la demande', dto.serviceRequestId, reqId(1));
 
     console.log('\nÉcriture conditionnelle de la carte (même liste de statuts) :');
     const payments = new PaymentRepository(ds.getRepository(Payment));
-    for (const key of ['ASSIGNED', 'REQUIRES_ACTION', 'PENDING', 'SUCCEEDED']) {
+    for (const key of ['ASSIGNED', 'REQUIRES_ACTION', 'PENDING', 'SUCCEEDED', 'BAL_COMPLETED', 'BAL_SUCCEEDED']) {
       const i = CASES.findIndex((c) => c.key === key);
       const touched = await payments.setPaymentMethodWhileAwaitingClient(payId(i), PM_CLIENT);
-      check(`${CASES[i].paymentStatus.padEnd(16)} → carte ${touched ? 'écrite' : 'non écrite'}`, touched, key === 'ASSIGNED' || key === 'REQUIRES_ACTION');
+      check(
+        `${CASES[i].paymentType} ${CASES[i].paymentStatus.padEnd(16)} → carte ${touched ? 'écrite' : 'non écrite'}`,
+        touched,
+        ['ASSIGNED', 'REQUIRES_ACTION', 'BAL_COMPLETED'].includes(key),
+      );
     }
 
     console.log('\nAutre lecteur :');
     const stranger = await repo.findDepositsAwaitingClientConfirmation(U_STRANGER);
-    // STRANGER is listed for its owner; PAYER_NOT_OWNER is not (payer ≠ caller).
+    // STRANGER is listed for its owner; PAYER_NOT_OWNER and BAL_STRANGER_PAYER
+    // are not (payer ≠ caller).
     check(
       'le second client ne voit que le sien',
       stranger.map((r) => r.title.replace(`${TAG} `, '')),

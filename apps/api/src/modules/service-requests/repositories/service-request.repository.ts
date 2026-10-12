@@ -247,8 +247,14 @@ const TENDER_FEED_WHERE = `
  * declined card since replaced). Read from the local database only — never
  * from Stripe — so the page that lists them makes no Stripe call to render.
  */
+/**
+ * One payment the client can still confirm from their browser. Named after the
+ * deposit, which came first; since the balance lot it also carries BALANCE
+ * rows, told apart by `paymentType`.
+ */
 export interface DepositAwaitingConfirmationRecord {
   serviceRequestId: string;
+  paymentType: PaymentType.DEPOSIT | PaymentType.BALANCE;
   title: string;
   grossAmount: string;
   currency: string;
@@ -257,6 +263,7 @@ export interface DepositAwaitingConfirmationRecord {
 
 interface DepositAwaitingConfirmationRawRow {
   service_request_id: string;
+  payment_type: PaymentType.DEPOSIT | PaymentType.BALANCE;
   title: string;
   gross_amount: string;
   currency: string;
@@ -973,50 +980,65 @@ export class ServiceRequestRepository {
   }
 
   /**
-   * The deposits a client can still confirm from their browser — the list
-   * `/account/payment-methods` shows. LOCAL DATABASE ONLY: no Stripe read, so
+   * The payments a client can still confirm from their browser — the list
+   * `/account/payment-methods` shows: DEPOSITS since the 3-D Secure chantier,
+   * BALANCES since its balance lot. LOCAL DATABASE ONLY: no Stripe read, so
    * rendering the page never costs a Stripe round-trip (D2.1); the
    * `clientSecret` is obtained only on a click.
    *
    * The predicate, every term load-bearing:
-   *   - `payment_type = DEPOSIT`, status in
-   *     `CLIENT_CONFIRMABLE_DEPOSIT_STATUSES` — FAILED (the off-session charge
-   *     did not go through) or REQUIRES_ACTION (the client opened the 3-D
-   *     Secure challenge and abandoned it, then the provider's retry reconciled
-   *     the row: only the client can clear it, so it must stay listed);
+   *   - status in `CLIENT_CONFIRMABLE_DEPOSIT_STATUSES` (shared by both types)
+   *     — FAILED (the off-session charge did not go through) or
+   *     REQUIRES_ACTION (the client opened the 3-D Secure challenge and
+   *     abandoned it, then a provider's deposit retry reconciled the row: only
+   *     the client can clear it, so it must stay listed);
    *   - `stripe_payment_intent_id IS NOT NULL` — there is an intent to
    *     confirm. A FAILED row with no intent (an invalid card id, a network
    *     failure before Stripe answered) has nothing the browser could confirm;
-   *     only the provider's retry, which re-issues, can move it;
    *   - `payer_user_id = $1` AND `client_user_id = $1` — the payer is the
    *     client by construction; reading both means the list cannot offer a
-   *     button that the confirmation endpoint (client-owner guard) refuses;
-   *   - request live (`DEPOSIT_LIVE_REQUEST_STATUSES`, the set `retryDeposit`
-   *     guards) and not soft-deleted.
+   *     button that the confirmation endpoints (client-owner guard) refuse;
+   *   - request not soft-deleted;
+   *   - and, PER TYPE, the request state in which that payment still applies:
+   *       · DEPOSIT — request live (`DEPOSIT_LIVE_REQUEST_STATUSES`, the set
+   *         `retryDeposit` guards);
+   *       · BALANCE — request COMPLETED AND NOT CONTESTED: the same pair
+   *         `confirmCompletion` and the auto-release cron require, and the
+   *         one `prepareBalanceConfirmation` guards. A contested balance is
+   *         FROZEN pending admin review; offering a button to pay it would
+   *         undo the freeze the client just asked for.
    *
-   * `payments` has at most one DEPOSIT per request
-   * (`uq_payments_request_type`), so the join cannot fan out.
+   * `payments` has at most one row per (request, type)
+   * (`uq_payments_request_type`), so the join cannot fan out. And a request
+   * cannot list both at once: a BALANCE row only exists once the DEPOSIT is
+   * SUCCEEDED (`captureBalance`'s guard), which is not a confirmable status.
    */
   async findDepositsAwaitingClientConfirmation(
     clientUserId: string,
   ): Promise<DepositAwaitingConfirmationRecord[]> {
     const rows: DepositAwaitingConfirmationRawRow[] = await this.repo.query(
-      `SELECT sr.id AS service_request_id, sr.title,
+      `SELECT sr.id AS service_request_id, p.payment_type, sr.title,
               p.gross_amount, p.currency, p.failed_at_utc
          FROM payments p
          JOIN service_requests sr ON sr.id = p.service_request_id
         WHERE p.payer_user_id = $1
           AND sr.client_user_id = $1
-          AND p.payment_type = '${PaymentType.DEPOSIT}'
           AND p.status IN (${CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL})
           AND p.stripe_payment_intent_id IS NOT NULL
           AND sr.deleted_at_utc IS NULL
-          AND sr.status IN (${DEPOSIT_LIVE_STATUSES_SQL})
-        ORDER BY p.failed_at_utc DESC NULLS LAST, sr.id ASC`,
+          AND (
+                (p.payment_type = '${PaymentType.DEPOSIT}'
+                   AND sr.status IN (${DEPOSIT_LIVE_STATUSES_SQL}))
+             OR (p.payment_type = '${PaymentType.BALANCE}'
+                   AND sr.status = '${ServiceRequestStatus.COMPLETED}'
+                   AND sr.contested_at_utc IS NULL)
+              )
+        ORDER BY p.failed_at_utc DESC NULLS LAST, sr.id ASC, p.payment_type ASC`,
       [clientUserId],
     );
     return rows.map((row) => ({
       serviceRequestId: row.service_request_id,
+      paymentType: row.payment_type,
       title: row.title,
       grossAmount: row.gross_amount,
       currency: row.currency,

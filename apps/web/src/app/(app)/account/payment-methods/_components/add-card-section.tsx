@@ -44,16 +44,17 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
 export function AddCardSection({
-  hasDepositAwaiting,
+  hasPaymentAwaiting,
 }: {
   /**
-   * At least one deposit on this page awaits the client's confirmation (3-D
-   * Secure chantier, D1). Read by the Server Component from the list it already
-   * renders — no extra call — and refreshed with it by `router.refresh()`. The
-   * « Carte enregistrée » confirmation keys on it: without a deposit waiting,
-   * a client who simply adds a card must not be told about one.
+   * At least one payment on this page — a deposit (3-D Secure chantier, D1) or,
+   * since the balance lot, a balance — awaits the client's confirmation. Read
+   * by the Server Component from the list it already renders — no extra call —
+   * and refreshed with it by `router.refresh()`. The « Carte enregistrée »
+   * confirmation keys on it: without a payment waiting, a client who simply
+   * adds a card must not be told about one.
    */
-  hasDepositAwaiting: boolean;
+  hasPaymentAwaiting: boolean;
 }) {
   const router = useRouter();
   const titleId = useId();
@@ -207,8 +208,8 @@ export function AddCardSection({
                 (the provider's retry is off-session and fails the same way),
                 and false for anyone with no failed deposit at all. The way out
                 is the client's own « Confirmer le paiement », below. */}
-            {hasDepositAwaiting &&
-              ' Vous pouvez maintenant confirmer l’acompte en attente avec le bouton « Confirmer le paiement » ci-dessous.'}
+            {hasPaymentAwaiting &&
+              ' Vous pouvez maintenant confirmer le paiement en attente avec le bouton « Confirmer le paiement » ci-dessous.'}
           </p>
           <Link
             href="/requests"
@@ -245,7 +246,7 @@ export function AddCardSection({
             </h2>
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
               Aucun montant n’est prélevé maintenant. La carte servira à régler
-              l’acompte de vos demandes.
+              l’acompte et le solde de vos demandes.
             </p>
 
             {!stripePromise ? (

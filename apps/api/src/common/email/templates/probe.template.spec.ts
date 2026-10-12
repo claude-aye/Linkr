@@ -127,6 +127,12 @@ const TEMPLATE_FIXTURES: {
     // The tab matters: the retry button only exists on « Mes jobs » (5.3).
     dashboardUrl: 'https://linkr.test/dashboard?onglet=jobs',
   },
+  'balance-failed-client': {
+    firstName: 'Camille',
+    requestTitle: 'Reparation de robinet',
+    // The page where the balance is listed with its « Confirmer le paiement ».
+    paymentMethodsUrl: 'https://linkr.test/account/payment-methods',
+  },
   'quote-received': {
     firstName: 'Camille',
     requestTitle: 'Reparation de robinet',

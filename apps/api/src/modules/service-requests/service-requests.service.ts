@@ -33,6 +33,7 @@ import {
   DepositAwaitingConfirmationListDto,
 } from './dto/deposit-awaiting-confirmation.dto';
 import { DepositConfirmationResponseDto } from './dto/deposit-confirmation-response.dto';
+import { BalanceConfirmationResponseDto } from './dto/balance-confirmation-response.dto';
 import { ServiceRequestStatus } from './enums/service-request-status.enum';
 import { ServiceRequestType } from './enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from './enums/service-request-location-precision.enum';
@@ -66,7 +67,10 @@ import {
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { SystemRole } from '../users/enums/system-role.enum';
 import { CaptureDepositParams, PaymentsService } from '../payments/payments.service';
-import { DepositNotAwaitingConfirmationException } from '../payments/exceptions/payments.exceptions';
+import {
+  BalanceNotAwaitingConfirmationException,
+  DepositNotAwaitingConfirmationException,
+} from '../payments/exceptions/payments.exceptions';
 
 /** Hours → milliseconds, for the desired-window arithmetic in `create()`. */
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -124,6 +128,23 @@ export interface AcceptRequestOutcome {
   request: ServiceRequestResponseDto;
   /** False when the capture threw AFTER the assignment was committed. */
   depositSettled: boolean;
+}
+
+/**
+ * Result of a client's confirm-completion. The controller turns
+ * `balanceAwaitingClient: true` into a 202: the confirmation is recorded (the
+ * balance charge was attempted), but the bank wants the client to confirm the
+ * payment themselves — 3-D Secure on every payment, or a declined card — and
+ * `/account/payment-methods` now has a button for exactly that.
+ */
+export interface ConfirmCompletionOutcome {
+  request: ServiceRequestResponseDto;
+  /**
+   * True when the BALANCE row awaits the client's confirmation after this call
+   * (FAILED or REQUIRES_ACTION, WITH a PaymentIntent) — never otherwise, so a
+   * 202 never promises a button the payment page does not show.
+   */
+  balanceAwaitingClient: boolean;
 }
 
 @Injectable()
@@ -862,6 +883,38 @@ export class ServiceRequestsService {
   }
 
   /**
+   * Tell the CLIENT — and only the client — that the auto-release cron could
+   * not charge their balance and that it now awaits their confirmation.
+   * Best-effort and detached, like {@link announceDepositFailure}.
+   *
+   * ⚠️ ONE CALLER: the auto-release cron, at the REAL transition (no BALANCE
+   * row before this pass, a row awaiting the client after it). Not
+   * `confirmCompletion`: the client is in front of the screen and the 202 sends
+   * them to the payment page at once. Not the webhook: a BALANCE failure is
+   * already FAILED by the time `payment_intent.payment_failed` arrives, so
+   * `markFailed` reports no transition — and nobody needs a letter per hour.
+   *
+   * The provider receives NOTHING (mandate §3.4): they have no button on a
+   * balance, and their job is done; the money is the client's to unblock.
+   */
+  private announceBalanceFailure(requestId: string): void {
+    void (async () => {
+      const request = await this.requestRepo.findById(requestId);
+      if (!request) {
+        this.logger.warn(
+          `announceBalanceFailure: request ${requestId} not found — nobody notified`,
+        );
+        return;
+      }
+      await this.notificationsService.notifyBalanceFailed(request);
+    })().catch((err: unknown) => {
+      this.logger.error(
+        `announceBalanceFailure failed for request ${requestId}: ${String(err)}`,
+      );
+    });
+  }
+
+  /**
    * Re-attempt the deposit on a job the provider already holds — the recovery
    * path the "explicit state" decision requires. Without it, `acceptRequest`
    * returning 202 would just be a prettier dead end.
@@ -985,6 +1038,52 @@ export class ServiceRequestsService {
     }
 
     const prepared = await this.paymentsService.prepareClientDepositConfirmation(
+      requestId,
+      callerUserId,
+    );
+    return { serviceRequestId: requestId, ...prepared };
+  }
+
+  /**
+   * The BALANCE twin of {@link prepareDepositConfirmation} — the client's way
+   * out of an 80% balance the bank refused off-session (3-D Secure demanded on
+   * every payment, or a declined card since replaced). Before it, a refused
+   * balance had no exit at all: `confirm-completion` answered 502, a second
+   * click answered 200 on a balance nobody had paid, and the auto-release cron
+   * skipped the row silently every hour.
+   *
+   * Guards, in this order: 404 unknown, 403 not the client (owner-only, no
+   * ADMIN bypass — an admin has no card to confirm with), 409 when the request
+   * is not awaiting its balance: NOT COMPLETED (a PAID request has nothing left
+   * to confirm), or CONTESTED — a contested balance is frozen pending admin
+   * review, and paying it from here would undo the freeze the client asked
+   * for. The same pair `confirmCompletion`, the cron and the list's SQL require.
+   *
+   * Then `PaymentsService.prepareClientBalanceConfirmation` owns the row and
+   * the intent. It never moves the request: COMPLETED → PAID stays the
+   * webhook's (choice (b), `docs/reports/3ds-solde-recon.md`).
+   */
+  async prepareBalanceConfirmation(
+    requestId: string,
+    callerUserId: string,
+  ): Promise<BalanceConfirmationResponseDto> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) throw new NotFoundException('Service request not found');
+    if (request.clientUserId !== callerUserId) {
+      throw new ForbiddenException('Only the client can confirm this balance');
+    }
+    if (request.status !== ServiceRequestStatus.COMPLETED) {
+      throw new BalanceNotAwaitingConfirmationException(
+        `A balance cannot be confirmed on a ${request.status} request`,
+      );
+    }
+    if (request.contestedAtUtc !== null) {
+      throw new BalanceNotAwaitingConfirmationException(
+        'This request is contested; its balance is frozen pending admin review',
+      );
+    }
+
+    const prepared = await this.paymentsService.prepareClientBalanceConfirmation(
       requestId,
       callerUserId,
     );
@@ -1189,11 +1288,27 @@ export class ServiceRequestsService {
    * transition is NOT done here — the webhook worker drives it once the BALANCE
    * PaymentIntent succeeds. Idempotent: a re-confirm short-circuits in
    * captureBalance (BALANCE unique guard); an already-PAID request is a no-op.
+   *
+   * ⚠️ A BALANCE THAT AWAITS THE CLIENT IS A 202, NOT AN ERROR (3-D Secure,
+   * balance lot). When the bank refuses the off-session charge — 3-D Secure
+   * demanded on every payment, or a declined card — the row lands FAILED with
+   * its PaymentIntent, and the client can confirm that very intent from
+   * `/account/payment-methods`. The confirmation of the job itself is not
+   * what failed, so the capture's exception is NOT propagated then: the
+   * outcome says `balanceAwaitingClient`, the controller answers 202, and the
+   * screen sends the client to the page with the button.
+   *
+   * The test is on the ROW after the attempt, not on the exception: a second
+   * click short-circuits without throwing, and used to answer 200 « paid » on
+   * a balance nobody had paid. It now answers 202 again, which is true.
+   * Any other failure (no PaymentIntent, deposit not settled, no card…) keeps
+   * its own status, exactly as before — a 202 never promises a button the
+   * payment page does not show.
    */
   async confirmCompletion(
     requestId: string,
     callerUserId: string,
-  ): Promise<ServiceRequestResponseDto> {
+  ): Promise<ConfirmCompletionOutcome> {
     const request = await this.requestRepo.findById(requestId);
     if (!request) throw new NotFoundException('Service request not found');
     if (request.clientUserId !== callerUserId) {
@@ -1202,7 +1317,7 @@ export class ServiceRequestsService {
 
     // Already settled (e.g. the auto-release cron won the race) → idempotent OK.
     if (request.status === ServiceRequestStatus.PAID) {
-      return this.toResponseDto(request);
+      return { request: this.toResponseDto(request), balanceAwaitingClient: false };
     }
     if (request.status !== ServiceRequestStatus.COMPLETED) {
       throw new RequestNotCompletedException();
@@ -1211,12 +1326,35 @@ export class ServiceRequestsService {
       throw new RequestContestedException();
     }
 
-    await this.releaseBalance(request);
+    let captureError: unknown = null;
+    try {
+      await this.releaseBalance(request);
+    } catch (err) {
+      captureError = err;
+    }
 
-    this.logger.log(`Client ${callerUserId} confirmed completion of request ${requestId}`);
+    const balance = await this.paymentsService.balanceConfirmationState(requestId);
+    if (balance.awaitingClient) {
+      const detail =
+        captureError === null
+          ? ''
+          : `: ${captureError instanceof Error ? captureError.message : String(captureError)}`;
+      this.logger.warn(
+        `Client ${callerUserId} confirmed completion of request ${requestId}, but the ` +
+          `balance awaits the client's own confirmation (3-D Secure or declined card)${detail}`,
+      );
+    } else if (captureError !== null) {
+      throw captureError;
+    } else {
+      this.logger.log(`Client ${callerUserId} confirmed completion of request ${requestId}`);
+    }
+
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
-    return this.toResponseDto(updated);
+    return {
+      request: this.toResponseDto(updated),
+      balanceAwaitingClient: balance.awaitingClient,
+    };
   }
 
   /**
@@ -1331,6 +1469,19 @@ export class ServiceRequestsService {
    * non-contested requests whose release window elapsed. Each capture is
    * idempotent (BALANCE unique guard) so this never double-charges; per-request
    * failures are logged and do not abort the batch.
+   *
+   * ⚠️ ONE EMAIL, AT THE REAL TRANSITION (3-D Secure, balance lot). When the
+   * bank refuses the off-session balance (3-D Secure on every payment, or a
+   * declined card), the row lands FAILED with its PaymentIntent — awaiting the
+   * client, who is not in front of a screen at 72 h. `balance-failed-client`
+   * leaves ONLY when this pass made that happen: no BALANCE row before the
+   * attempt, a row awaiting the client after it. Every later pass finds the row
+   * already there (`captureBalance` short-circuits) and sends nothing, which is
+   * what keeps an hourly cron from mailing the client every hour.
+   *
+   * Residual, accepted: if the client's own confirm-completion creates the row
+   * between this pass's two reads, the client may get the email although they
+   * just saw the 202 — one redundant letter, never a missing one.
    */
   async runAutoReleaseCheck(): Promise<{ released: number; failed: number }> {
     const due = await this.requestRepo.findAwaitingRelease(this.autoReleaseHours);
@@ -1338,7 +1489,12 @@ export class ServiceRequestsService {
     let failed = 0;
 
     for (const request of due) {
+      // `true` until read: a failed read must never pass for « no row before »,
+      // or a pass that could not tell would mail the client.
+      let balanceExistedBefore = true;
       try {
+        balanceExistedBefore = (await this.paymentsService.balanceConfirmationState(request.id))
+          .exists;
         await this.releaseBalance(request);
         released++;
       } catch (err) {
@@ -1346,6 +1502,9 @@ export class ServiceRequestsService {
         this.logger.error(
           `Auto-release failed for request ${request.id}: ${String(err)}`,
         );
+      }
+      if (!balanceExistedBefore) {
+        await this.announceBalanceFailureIfAwaitingClient(request.id);
       }
     }
 
@@ -1355,6 +1514,29 @@ export class ServiceRequestsService {
       );
     }
     return { released, failed };
+  }
+
+  /**
+   * The cron's half of the transition test: the row did not exist before the
+   * attempt (the caller checked); does it now await the client? Its own
+   * try/catch — a read that fails must not abort the sweep, and must not be
+   * counted as a capture failure either.
+   */
+  private async announceBalanceFailureIfAwaitingClient(requestId: string): Promise<void> {
+    try {
+      const after = await this.paymentsService.balanceConfirmationState(requestId);
+      if (after.awaitingClient) {
+        this.logger.warn(
+          `Auto-release: the balance of request ${requestId} awaits the client's confirmation ` +
+            `(3-D Secure or declined card) — telling the client`,
+        );
+        this.announceBalanceFailure(requestId);
+      }
+    } catch (err) {
+      this.logger.error(
+        `Auto-release: could not read the balance state of request ${requestId}: ${String(err)}`,
+      );
+    }
   }
 
   async runExpiryCheck(): Promise<{ expired: number }> {

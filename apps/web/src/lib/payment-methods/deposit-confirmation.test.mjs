@@ -81,3 +81,59 @@ test('devise inconnue ou montant illisible : la paire brute, rien d\'inventé', 
   assert.equal(formatDepositAmount('30.00', 'ZZZZ'), '30.00 ZZZZ');
   assert.equal(formatDepositAmount('abc', 'CAD'), 'abc CAD');
 });
+
+// --- Le solde (lot « solde 3D Secure ») -------------------------------------
+
+import {
+  BALANCE_AWAITING_REDIRECT,
+  awaitingAmountLabel,
+  awaitingExplanation,
+  awaitingSectionTitle,
+  balanceRedirectBanner,
+  confirmationEndpoint,
+} from './deposit-confirmation.ts';
+
+const ID = '55555555-5555-4555-8555-555555555555';
+
+test('le bouton appelle le BON endpoint selon paymentType', () => {
+  assert.equal(
+    confirmationEndpoint(ID, 'DEPOSIT'),
+    `/api/service-requests/${ID}/deposit-confirmation`,
+  );
+  assert.equal(
+    confirmationEndpoint(ID, 'BALANCE'),
+    `/api/service-requests/${ID}/balance-confirmation`,
+  );
+});
+
+test('libellé distinct : « Acompte de … » / « Solde de … »', () => {
+  assert.equal(awaitingAmountLabel('DEPOSIT', '30.00', 'CAD'), `Acompte de ${formatDepositAmount('30.00', 'CAD')}`);
+  assert.equal(awaitingAmountLabel('BALANCE', '120.00', 'CAD'), `Solde de ${formatDepositAmount('120.00', 'CAD')}`);
+});
+
+test('explication : le texte de l’acompte est inchangé, celui du solde parle du solde', () => {
+  assert.equal(
+    awaitingExplanation('DEPOSIT'),
+    'Le prélèvement automatique de cet acompte n’a pas abouti : votre banque demande que vous confirmiez le paiement, ou la carte utilisée a été refusée. Le paiement sera fait avec votre carte par défaut, et votre banque peut vous demander une vérification.',
+  );
+  assert.match(awaitingExplanation('BALANCE'), /solde/);
+  assert.doesNotMatch(awaitingExplanation('BALANCE'), /acompte/);
+});
+
+test('titre de section accordé au contenu', () => {
+  assert.equal(awaitingSectionTitle(['DEPOSIT']), 'Acompte à confirmer');
+  assert.equal(awaitingSectionTitle(['DEPOSIT', 'DEPOSIT']), 'Acomptes à confirmer');
+  assert.equal(awaitingSectionTitle(['BALANCE']), 'Solde à confirmer');
+  assert.equal(awaitingSectionTitle(['BALANCE', 'BALANCE']), 'Soldes à confirmer');
+  assert.equal(awaitingSectionTitle(['DEPOSIT', 'BALANCE']), 'Paiements à confirmer');
+});
+
+test('le 202 de confirm-completion mène à la page des moyens de paiement', () => {
+  assert.equal(BALANCE_AWAITING_REDIRECT, '/account/payment-methods?solde=a-confirmer');
+});
+
+test('bandeau du 202 : le bouton n’est promis que si un solde est bien listé', () => {
+  assert.match(balanceRedirectBanner(true), /Confirmez le paiement ci-dessous/);
+  assert.doesNotMatch(balanceRedirectBanner(false), /Confirmez le paiement ci-dessous/);
+  assert.notEqual(balanceRedirectBanner(true), balanceRedirectBanner(false));
+});

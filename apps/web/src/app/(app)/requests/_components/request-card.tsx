@@ -125,19 +125,19 @@ function Detail({
 export function RequestCard({
   request,
   review,
-  depositAwaiting,
+  paymentAwaiting,
 }: {
   request: ClientRequest;
   review: MyReview | null;
   /**
-   * True when this request's deposit is listed by
-   * `deposits-awaiting-confirmation` (3-D Secure chantier, D1): the bank refused
-   * it off-session and the CLIENT can confirm the same PaymentIntent on
-   * `/account/payment-methods`. Computed by the page from ONE read, never per
-   * card. The client DTO carries no deposit field, so this is the only way the
-   * card can know.
+   * True when a payment of this request — its deposit (3-D Secure chantier,
+   * D1) or, since the balance lot, its balance — is listed by
+   * `deposits-awaiting-confirmation`: the bank refused it off-session and the
+   * CLIENT can confirm the same PaymentIntent on `/account/payment-methods`.
+   * Computed by the page from ONE read, never per card. The client DTO carries
+   * no payment field, so this is the only way the card can know.
    */
-  depositAwaiting: boolean;
+  paymentAwaiting: boolean;
 }) {
   const badge = STATUS_BADGES[request.status];
 
@@ -246,8 +246,8 @@ export function RequestCard({
               Appel d’offres
             </span>
           )}
-          {depositAwaiting && (
-            // Informative pill, amber family (the deposit banners'). NOT a link:
+          {paymentAwaiting && (
+            // Informative pill, amber family (the payment banners'). NOT a link:
             // a pill is too small to be a touch target — the action is the
             // 44 px link further down the card.
             <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
@@ -307,7 +307,7 @@ export function RequestCard({
         </div>
       )}
 
-      {depositAwaiting && (
+      {paymentAwaiting && (
         <div className="mt-4">
           {/* No amount here: the card shows prices, never a deposit (business
               rule), and the banner on the payment page already carries it. */}

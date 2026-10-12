@@ -27,12 +27,12 @@ function Section({
   title,
   requests,
   reviews,
-  depositsAwaiting,
+  paymentsAwaiting,
 }: {
   title: string;
   requests: ClientRequest[];
   reviews: Map<string, MyReview>;
-  depositsAwaiting: Set<string>;
+  paymentsAwaiting: Set<string>;
 }) {
   return (
     <section>
@@ -43,7 +43,7 @@ function Section({
             key={request.id}
             request={request}
             review={reviews.get(request.id) ?? null}
-            depositAwaiting={depositsAwaiting.has(request.id)}
+            paymentAwaiting={paymentsAwaiting.has(request.id)}
           />
         ))}
       </ul>
@@ -142,27 +142,38 @@ export default async function RequestsPage({
   }
 
   /**
-   * Deposits the client can confirm themselves (3-D Secure chantier, D1) —
-   * the source of the « Paiement à confirmer » badge and of the 202 banner's
-   * text. Same read as `/account/payment-methods`, LOCAL DATABASE ONLY on the
-   * API side: no Stripe round trip on this render.
+   * Payments the client can confirm themselves — deposits (3-D Secure
+   * chantier, D1) and, since the balance lot, balances. Same read as
+   * `/account/payment-methods`, LOCAL DATABASE ONLY on the API side: no Stripe
+   * round trip on this render.
+   *
+   * Two sets, because they answer two questions:
+   *   - `paymentsAwaiting` (deposit OR balance) feeds the « Paiement à
+   *     confirmer » badge — the card's link leads to the same page either way;
+   *   - `depositsAwaiting` (DEPOSIT only) feeds the quote-accept 202 banner,
+   *     which is about a DEPOSIT: a balance awaiting on another, finished job
+   *     must not make it promise a deposit button that does not exist.
    *
    * Degraded on its own, exactly like the reviews read above: a failure leaves
-   * the set empty, so no badge shows and the 202 banner falls back to the text
-   * that promises no button. It never touches `requests`.
+   * both sets empty, so no badge shows and the 202 banner falls back to the
+   * text that promises no button. It never touches `requests`.
    */
+  const paymentsAwaiting = new Set<string>();
   const depositsAwaiting = new Set<string>();
   try {
     const { data, error, response } = await client.GET(
       '/service-requests/deposits-awaiting-confirmation',
     );
     if (!error && response.ok && data && Array.isArray(data.items)) {
-      for (const deposit of data.items) {
-        depositsAwaiting.add(deposit.serviceRequestId);
+      for (const item of data.items) {
+        paymentsAwaiting.add(item.serviceRequestId);
+        if (item.paymentType === 'DEPOSIT') {
+          depositsAwaiting.add(item.serviceRequestId);
+        }
       }
     }
   } catch {
-    // Set stays empty — see above.
+    // Sets stay empty — see above.
   }
 
   // API guarantees `created_at DESC` — `filter` preserves that order per section.
@@ -264,7 +275,7 @@ export default async function RequestsPage({
                 title="En cours"
                 requests={active}
                 reviews={reviews}
-                depositsAwaiting={depositsAwaiting}
+                paymentsAwaiting={paymentsAwaiting}
               />
             )}
             {done.length > 0 && (
@@ -272,7 +283,7 @@ export default async function RequestsPage({
                 title="Terminées"
                 requests={done}
                 reviews={reviews}
-                depositsAwaiting={depositsAwaiting}
+                paymentsAwaiting={paymentsAwaiting}
               />
             )}
           </div>
