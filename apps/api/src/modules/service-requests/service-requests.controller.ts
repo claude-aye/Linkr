@@ -27,6 +27,7 @@ import { ServiceRequestListDto } from './dto/service-request-list.dto';
 import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { DepositAwaitingConfirmationListDto } from './dto/deposit-awaiting-confirmation.dto';
 import { DepositConfirmationResponseDto } from './dto/deposit-confirmation-response.dto';
+import { BalanceConfirmationResponseDto } from './dto/balance-confirmation-response.dto';
 import { ServiceRequestsService } from './service-requests.service';
 
 @ApiTags('service-requests')
@@ -53,7 +54,7 @@ export class ServiceRequestsController {
   @Get('deposits-awaiting-confirmation')
   @ApiOperation({
     summary:
-      'Deposits the caller, as the client, can still confirm from their browser: DEPOSIT FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent, on a live request (ASSIGNED / IN_PROGRESS / COMPLETED). Local database only — no Stripe read.',
+      'Payments the caller, as the client, can still confirm from their browser: FAILED or REQUIRES_ACTION (an abandoned 3-D Secure challenge) with a PaymentIntent — a DEPOSIT on a live request (ASSIGNED / IN_PROGRESS / COMPLETED), or a BALANCE on a COMPLETED, non-contested request. `paymentType` tells them apart and selects the confirmation endpoint. Local database only — no Stripe read.',
   })
   @ApiResponse({ status: 200, type: DepositAwaitingConfirmationListDto })
   listDepositsAwaitingConfirmation(
@@ -245,21 +246,61 @@ export class ServiceRequestsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Client confirms a COMPLETED job, triggering the 80% balance capture. The request flips to PAID asynchronously once the balance settles (webhook). Client (request owner) only.',
+      'Client confirms a COMPLETED job, triggering the 80% balance capture. The request flips to PAID asynchronously once the balance settles (webhook). 200 when the charge went through (or was already recorded), 202 when the bank wants the client to confirm the balance themselves (3-D Secure, or a declined card) — see POST :id/balance-confirmation. Client (request owner) only.',
   })
   @ApiResponse({ status: 200, type: ServiceRequestResponseDto })
+  @ApiResponse({
+    status: 202,
+    type: ServiceRequestResponseDto,
+    description:
+      'Completion confirmed, but the balance awaits the client’s own confirmation (3-D Secure, or a declined card): it is listed by GET deposits-awaiting-confirmation and confirmable via POST :id/balance-confirmation. The request stays COMPLETED.',
+  })
   @ApiResponse({ status: 403, description: 'Caller is not the request owner' })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({
     status: 409,
     description: 'Request not COMPLETED, contested, or deposit not settled',
   })
-  @ApiResponse({ status: 502, description: 'Stripe rejected the balance charge' })
-  confirmCompletion(
+  @ApiResponse({
+    status: 502,
+    description: 'Stripe rejected the balance charge and left nothing the client could confirm',
+  })
+  async confirmCompletion(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
+    // `passthrough: true`, same reason as `accept`: the two outcomes share ONE
+    // body and differ only by status, and the FR copy is mapped from the
+    // status ALONE (locked in 3.12b).
+    @Res({ passthrough: true }) res: Response,
   ): Promise<ServiceRequestResponseDto> {
-    return this.service.confirmCompletion(id, user.sub);
+    const outcome = await this.service.confirmCompletion(id, user.sub);
+    if (outcome.balanceAwaitingClient) {
+      res.status(HttpStatus.ACCEPTED);
+    }
+    return outcome.request;
+  }
+
+  @Post(':id/balance-confirmation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Client only. Prepare the browser-side confirmation of the BALANCE’s EXISTING PaymentIntent (3-D Secure, or a declined card since replaced). Twin of POST :id/deposit-confirmation: reads the intent at Stripe, points the payment row at the client’s current default card, and returns the client secret. Creates and confirms nothing server-side, and never moves the request (COMPLETED → PAID stays the webhook’s).',
+  })
+  @ApiResponse({ status: 200, type: BalanceConfirmationResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is not the client of this request' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Nothing to confirm: request not COMPLETED or contested, balance neither FAILED nor REQUIRES_ACTION, or without a PaymentIntent, intent cancelled, intent already settled (the row is reconciled first), or the ledger row and the intent disagree on the amount',
+  })
+  @ApiResponse({ status: 422, description: 'The client has no default card to confirm with' })
+  @ApiResponse({ status: 502, description: 'The PaymentIntent could not be read at Stripe' })
+  prepareBalanceConfirmation(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<BalanceConfirmationResponseDto> {
+    return this.service.prepareBalanceConfirmation(id, user.sub);
   }
 
   @Post(':id/contest')
