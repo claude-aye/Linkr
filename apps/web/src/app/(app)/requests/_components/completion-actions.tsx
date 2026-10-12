@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SUPPORT_EMAIL } from '@/lib/constants';
+import { BALANCE_AWAITING_REDIRECT } from '@/lib/payment-methods/deposit-confirmation';
 
 /**
  * The client's two moves on a COMPLETED job: release the balance early, or
@@ -114,6 +115,19 @@ export function CompletionActions({ requestId }: CompletionActionsProps) {
 
     if (!response.ok) {
       throw new Error(messageForStatus(response.status));
+    }
+
+    // ⚠️ 202 ON CONFIRM-COMPLETION: THE BALANCE AWAITS THE CLIENT (balance lot).
+    // The completion is confirmed, but the bank refused the off-session charge
+    // — 3-D Secure demanded on every payment, or a declined card — and the
+    // client must confirm that payment themselves. The page that can do it is
+    // `/account/payment-methods`, where the balance is listed with its button;
+    // the query flag lights the banner that says so. Never `balanceReleased`
+    // here: « Versement effectué » would be false.
+    if (path === 'confirm-completion' && response.status === 202) {
+      setOpenDialog(null);
+      router.push(BALANCE_AWAITING_REDIRECT);
+      return;
     }
 
     setOpenDialog(null);

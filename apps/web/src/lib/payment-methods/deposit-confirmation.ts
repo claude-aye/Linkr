@@ -1,5 +1,6 @@
-// Confirmation, par le client, d'un acompte refusé hors session
-// (`/account/payment-methods`, bandeau « Acompte à confirmer »).
+// Confirmation, par le client, d'un acompte — ou, depuis le lot « solde 3D
+// Secure », d'un solde — refusé hors session (`/account/payment-methods`,
+// section « … à confirmer »).
 //
 // ⚠️ Module SANS AUCUN IMPORT, par contrat : il est chargé tel quel par
 // `node --test` (cf. `deposit-confirmation.test.mjs`), dans un job CI qui
@@ -80,4 +81,93 @@ export function formatDepositAmount(amount: string, currency: string): string {
   } catch {
     return `${amount} ${currency}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Le SOLDE (80 %), depuis le lot « solde 3D Secure ».
+//
+// La même liste (`deposits-awaiting-confirmation`) porte désormais des soldes,
+// distingués par `paymentType`. Le même bouton les confirme, par le même
+// mécanisme ; seuls changent l'endpoint appelé et les mots. Les codes HTTP de
+// l'endpoint du solde sont ceux de l'acompte (401/403/404/409/422/502) :
+// `prepareErrorMessage` sert les deux.
+// ---------------------------------------------------------------------------
+
+/**
+ * Le paiement en attente, tel que l'API le nomme (`paymentType`). Écrit ici en
+ * toutes lettres parce que ce module n'importe rien ; le composant lui passe
+ * l'union générée, qui est la même.
+ */
+export type AwaitingPaymentType = 'DEPOSIT' | 'BALANCE';
+
+/**
+ * Le relais BFF que le bouton appelle. ⚠️ C'est le seul aiguillage : appeler
+ * l'endpoint de l'acompte pour un solde répondrait 409 (aucun acompte à
+ * confirmer), et le client resterait devant un bouton qui ne fait rien.
+ */
+export function confirmationEndpoint(
+  serviceRequestId: string,
+  paymentType: AwaitingPaymentType,
+): string {
+  const segment = paymentType === 'BALANCE' ? 'balance-confirmation' : 'deposit-confirmation';
+  return `/api/service-requests/${serviceRequestId}/${segment}`;
+}
+
+/** « Acompte de 30,00 $ » / « Solde de 120,00 $ ». */
+export function awaitingAmountLabel(
+  paymentType: AwaitingPaymentType,
+  amount: string,
+  currency: string,
+): string {
+  const noun = paymentType === 'BALANCE' ? 'Solde' : 'Acompte';
+  return `${noun} de ${formatDepositAmount(amount, currency)}`;
+}
+
+/**
+ * Ce qui s'est passé, et ce que le bouton va faire. Les deux causes (banque qui
+ * exige le 3D Secure, carte refusée) laissent le même état et ne se distinguent
+ * pas : le texte couvre les deux, le geste est le même.
+ *
+ * Le texte de l'acompte est INCHANGÉ au caractère près (lot D1).
+ */
+export function awaitingExplanation(paymentType: AwaitingPaymentType): string {
+  if (paymentType === 'BALANCE') {
+    return 'Les travaux sont terminés, mais le prélèvement automatique du solde n’a pas abouti : votre banque demande que vous confirmiez le paiement, ou la carte utilisée a été refusée. Le prestataire attend ce paiement. Il sera fait avec votre carte par défaut, et votre banque peut vous demander une vérification.';
+  }
+  return 'Le prélèvement automatique de cet acompte n’a pas abouti : votre banque demande que vous confirmiez le paiement, ou la carte utilisée a été refusée. Le paiement sera fait avec votre carte par défaut, et votre banque peut vous demander une vérification.';
+}
+
+/**
+ * Titre de la section, accordé à son contenu : « Acompte(s) à confirmer »,
+ * « Solde(s) à confirmer », ou « Paiements à confirmer » quand les deux se
+ * côtoient. Liste vide : la section n'est pas affichée, le titre est sans objet.
+ */
+export function awaitingSectionTitle(types: readonly AwaitingPaymentType[]): string {
+  const plural = types.length > 1;
+  if (types.length > 0 && types.every((t) => t === 'DEPOSIT')) {
+    return plural ? 'Acomptes à confirmer' : 'Acompte à confirmer';
+  }
+  if (types.length > 0 && types.every((t) => t === 'BALANCE')) {
+    return plural ? 'Soldes à confirmer' : 'Solde à confirmer';
+  }
+  return 'Paiements à confirmer';
+}
+
+/**
+ * Où `confirm-completion` envoie le client quand l'API répond 202 : le solde
+ * attend sa propre confirmation. Le paramètre allume le bandeau ci-dessous.
+ */
+export const BALANCE_AWAITING_FLAG = 'a-confirmer';
+export const BALANCE_AWAITING_REDIRECT = `/account/payment-methods?solde=${BALANCE_AWAITING_FLAG}`;
+
+/**
+ * Le bandeau du 202, sur `/account/payment-methods`. ⚠️ DEUX TEXTES, comme le
+ * bandeau 202 de l'acompte (lot D1) : on ne promet le bouton que si la liste
+ * contient bien un solde. Sinon (lecture en échec, ou ligne déjà réglée par le
+ * webhook entre-temps), le texte ne promet rien.
+ */
+export function balanceRedirectBanner(hasBalanceAwaiting: boolean): string {
+  return hasBalanceAwaiting
+    ? 'La fin des travaux est confirmée. Le paiement du solde demande toutefois votre confirmation : votre banque veut une vérification, ou votre carte a été refusée. Confirmez le paiement ci-dessous.'
+    : 'La fin des travaux est confirmée, mais le prélèvement du solde n’a pas abouti. Si un paiement attend votre confirmation, il apparaît ci-dessous ; sinon, vérifiez votre carte par défaut.';
 }

@@ -9,18 +9,25 @@ import {
   CONFIRMED_MESSAGE,
   STRIPE_UNAVAILABLE_MESSAGE,
   UNEXPECTED_MESSAGE,
+  confirmationEndpoint,
   isSettledIntentStatus,
   prepareErrorMessage,
+  type AwaitingPaymentType,
 } from '@/lib/payment-methods/deposit-confirmation';
 
 /**
- * « Confirmer le paiement » — the client's way out of a deposit the bank
- * refused off-session (3-D Secure demanded on every payment, or a declined card
- * since replaced). Without it, the deposit-failure email led here to a page with
- * no button that could pay.
+ * « Confirmer le paiement » — the client's way out of a deposit — or, since the
+ * balance lot, of a balance — the bank refused off-session (3-D Secure demanded
+ * on every payment, or a declined card since replaced). Without it, the
+ * deposit-failure email led here to a page with no button that could pay.
+ *
+ * ONE component for both payments: the mechanism is the same, only the endpoint
+ * changes, chosen by `paymentType` (`confirmationEndpoint`, tested in the pure
+ * module). The two endpoints answer the same HTTP codes, so the FR mapping is
+ * shared too.
  *
  * The click, in order:
- *   1. `POST /api/service-requests/{id}/deposit-confirmation` — the API reads
+ *   1. `POST /api/service-requests/{id}/{deposit|balance}-confirmation` — the API reads
  *      the PaymentIntent at Stripe, points the payment row at the CURRENT
  *      default card, and returns the intent's client secret + that card's id.
  *      Nothing is created server-side.
@@ -40,12 +47,19 @@ import {
  *
  * ⚠️ NO STRIPE MESSAGE IS EVER SHOWN, same rule as `card-form.tsx`.
  */
-export function ConfirmDepositAction({ serviceRequestId }: { serviceRequestId: string }) {
+export function ConfirmDepositAction({
+  serviceRequestId,
+  paymentType,
+}: {
+  serviceRequestId: string;
+  /** From the list item: which payment awaits, hence which endpoint to call. */
+  paymentType: AwaitingPaymentType;
+}) {
   const router = useRouter();
   const [phase, setPhase] = useState<'idle' | 'pending' | 'confirmed'>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  const endpoint = `/api/service-requests/${serviceRequestId}/deposit-confirmation`;
+  const endpoint = confirmationEndpoint(serviceRequestId, paymentType);
 
   async function prepare(): Promise<Response | null> {
     try {

@@ -12,8 +12,12 @@ import { getServerApiClient } from '@/lib/auth/session';
  * required). Sixth sibling of the accept / decline / start / complete /
  * retry-deposit relays, and written to be indistinguishable from them.
  *
- * TRANSPARENT RELAY: the upstream HTTP status (200/403/404/409/502) and body are
- * forwarded verbatim. This handler never interprets or translates errors — the
+ * TRANSPARENT RELAY: the upstream HTTP status (200/202/403/404/409/502) and body
+ * are forwarded verbatim. ⚠️ The 202 is load-bearing (balance lot): it means the
+ * balance awaits the client's own confirmation (3-D Secure, or a declined card),
+ * and it is the ONLY thing that tells the screen to send the client to
+ * `/account/payment-methods` — normalizing it to 200 would show « Versement
+ * effectué » over a balance nobody has paid. This handler never interprets or translates errors — the
  * FR message mapping lives client-side. It never logs the token.
  *
  * NO BODY: the endpoint takes none. The caller's identity comes from the cookie

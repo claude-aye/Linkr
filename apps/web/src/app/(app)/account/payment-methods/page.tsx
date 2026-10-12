@@ -11,7 +11,13 @@ import {
 } from '@/lib/payment-methods/display';
 
 import type { components } from '@linkr/api-client';
-import { formatDepositAmount } from '@/lib/payment-methods/deposit-confirmation';
+import {
+  BALANCE_AWAITING_FLAG,
+  awaitingAmountLabel,
+  awaitingExplanation,
+  awaitingSectionTitle,
+  balanceRedirectBanner,
+} from '@/lib/payment-methods/deposit-confirmation';
 
 import { AddCardSection } from './_components/add-card-section';
 import { CardActions } from './_components/card-actions';
@@ -43,12 +49,22 @@ export const dynamic = 'force-dynamic';
  * rows. A `isProvider`-style condition here would hide the screen from the
  * people the email sends to it.
  */
-export default async function PaymentMethodsPage() {
+export default async function PaymentMethodsPage({
+  searchParams,
+}: {
+  // `?solde=a-confirmer` — set by « Confirmer la fin des travaux » when
+  // `confirm-completion` answers 202: the balance awaits the client's own
+  // confirmation (3-D Secure, or a declined card). It only lights the banner.
+  searchParams: Promise<{ solde?: string | string[] }>;
+}) {
   // PRIVATE page under `(app)`. `redirect` throws — it stays outside try/catch.
   const user = await getCurrentUser();
   if (!user) {
     redirect('/login');
   }
+
+  const { solde } = await searchParams;
+  const arrivedFromBalance202 = solde === BALANCE_AWAITING_FLAG;
 
   const client = await getServerApiClient();
 
@@ -65,10 +81,11 @@ export default async function PaymentMethodsPage() {
     methods = null;
   }
 
-  // Deposits the bank refused off-session, that the client can confirm here.
-  // LOCAL DATABASE ONLY on the API side — no Stripe call on this render; the
-  // client secret is fetched on the click. Degrades BY SECTION: a failed read
-  // (`null`) shows nothing and never takes the card list down with it.
+  // Payments the bank refused off-session, that the client can confirm here —
+  // deposits, and balances since the balance lot (`paymentType`). LOCAL
+  // DATABASE ONLY on the API side — no Stripe call on this render; the client
+  // secret is fetched on the click. Degrades BY SECTION: a failed read (`null`)
+  // shows nothing and never takes the card list down with it.
   let deposits: DepositAwaitingConfirmation[] | null = null;
   try {
     const { data, error, response } = await client.GET(
@@ -90,14 +107,26 @@ export default async function PaymentMethodsPage() {
               Mes moyens de paiement
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Les cartes utilisées pour régler l’acompte de vos demandes.
+              Les cartes utilisées pour régler l’acompte et le solde de vos demandes.
             </p>
           </div>
-          {/* `hasDepositAwaiting` comes from the read above — no extra call. A
+          {/* `hasPaymentAwaiting` comes from the read above — no extra call. A
               failed read (`null`) counts as « none »: the confirmation then
               promises nothing rather than a button that may not be there. */}
-          <AddCardSection hasDepositAwaiting={deposits !== null && deposits.length > 0} />
+          <AddCardSection hasPaymentAwaiting={deposits !== null && deposits.length > 0} />
         </header>
+
+        {arrivedFromBalance202 && (
+          // Same amber banner as the deposit's 202 on `/requests`, and the same
+          // rule (D1): the button is promised only when the list really holds a
+          // balance. Plain text, no `role="alert"`: the navigation already
+          // brought the client here — a displayed state, not an action error.
+          <p className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+            {balanceRedirectBanner(
+              deposits !== null && deposits.some((d) => d.paymentType === 'BALANCE'),
+            )}
+          </p>
+        )}
 
         {deposits && deposits.length > 0 && (
           <section aria-labelledby="deposits-to-confirm" className="mb-8">
@@ -105,36 +134,36 @@ export default async function PaymentMethodsPage() {
               id="deposits-to-confirm"
               className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
             >
-              {deposits.length > 1 ? 'Acomptes à confirmer' : 'Acompte à confirmer'}
+              {awaitingSectionTitle(deposits.map((d) => d.paymentType))}
             </h2>
             <ul className="mt-3 space-y-4">
               {deposits.map((deposit) => (
                 <li
-                  key={deposit.serviceRequestId}
+                  // A request never lists both at once (a balance needs a
+                  // SUCCEEDED deposit), but the type keeps the key honest.
+                  key={`${deposit.paymentType}-${deposit.serviceRequestId}`}
                   className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm dark:border-amber-800 dark:bg-amber-950"
                 >
                   <p className="font-medium break-words text-zinc-900 dark:text-zinc-50">
                     {deposit.title}
                   </p>
-                  <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-                    Acompte de{' '}
-                    <span className="font-medium">
-                      {formatDepositAmount(deposit.grossAmount, deposit.currency)}
-                    </span>
+                  <p className="mt-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {awaitingAmountLabel(deposit.paymentType, deposit.grossAmount, deposit.currency)}
                   </p>
                   {/*
                     Covers BOTH causes, because the page cannot tell them apart
                     and the gesture is the same: the bank asked the client to
                     authenticate, or the card was declined and has since been
-                    replaced. Either way the job is assigned and waits on this.
+                    replaced. A deposit's job is assigned and waits on this; a
+                    balance's job is done and the provider waits on this.
                   */}
                   <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
-                    Le prélèvement automatique de cet acompte n’a pas abouti : votre
-                    banque demande que vous confirmiez le paiement, ou la carte utilisée
-                    a été refusée. Le paiement sera fait avec votre carte par défaut, et
-                    votre banque peut vous demander une vérification.
+                    {awaitingExplanation(deposit.paymentType)}
                   </p>
-                  <ConfirmDepositAction serviceRequestId={deposit.serviceRequestId} />
+                  <ConfirmDepositAction
+                    serviceRequestId={deposit.serviceRequestId}
+                    paymentType={deposit.paymentType}
+                  />
                 </li>
               ))}
             </ul>
@@ -161,8 +190,8 @@ export default async function PaymentMethodsPage() {
                 condition as the « Carte enregistrée » confirmation; a failed
                 read (`null`) counts as « none » and promises nothing. */}
             {deposits !== null && deposits.length > 0
-              ? 'Enregistrez une carte, puis confirmez l’acompte en attente avec le bouton « Confirmer le paiement ».'
-              : 'Enregistrez une carte pour régler l’acompte de vos demandes.'}
+              ? 'Enregistrez une carte, puis confirmez le paiement en attente avec le bouton « Confirmer le paiement ».'
+              : 'Enregistrez une carte pour régler l’acompte et le solde de vos demandes.'}
           </StateCard>
         ) : (
           <ul className="space-y-4">
