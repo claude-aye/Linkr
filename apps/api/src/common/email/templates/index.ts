@@ -1,3 +1,4 @@
+import { balanceFailedClientEmail } from './balance-failed-client.template';
 import { directBookingEmail } from './direct-booking.template';
 import { depositFailedClientEmail } from './deposit-failed-client.template';
 import { depositFailedProviderEmail } from './deposit-failed-provider.template';
@@ -18,6 +19,9 @@ import { requestDeclinedEmail } from './request-declined.template';
  * three days later in a log — assuming anyone was reading the log.
  */
 export const EMAIL_TEMPLATES = {
+  // The balance refused by the auto-release cron (3-D Secure or a declined
+  // card): CLIENT ONLY — the provider has no button on a balance.
+  'balance-failed-client': balanceFailedClientEmail,
   'direct-booking': directBookingEmail,
   // One failure, two recipients: EVENT_CHANNELS names only the client half
   // (the priority recipient). See the note there.
@@ -55,6 +59,7 @@ export function isEmailTemplateName(value: string): value is EmailTemplateName {
   return Object.prototype.hasOwnProperty.call(EMAIL_TEMPLATES, value);
 }
 
+export type { BalanceFailedClientEmailVars } from './balance-failed-client.template';
 export type { DirectBookingEmailVars } from './direct-booking.template';
 export type { DepositFailedClientEmailVars } from './deposit-failed-client.template';
 export type { DepositFailedProviderEmailVars } from './deposit-failed-provider.template';

@@ -71,6 +71,7 @@ export type DomainEvent =
   | 'request.accepted'
   | 'request.declined'
   | 'deposit.failed'
+  | 'balance.failed'
   | 'job.completed'
   | 'quote.sent'
   | 'quote.accepted'
@@ -141,6 +142,16 @@ export const EVENT_CHANNELS: Record<DomainEvent, EventChannels> = {
     // FAILED deposit forever). Both are sent from
     // `NotificationsService.notifyDepositFailed`, which names them literally.
     email: send('deposit-failed-client'),
+  },
+
+  'balance.failed': {
+    inApp: todo('no notification_type yet — grouped migration once the set is settled'),
+    // CLIENT ONLY, and ONLY from the auto-release cron, at the real transition
+    // (no BALANCE row before the pass, a row awaiting the client after it).
+    // The provider gets nothing: no button on a balance, and the job is done.
+    // A client who confirmed the job themselves got a 202 on screen instead.
+    // Sent from `NotificationsService.notifyBalanceFailed`.
+    email: send('balance-failed-client'),
   },
 
   'job.completed': {
