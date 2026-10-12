@@ -9,6 +9,7 @@ import {
 } from '@/lib/auth/cookies';
 import { refreshTokens } from '@/lib/auth/refresh';
 import { resolveClientIp } from '@/lib/http/client-ip';
+import { LEGAL_PATHS } from '@/lib/legal/legal-pages';
 
 /**
  * Route-protection proxy (Phase 3.11b-3).
@@ -16,7 +17,8 @@ import { resolveClientIp } from '@/lib/http/client-ip';
  * Next 16 renamed the `middleware` file convention to `proxy` (it now runs on the
  * Node.js runtime — edge is no longer offered for this file). Node runtime is what
  * lets the refresh branch below issue a server-to-server `fetch`. The guard stays
- * dependency-light: it imports ONLY the cookie contract + the refresh helper —
+ * dependency-light: it imports ONLY the cookie contract, the refresh helper, the
+ * client-IP helper and the legal-pages registry (import-free by contract) —
  * never `session.ts` (server-only), the api-client, or any crypto lib.
  *
  * Design — presence guard (Option 1): routing is decided ONLY on cookie EXISTENCE.
@@ -82,6 +84,16 @@ export async function proxy(request: NextRequest) {
   // 1. Auth BFF endpoints: always let through (login/logout/refresh). Guarding
   //    them would break sign-in itself — a classic self-lockout.
   if (pathname.startsWith(PUBLIC_API_PREFIX)) {
+    return NextResponse.next();
+  }
+
+  // 1b. Legal pages (PR L1): ALWAYS let through, signed in or not.
+  //     ⚠️ They are deliberately NOT in `PUBLIC_PAGES`: that branch bounces a
+  //     signed-in visitor to `/dashboard`, so a logged-in user clicking
+  //     « Confidentialité » in the footer would never reach the policy. Exact
+  //     match, like `PUBLIC_PAGES`. No refresh attempted — these pages read no
+  //     session.
+  if (LEGAL_PATHS.includes(pathname)) {
     return NextResponse.next();
   }
 

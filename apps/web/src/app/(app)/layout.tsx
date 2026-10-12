@@ -1,3 +1,4 @@
+import { LegalFooter } from '@/components/legal/legal-footer';
 import { getShellCapabilities } from '@/lib/nav/capabilities';
 
 import { Nav } from './nav';
@@ -14,6 +15,9 @@ import { Nav } from './nav';
  * If there is no user (theoretical — `proxy.ts` redirects unauthenticated
  * requests before we get here), render `children` WITHOUT the nav rather than
  * crash: the page's own session gate then handles the redirect.
+ *
+ * The legal footer (PR L1) closes every page, with or without the nav: the
+ * privacy policy and the terms must stay one click away from any screen.
  */
 export default async function AppLayout({
   children,
@@ -22,14 +26,11 @@ export default async function AppLayout({
 }>) {
   const { user, isProvider } = await getShellCapabilities();
 
-  if (!user) {
-    return children;
-  }
-
   return (
     <>
-      <Nav isProvider={isProvider} />
+      {user ? <Nav isProvider={isProvider} /> : null}
       {children}
+      <LegalFooter />
     </>
   );
 }
