@@ -47,6 +47,8 @@ const DECLINE_ACTION =
   'apps/web/src/app/(app)/dashboard/_actions/decline-request-action.tsx';
 const API_TERMS_VERSION = 'apps/api/src/modules/auth/terms-version.ts';
 const WEB_LEGAL_PAGES = 'apps/web/src/lib/legal/legal-pages.ts';
+const API_PORTFOLIO = 'apps/api/src/modules/portfolio/constants.ts';
+const WEB_PORTFOLIO = 'apps/web/src/lib/portfolio/portfolio-limits.ts';
 
 /**
  * Every constant that must hold the same value in more than one place.
@@ -99,6 +101,23 @@ const MIRRORS = [
     names: ['CURRENT_TERMS_VERSION', 'LEGAL_VERSION'],
     why: 'PR L2 — the version the BFF sends must be the one SignupDto accepts, or no one can sign up',
     files: [API_TERMS_VERSION, WEB_LEGAL_PAGES],
+  },
+  {
+    name: 'PORTFOLIO_MAX_ITEMS',
+    why: 'portfolio P1 — the upload screen must stop at the photo the API refuses with 409',
+    files: [API_PORTFOLIO, WEB_PORTFOLIO],
+  },
+  {
+    // Written `5242880` on both sides: the regex reads a literal, and
+    // `5 * 1024 * 1024` would not be found.
+    name: 'PORTFOLIO_MAX_BYTES',
+    why: 'portfolio P1 — a file the screen accepts must not be a 413 from the API',
+    files: [API_PORTFOLIO, WEB_PORTFOLIO],
+  },
+  {
+    name: 'PORTFOLIO_CAPTION_MAX',
+    why: 'portfolio P1 — a caption the screen accepts must not be a 400 from the API (also a column CHECK)',
+    files: [API_PORTFOLIO, WEB_PORTFOLIO],
   },
 ];
 

@@ -10,6 +10,7 @@ import {
 import { refreshTokens } from '@/lib/auth/refresh';
 import { resolveClientIp } from '@/lib/http/client-ip';
 import { LEGAL_PATHS } from '@/lib/legal/legal-pages';
+import { isPortfolioMediaPath } from '@/lib/portfolio/portfolio-media';
 
 /**
  * Route-protection proxy (Phase 3.11b-3).
@@ -18,7 +19,8 @@ import { LEGAL_PATHS } from '@/lib/legal/legal-pages';
  * Node.js runtime — edge is no longer offered for this file). Node runtime is what
  * lets the refresh branch below issue a server-to-server `fetch`. The guard stays
  * dependency-light: it imports ONLY the cookie contract, the refresh helper, the
- * client-IP helper and the legal-pages registry (import-free by contract) —
+ * client-IP helper, the legal-pages registry and the portfolio-media predicate
+ * (both import-free by contract) —
  * never `session.ts` (server-only), the api-client, or any crypto lib.
  *
  * Design — presence guard (Option 1): routing is decided ONLY on cookie EXISTENCE.
@@ -94,6 +96,17 @@ export async function proxy(request: NextRequest) {
   //     match, like `PUBLIC_PAGES`. No refresh attempted — these pages read no
   //     session.
   if (LEGAL_PATHS.includes(pathname)) {
+    return NextResponse.next();
+  }
+
+  // 1c. Portfolio images (P1): ALWAYS let through, signed in or not. They are
+  //     public — the API route is `@Public()` — and every `<img>` of a public
+  //     gallery points here. Under deny-by-default an anonymous visitor would
+  //     otherwise be redirected to `/login`, and an `<img>` that receives an HTML
+  //     page shows nothing. Exactly `/media/portfolio/{one segment}`; the route
+  //     itself answers 404 to anything that is not a uuid. No refresh attempted
+  //     — the relay reads no session.
+  if (isPortfolioMediaPath(pathname)) {
     return NextResponse.next();
   }
 

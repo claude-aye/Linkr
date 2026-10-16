@@ -48,9 +48,20 @@ export class LocalDiskStorageAdapter implements IStorageService {
     const absolutePath = this.resolveKey(key);
     try {
       await fs.unlink(absolutePath);
-    } catch {
-      // Idempotent delete — absence is not an error.
-      this.logger.debug(`Delete no-op for missing key=${key}`);
+    } catch (err) {
+      // Idempotent delete — ABSENCE, and only absence, is not an error.
+      //
+      // ⚠️ This used to swallow EVERY failure as a « no-op for missing key »
+      // at debug level. Measured by the portfolio probe (P1): on Windows, a
+      // file still open by a reader fails with EPERM, and the delete silently
+      // did nothing while reporting success. For a photo that must stop
+      // existing (Loi 25), a failed delete has to reach the caller, which logs
+      // it loudly. The adapter had no caller of `delete` before the portfolio.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.logger.debug(`Delete no-op for missing key=${key}`);
+        return;
+      }
+      throw err;
     }
   }
 
