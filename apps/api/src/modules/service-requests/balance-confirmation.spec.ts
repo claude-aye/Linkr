@@ -527,6 +527,84 @@ describe('auto-release cron — one email, at the real transition', () => {
   });
 });
 
+/**
+ * The `released` counter counts captures that really were attempted. The
+ * harness's `findAwaitingRelease` stand-in does NOT apply the SQL `NOT EXISTS`
+ * on a BALANCE row: it hands the request back whatever the payments hold. So
+ * every case below where a row already exists is the RACE the loop guards
+ * against (a row born between the selection and the treatment) — the stronger
+ * case. The SQL exclusion itself is a predicate on two tables; only a real
+ * Postgres can prove it (see `docs/reports/cron-released-rapport.md`).
+ */
+describe('auto-release cron — `released` counts only captures it really attempted', () => {
+  it.each([
+    ['SUCCEEDED (settled, webhook not arrived yet)', PaymentStatus.SUCCEEDED],
+    ['FAILED with an intent (awaiting the client)', PaymentStatus.FAILED],
+    ['REQUIRES_ACTION', PaymentStatus.REQUIRES_ACTION],
+    ['PENDING', PaymentStatus.PENDING],
+  ])(
+    'a BALANCE row already %s → released 0 on each of two passes, captureBalance never called',
+    async (_label, status) => {
+      const h = buildHarness({ balance: failedBalance({ status }) });
+      const capture = jest.spyOn(h.paymentsService, 'captureBalance');
+
+      const first = await h.service.runAutoReleaseCheck();
+      await flush();
+      const second = await h.service.runAutoReleaseCheck();
+      await flush();
+
+      expect(first).toEqual({ released: 0, failed: 0 });
+      expect(second).toEqual({ released: 0, failed: 0 });
+      expect(capture).not.toHaveBeenCalled();
+      expect(h.intents.create).not.toHaveBeenCalled();
+      expect(h.notifications.notifyBalanceFailed).not.toHaveBeenCalled();
+    },
+  );
+
+  it('an eligible request with no BALANCE row is still captured → released 1', async () => {
+    const h = buildHarness({});
+    const capture = jest.spyOn(h.paymentsService, 'captureBalance');
+
+    const result = await h.service.runAutoReleaseCheck();
+
+    expect(result).toEqual({ released: 1, failed: 0 });
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(h.intents.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 3-D Secure refusal: first pass fails once and mails once; the second pass counts nothing and mails nothing', async () => {
+    const h = buildHarness({ createThrows: authenticationRequired });
+
+    const first = await h.service.runAutoReleaseCheck();
+    await flush();
+    const second = await h.service.runAutoReleaseCheck();
+    await flush();
+
+    expect(first.released).toBe(0);
+    expect(second).toEqual({ released: 0, failed: 0 });
+    expect(h.notifications.notifyBalanceFailed).toHaveBeenCalledTimes(1);
+    expect(h.intents.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a BALANCE row on a refunded deposit no longer reports a failure every hour', async () => {
+    // Before the fix: selected every hour, `captureBalance` tripped on the
+    // deposit guard (which runs BEFORE its own short-circuit) → failed 1, an
+    // ERROR line per pass, for a capture that had nothing left to do.
+    const h = buildHarness({ balance: failedBalance() });
+    jest
+      .spyOn(h.paymentRepo, 'findByServiceRequestAndType')
+      .mockImplementation(async (_id: string, type: PaymentType) =>
+        type === PaymentType.DEPOSIT
+          ? payment({ status: PaymentStatus.PARTIALLY_REFUNDED })
+          : failedBalance(),
+      );
+
+    const result = await h.service.runAutoReleaseCheck();
+
+    expect(result).toEqual({ released: 0, failed: 0 });
+  });
+});
+
 const call = (h: Harness, caller = CLIENT_ID) =>
   h.service.prepareBalanceConfirmation(REQUEST_ID, caller);
 
