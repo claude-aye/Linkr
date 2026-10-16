@@ -1475,9 +1475,10 @@ export class ServiceRequestsService {
    * declined card), the row lands FAILED with its PaymentIntent — awaiting the
    * client, who is not in front of a screen at 72 h. `balance-failed-client`
    * leaves ONLY when this pass made that happen: no BALANCE row before the
-   * attempt, a row awaiting the client after it. Every later pass finds the row
-   * already there (`captureBalance` short-circuits) and sends nothing, which is
-   * what keeps an hourly cron from mailing the client every hour.
+   * attempt, a row awaiting the client after it. Every later pass no longer
+   * selects the request (`findAwaitingRelease` excludes any request with a
+   * BALANCE row) and sends nothing, which is what keeps an hourly cron from
+   * mailing the client every hour — and from counting a capture every hour.
    *
    * Residual, accepted: if the client's own confirm-completion creates the row
    * between this pass's two reads, the client may get the email although they
@@ -1495,6 +1496,12 @@ export class ServiceRequestsService {
       try {
         balanceExistedBefore = (await this.paymentsService.balanceConfirmationState(request.id))
           .exists;
+        // Defensive: `findAwaitingRelease` already excludes requests with a
+        // BALANCE row, so a row seen here was born between the selection and
+        // this read (typically the client's own confirm-completion). Nothing
+        // to capture, nothing to count — `captureBalance` would short-circuit
+        // silently and the pass would report a capture that never happened.
+        if (balanceExistedBefore) continue;
         await this.releaseBalance(request);
         released++;
       } catch (err) {

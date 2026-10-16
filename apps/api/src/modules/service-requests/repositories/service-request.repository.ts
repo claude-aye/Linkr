@@ -948,15 +948,30 @@ export class ServiceRequestRepository {
    * COMPLETED, non-contested requests whose release window elapsed — the
    * balance auto-release cron (Part 4) selects these. `make_interval` keeps the
    * hours threshold a bound parameter.
+   *
+   * ⚠️ NO BALANCE ROW YET — the same predicate as the short-circuit of
+   * `PaymentsService.captureBalance` (`findByServiceRequestAndType`): ANY status,
+   * and no soft-delete rule because `payments` has no `deleted_at_utc`. Without
+   * it, every request whose balance was already recorded (settled before the
+   * webhook flips it to PAID, or awaiting the client) was selected every hour,
+   * short-circuited silently, and counted as « capture triggered » forever.
+   * Served by `uq_payments_request_type (service_request_id, payment_type)`.
+   * The subquery is aliased and qualified: `SELECT_COLUMNS` is unqualified, and
+   * a bare `id` inside it would resolve to `payments.id`.
    */
   async findAwaitingRelease(autoReleaseHours: number): Promise<ServiceRequestRecord[]> {
     const rows: RawRow[] = await this.repo.query(
-      `SELECT ${SELECT_COLUMNS} FROM service_requests
-       WHERE status = 'COMPLETED'
-         AND contested_at_utc IS NULL
-         AND deleted_at_utc IS NULL
-         AND completed_at_utc IS NOT NULL
-         AND completed_at_utc < now() - make_interval(hours => $1)`,
+      `SELECT ${SELECT_COLUMNS} FROM service_requests sr
+       WHERE sr.status = 'COMPLETED'
+         AND sr.contested_at_utc IS NULL
+         AND sr.deleted_at_utc IS NULL
+         AND sr.completed_at_utc IS NOT NULL
+         AND sr.completed_at_utc < now() - make_interval(hours => $1)
+         AND NOT EXISTS (
+           SELECT 1 FROM payments p
+            WHERE p.service_request_id = sr.id
+              AND p.payment_type = 'BALANCE'
+         )`,
       [autoReleaseHours],
     );
     return rows.map(mapRow);
