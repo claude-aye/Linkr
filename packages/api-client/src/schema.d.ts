@@ -1567,6 +1567,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-providers/me/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The authenticated provider's live portfolio photos, in display order. 404 if the user has no provider. */
+        get: operations["PortfolioController_listMine"];
+        put?: never;
+        /** Add a photo (multipart: file + optional caption). JPEG, PNG or WebP still image, read from the bytes; at most 5242880 bytes and 12 live photos. Re-encoded to WebP (≤ 1600 px, upright, no metadata). */
+        post: operations["PortfolioController_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/portfolio/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder: ids must be EXACTLY the set of live photos, each once. Positions become 0..n-1. */
+        put: operations["PortfolioController_reorder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/portfolio/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one of your photos: the row is soft-deleted AND the file is deleted. */
+        delete: operations["PortfolioController_deleteMine"];
+        options?: never;
+        head?: never;
+        /** Set or clear the caption of one of your photos. */
+        patch: operations["PortfolioController_updateCaption"];
+        trace?: never;
+    };
+    "/service-providers/{id}/portfolio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A provider's live photos, public. 404 when the provider is not visible (same condition as GET /service-providers/:id). imageUrl is RELATIVE to the web origin. */
+        get: operations["PortfolioController_listPublic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/portfolio/{itemId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream a live photo (image/webp). 404 when deleted or when the provider is not visible. Never redirects to storage. */
+        get: operations["PortfolioImageController_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/portfolio/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove any provider photo (ADMIN). The row is soft-deleted AND the file is deleted. */
+        delete: operations["AdminPortfolioController_remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2792,6 +2896,49 @@ export interface components {
              * @example 50
              */
             limit: number;
+        };
+        PortfolioItemDto: {
+            /** Format: uuid */
+            id: string;
+            caption: string | null;
+            position: number;
+            /** @description Width of the stored (re-encoded) image, px. */
+            width: number;
+            /** @description Height of the stored (re-encoded) image, px. */
+            height: number;
+            /**
+             * @description Relative URL on the WEB origin, e.g. /media/portfolio/{id}. Never absolute.
+             * @example /media/portfolio/00000000-0000-0000-0000-000000000000
+             */
+            imageUrl: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
+        PortfolioItemListDto: {
+            items: components["schemas"]["PortfolioItemDto"][];
+        };
+        ReorderPortfolioDto: {
+            /** @description Every live photo id of the provider, exactly once, in the new display order. */
+            ids: string[];
+        };
+        UpdatePortfolioCaptionDto: {
+            /** @description New caption, at most 140 characters after trimming. null or an empty string clears it. */
+            caption: string | null;
+        };
+        PublicPortfolioItemDto: {
+            /** Format: uuid */
+            id: string;
+            caption: string | null;
+            width: number;
+            height: number;
+            /**
+             * @description Relative URL on the WEB origin, e.g. /media/portfolio/{id}. Never absolute.
+             * @example /media/portfolio/00000000-0000-0000-0000-000000000000
+             */
+            imageUrl: string;
+        };
+        PublicPortfolioListDto: {
+            items: components["schemas"]["PublicPortfolioItemDto"][];
         };
     };
     responses: never;
@@ -6137,6 +6284,291 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProviderReviewListDto"];
                 };
+            };
+        };
+    };
+    PortfolioController_listMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioItemListDto"];
+                };
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PortfolioController_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    caption?: string;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioItemDto"];
+                };
+            };
+            /** @description No file, or caption too long. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already 12 live photos. Body carries code PORTFOLIO_LIMIT_REACHED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description File over 5242880 bytes. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a JPEG, PNG or WebP still image (read from the bytes), or unreadable. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Image over the pixel limit. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PortfolioController_reorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderPortfolioDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioItemListDto"];
+                };
+            };
+            /** @description ids is not an array of uuids. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An id is missing, extra, duplicated, deleted or someone else’s. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PortfolioController_deleteMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such live photo of yours. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PortfolioController_updateCaption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePortfolioCaptionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioItemDto"];
+                };
+            };
+            /** @description Missing or too long caption. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such live photo of yours. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PortfolioController_listPublic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicPortfolioListDto"];
+                };
+            };
+            /** @description Provider not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PortfolioImageController_image: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The WebP bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such visible photo. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPortfolioController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such live photo. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

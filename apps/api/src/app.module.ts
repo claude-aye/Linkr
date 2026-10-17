@@ -25,6 +25,7 @@ import { StripeWebhooksModule } from './modules/stripe-webhooks/stripe-webhooks.
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { DemandSignalsModule } from './modules/demand-signals/demand-signals.module';
+import { PortfolioModule } from './modules/portfolio/portfolio.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { DemandSignalsModule } from './modules/demand-signals/demand-signals.mod
     GeocodingModule,
     DemandSignalsModule,
     ReviewsModule,
+    PortfolioModule,
   ],
 })
 export class AppModule {}

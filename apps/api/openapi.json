@@ -3892,6 +3892,293 @@
           "reviews"
         ]
       }
+    },
+    "/service-providers/me/portfolio": {
+      "get": {
+        "operationId": "PortfolioController_listMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioItemListDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          }
+        },
+        "summary": "The authenticated provider's live portfolio photos, in display order. 404 if the user has no provider.",
+        "tags": [
+          "portfolio"
+        ]
+      },
+      "post": {
+        "operationId": "PortfolioController_upload",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "caption": {
+                    "type": "string",
+                    "maxLength": 140
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file, or caption too long."
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          },
+          "409": {
+            "description": "Already 12 live photos. Body carries code PORTFOLIO_LIMIT_REACHED."
+          },
+          "413": {
+            "description": "File over 5242880 bytes."
+          },
+          "415": {
+            "description": "Not a JPEG, PNG or WebP still image (read from the bytes), or unreadable."
+          },
+          "422": {
+            "description": "Image over the pixel limit."
+          }
+        },
+        "summary": "Add a photo (multipart: file + optional caption). JPEG, PNG or WebP still image, read from the bytes; at most 5242880 bytes and 12 live photos. Re-encoded to WebP (≤ 1600 px, upright, no metadata).",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/service-providers/me/portfolio/order": {
+      "put": {
+        "operationId": "PortfolioController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderPortfolioDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioItemListDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ids is not an array of uuids."
+          },
+          "422": {
+            "description": "An id is missing, extra, duplicated, deleted or someone else’s."
+          }
+        },
+        "summary": "Reorder: ids must be EXACTLY the set of live photos, each once. Positions become 0..n-1.",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/service-providers/me/portfolio/{itemId}": {
+      "patch": {
+        "operationId": "PortfolioController_updateCaption",
+        "parameters": [
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePortfolioCaptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or too long caption."
+          },
+          "404": {
+            "description": "No such live photo of yours."
+          }
+        },
+        "summary": "Set or clear the caption of one of your photos.",
+        "tags": [
+          "portfolio"
+        ]
+      },
+      "delete": {
+        "operationId": "PortfolioController_deleteMine",
+        "parameters": [
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "No such live photo of yours."
+          }
+        },
+        "summary": "Delete one of your photos: the row is soft-deleted AND the file is deleted.",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/service-providers/{id}/portfolio": {
+      "get": {
+        "operationId": "PortfolioController_listPublic",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPortfolioListDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Provider not visible."
+          }
+        },
+        "summary": "A provider's live photos, public. 404 when the provider is not visible (same condition as GET /service-providers/:id). imageUrl is RELATIVE to the web origin.",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/portfolio/{itemId}/image": {
+      "get": {
+        "operationId": "PortfolioImageController_image",
+        "parameters": [
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The WebP bytes."
+          },
+          "404": {
+            "description": "No such visible photo."
+          }
+        },
+        "summary": "Stream a live photo (image/webp). 404 when deleted or when the provider is not visible. Never redirects to storage.",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/admin/portfolio/{itemId}": {
+      "delete": {
+        "operationId": "AdminPortfolioController_remove",
+        "parameters": [
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not an admin."
+          },
+          "404": {
+            "description": "No such live photo."
+          }
+        },
+        "summary": "Remove any provider photo (ADMIN). The row is soft-deleted AND the file is deleted.",
+        "tags": [
+          "admin"
+        ]
+      }
     }
   },
   "info": {
@@ -6732,6 +7019,138 @@
           "reviewCount",
           "averageRating",
           "limit"
+        ]
+      },
+      "PortfolioItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caption": {
+            "type": "string",
+            "nullable": true
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "width": {
+            "type": "integer",
+            "description": "Width of the stored (re-encoded) image, px."
+          },
+          "height": {
+            "type": "integer",
+            "description": "Height of the stored (re-encoded) image, px."
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "Relative URL on the WEB origin, e.g. /media/portfolio/{id}. Never absolute.",
+            "example": "/media/portfolio/00000000-0000-0000-0000-000000000000"
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "caption",
+          "position",
+          "width",
+          "height",
+          "imageUrl",
+          "createdAtUtc"
+        ]
+      },
+      "PortfolioItemListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ReorderPortfolioDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Every live photo id of the provider, exactly once, in the new display order.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "UpdatePortfolioCaptionDto": {
+        "type": "object",
+        "properties": {
+          "caption": {
+            "type": "string",
+            "description": "New caption, at most 140 characters after trimming. null or an empty string clears it.",
+            "maxLength": 140,
+            "nullable": true
+          }
+        },
+        "required": [
+          "caption"
+        ]
+      },
+      "PublicPortfolioItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caption": {
+            "type": "string",
+            "nullable": true
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "Relative URL on the WEB origin, e.g. /media/portfolio/{id}. Never absolute.",
+            "example": "/media/portfolio/00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "id",
+          "caption",
+          "width",
+          "height",
+          "imageUrl"
+        ]
+      },
+      "PublicPortfolioListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicPortfolioItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       }
     }
