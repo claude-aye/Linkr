@@ -18,3 +18,13 @@ export const PORTFOLIO_MAX_BYTES = 5242880;
 
 /** Caption length, counted after trimming. */
 export const PORTFOLIO_CAPTION_MAX = 140;
+
+/**
+ * The three limits in one object, as the rules of `portfolio-rules.ts` take
+ * them (that module imports nothing, so the limits are passed in).
+ */
+export const PORTFOLIO_LIMITS = {
+  maxItems: PORTFOLIO_MAX_ITEMS,
+  maxBytes: PORTFOLIO_MAX_BYTES,
+  captionMax: PORTFOLIO_CAPTION_MAX,
+} as const;

@@ -46,6 +46,10 @@ import type { ProviderReviewList } from '@/lib/reviews/types';
 
 import { ReviewsReceivedSection } from './_components/reviews-received-section';
 import {
+  PortfolioSection,
+  type PortfolioItem,
+} from './_components/portfolio-section';
+import {
   DashboardTabs,
   type DashboardTab,
   parseDashboardTab,
@@ -1021,6 +1025,29 @@ export default async function DashboardPage({
   }
 
   /**
+   * « Portfolio » (P2) — the provider's own photos, in display order. Read here,
+   * server-side with the session cookie, like every other tab: the BFF serves
+   * mutations only (§13.1 nº 6), and every mutation of the tab ends with a
+   * `router.refresh()` that re-runs this read — which is also what puts the
+   * SERVER's order back on screen after a failed move.
+   *
+   * Same shape as the other section reads: its own try/catch, `null` on
+   * failure, never the page-wide `failed`.
+   */
+  let portfolio: PortfolioItem[] | null = null;
+
+  if (provider) {
+    try {
+      const { data, error, response } = await client.GET('/service-providers/me/portfolio');
+      if (!error && response.ok && data && Array.isArray(data.items)) {
+        portfolio = data.items;
+      }
+    } catch {
+      portfolio = null;
+    }
+  }
+
+  /**
    * « Appels d'offres » (PR 3) — the open PROJECT_TENDERs this provider
    * qualifies for, computed LIVE by the API from the same coverage predicate as
    * discovery (so a trade or zone added after publication counts, which the
@@ -1440,6 +1467,28 @@ export default async function DashboardPage({
   );
 
   /**
+   * « Portfolio » is the seventh tab, added LAST so the locked order of the six
+   * others does not move. Failed read (`null`) → the tab stays, without a
+   * counter, and says so: an empty panel would read « ajoutez vos premières
+   * photos » to someone who may have twelve.
+   */
+  const portfolioSection = portfolio ? (
+    <PortfolioSection items={portfolio} />
+  ) : (
+    <section aria-labelledby="portfolio-title">
+      <h2
+        id="portfolio-title"
+        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+      >
+        Portfolio
+      </h2>
+      <StateCard title="Chargement impossible">
+        Vos photos n’ont pas pu être récupérées. Veuillez réessayer plus tard.
+      </StateCard>
+    </section>
+  );
+
+  /**
    * The Connect band — present only when we actually KNOW the payment state.
    * `undefined` (the read failed) renders nothing at all; `null` (404) is a
    * known state and renders « Configurez vos paiements ».
@@ -1472,7 +1521,7 @@ export default async function DashboardPage({
     connect === undefined ? null : connectBandPlacement(connect);
 
   /**
-   * One panel per tab. All six are BUILT (the counters need every read anyway)
+   * One panel per tab. All seven are BUILT (the counters need every read anyway)
    * but only the active one is returned, so only it is mounted.
    */
   const panels: Record<DashboardTab, React.ReactNode> = {
@@ -1482,6 +1531,7 @@ export default async function DashboardPage({
     metiers: tradesSection,
     notifications: notificationsSection,
     avis: reviewsSection,
+    portfolio: portfolioSection,
   };
 
   /**
@@ -1501,6 +1551,7 @@ export default async function DashboardPage({
     metiers: trades === null ? null : trades.length,
     notifications: notifications === null ? null : notifications.unreadCount,
     avis: reviewsReceived === null ? null : reviewsReceived.reviewCount,
+    portfolio: portfolio === null ? null : portfolio.length,
   };
 
   /**
