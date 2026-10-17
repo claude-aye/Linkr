@@ -4,8 +4,14 @@ import { notFound, redirect } from 'next/navigation';
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import type { ProviderReviewList } from '@/lib/reviews/types';
 
+import { PortfolioGallery } from './_components/portfolio-gallery';
 import { ReviewsBlock } from './_components/reviews-block';
 import { pickTranslation } from '@/lib/i18n/translations';
+import {
+  galleryToShow,
+  type GalleryRead,
+  type PublicGalleryItem,
+} from '@/lib/portfolio/public-gallery';
 import type { ProviderCatalogItem, ProviderProfile } from '@/lib/providers/types';
 
 // Reads the access cookie + live provider data — always rendered per request.
@@ -149,6 +155,84 @@ function ServiceRow({
   );
 }
 
+type ServerApiClient = Awaited<ReturnType<typeof getServerApiClient>>;
+
+/** The catalogue, or `null` → sober « catalogue unavailable » notice below. */
+async function readServices(
+  client: ServerApiClient,
+  id: string,
+): Promise<ProviderCatalogItem[] | null> {
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-providers/{providerId}/services',
+      { params: { path: { providerId: id } } },
+    );
+    if (!error && response.ok && Array.isArray(data)) {
+      // The two i18n maps are typed natively; only the three nullable scalars
+      // are surgically re-typed by the mirror (cf. lib/providers/types.ts).
+      return data as unknown as ProviderCatalogItem[];
+    }
+  } catch {
+    // Fall through → null.
+  }
+  return null;
+}
+
+/**
+ * Reviews + aggregate, or `null` → sober « could not load » notice in the block.
+ *
+ * Typed NATIVELY, envelope AND items: `ProviderReviewListDto` annotates every
+ * property with a concrete type, so nothing here degrades to
+ * `Record<string, never>` and this page needs no mirror and no cast for it —
+ * unlike the catalogue.
+ *
+ * ⚠️ `averageRating` ARRIVES ALREADY GATED at three reviews (D-4). Do not
+ * recompute it from `items`.
+ */
+async function readReviews(
+  client: ServerApiClient,
+  id: string,
+): Promise<ProviderReviewList | null> {
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-providers/{providerId}/reviews',
+      { params: { path: { providerId: id } } },
+    );
+    if (!error && response.ok && data) return data;
+  } catch {
+    // Fall through → null.
+  }
+  return null;
+}
+
+/**
+ * The provider's photos (P3), or `null` → NO « Réalisations » section at all.
+ *
+ * A server read with the session cookie, like its siblings — no BFF relay
+ * (§13.1 nº 6). A network error, a 5xx, or a 404 on a profile that DID load
+ * never takes the page down: the section is simply absent, and the failure is
+ * logged here, server-side. `galleryToShow` decides; it never throws.
+ */
+async function readPortfolio(
+  client: ServerApiClient,
+  id: string,
+): Promise<PublicGalleryItem[] | null> {
+  let read: GalleryRead = { kind: 'failed' };
+  try {
+    const { data, error, response } = await client.GET('/service-providers/{id}/portfolio', {
+      params: { path: { id } },
+    });
+    if (!error && response.ok) {
+      read = { kind: 'loaded', data };
+    } else {
+      console.error(`Portfolio read for provider ${id} failed: HTTP ${response.status}`);
+    }
+  } catch (err) {
+    console.error(`Portfolio read for provider ${id} failed:`, err);
+  }
+  return galleryToShow(read);
+}
+
 export default async function ProviderProfilePage({
   params,
   searchParams,
@@ -215,46 +299,15 @@ export default async function ProviderProfilePage({
     );
   }
 
-  // --- Catalogue (degrades gracefully — identity must stay readable) ---------
-  let services: ProviderCatalogItem[] | null = null;
-  try {
-    const { data, error, response } = await client.GET(
-      '/service-providers/{providerId}/services',
-      { params: { path: { providerId: id } } },
-    );
-    if (!error && response.ok && Array.isArray(data)) {
-      // The two i18n maps are typed natively; only the three nullable scalars
-      // are surgically re-typed by the mirror (cf. lib/providers/types.ts).
-      services = data as unknown as ProviderCatalogItem[];
-    }
-  } catch {
-    // Leave `services` null → sober « catalogue unavailable » notice below.
-  }
-
-  /**
-   * Reviews + aggregate (degrades on its own, like the catalogue above — the
-   * identity must stay readable whatever else fails).
-   *
-   * Typed NATIVELY, envelope AND items: `ProviderReviewListDto` annotates every
-   * property with a concrete type, so nothing here degrades to
-   * `Record<string, never>` and this page needs no mirror and no cast for it —
-   * unlike the catalogue two calls up.
-   *
-   * ⚠️ `averageRating` ARRIVES ALREADY GATED at three reviews (D-4). Do not
-   * recompute it from `items`.
-   */
-  let reviews: ProviderReviewList | null = null;
-  try {
-    const { data, error, response } = await client.GET(
-      '/service-providers/{providerId}/reviews',
-      { params: { path: { providerId: id } } },
-    );
-    if (!error && response.ok && data) {
-      reviews = data;
-    }
-  } catch {
-    // Leave `reviews` null → sober « could not load » notice in the block.
-  }
+  // --- Catalogue, reviews, portfolio — three INDEPENDENT reads, in parallel.
+  // Each degrades on its own: the identity must stay readable whatever else
+  // fails. They run only once the identity has answered, so a 404 profile
+  // costs no extra call.
+  const [services, reviews, gallery] = await Promise.all([
+    readServices(client, id),
+    readReviews(client, id),
+    readPortfolio(client, id),
+  ]);
 
   // `businessName` is nullable and the DTO carries no first/last-name fallback,
   // so degrade to a sober placeholder (no invented field, no extra API call).
@@ -276,6 +329,11 @@ export default async function ProviderProfilePage({
             </p>
           )}
         </header>
+
+        {/* After the presentation, before the catalogue: the photos extend
+            « who is this, what have they done », and the services come right
+            before what one books. No photo → no section, not even a title. */}
+        {gallery && <PortfolioGallery items={gallery} providerName={providerName} />}
 
         <section aria-labelledby="services-title">
           <h2

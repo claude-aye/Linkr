@@ -1574,7 +1574,12 @@ export default async function DashboardPage({
 
   return (
     <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <section className="w-full max-w-3xl">
+      {/* max-w-4xl (896 px), not the max-w-3xl of the other pages: the
+          seven-tab bar needs ~820 px with real counters (measured at 817 for
+          Dana — 16 jobs, 25 notifications, 12 photos). Capped at 768 px it
+          wrapped at EVERY desktop width, « Portfolio » alone on a second row
+          (P3). Wider than ~870 px of window, the bar is one row. */}
+      <section className="w-full max-w-4xl">
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             {provider ? `Bonjour, ${provider.businessName ?? userLabel}` : 'Tableau de bord'}
