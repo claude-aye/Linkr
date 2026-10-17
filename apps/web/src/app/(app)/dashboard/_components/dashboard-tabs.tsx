@@ -30,7 +30,10 @@ import Link from 'next/link';
  * failure mode this note exists to prevent.
  *
  * The order of this array IS the order of the bar (locked): En attente ·
- * Appels d'offres · Mes jobs · Mes métiers · Notifications · Avis.
+ * Appels d'offres · Mes jobs · Mes métiers · Notifications · Avis · Portfolio.
+ *
+ * « Portfolio » (P2) was added LAST on purpose: appending moves none of the six
+ * locked positions. It is never the default tab.
  *
  * « Appels d'offres » sits SECOND, right after the inbox and never before it:
  * the inbox holds requests aimed at this provider by name, answered within
@@ -45,6 +48,7 @@ export const DASHBOARD_TABS = [
   { slug: 'metiers', label: 'Mes métiers' },
   { slug: 'notifications', label: 'Notifications' },
   { slug: 'avis', label: 'Avis' },
+  { slug: 'portfolio', label: 'Portfolio' },
 ] as const;
 
 export type DashboardTab = (typeof DASHBOARD_TABS)[number]['slug'];
@@ -75,6 +79,7 @@ const COUNTER_LABELS: Record<DashboardTab, (n: number) => string> = {
   notifications: (n) =>
     n > 1 ? `${n} notifications non lues` : `${n} notification non lue`,
   avis: (n) => (n > 1 ? `${n} avis` : `${n} avis`),
+  portfolio: (n) => (n > 1 ? `${n} photos` : `${n} photo`),
 };
 
 export interface DashboardTabsProps {
