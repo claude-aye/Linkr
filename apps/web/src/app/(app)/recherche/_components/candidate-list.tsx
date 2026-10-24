@@ -25,8 +25,10 @@ export function CandidateList({
   categoryId: string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+    // Direction A (R1): a translucent card, NO `backdrop-filter` — the form
+    // panel above is the screen's only frosted layer.
+    <div className="rounded-2xl border border-on-accent/70 bg-surface p-5">
+      <h2 className="text-sm font-medium text-text">
         Choisissez l’adresse exacte&nbsp;:
       </h2>
       <ul className="mt-3 space-y-2">
@@ -43,7 +45,7 @@ export function CandidateList({
             <li key={`${candidate.lat},${candidate.lng},${index}`}>
               <Link
                 href={`/recherche?${params.toString()}`}
-                className="block rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                className="flex min-h-11 items-center rounded-2xl border border-text/10 bg-bg/50 px-4 py-3 text-sm text-text transition motion-reduce:transition-none hover:border-accent/40 hover:bg-accent/5 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 {candidate.label}
               </Link>

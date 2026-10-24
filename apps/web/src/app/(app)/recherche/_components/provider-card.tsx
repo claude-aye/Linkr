@@ -42,6 +42,28 @@ const ratingFmt = new Intl.NumberFormat('fr-CA', {
 });
 
 /**
+ * Trust mark for a VERIFIED trade (Hard Trust) — a stroke shield in the accent.
+ * Decorative: the words « Licence vérifiée » next to it carry the meaning.
+ */
+function ShieldIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5 shrink-0"
+    >
+      <path d="M12 3 19 6v5c0 4.5-3 8.4-7 10-4-1.6-7-5.5-7-10V6l7-3Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+/**
  * The reputation line on a result card — three states, and the first one is the
  * one that is easy to get wrong.
  *
@@ -74,7 +96,7 @@ function Reputation({
   // The separator from the distance lives INSIDE this component, so it cannot
   // be left dangling on a card that shows no reputation at all.
   const separator = (
-    <span aria-hidden className="text-zinc-300 dark:text-zinc-600">
+    <span aria-hidden className="text-text/30">
       ·
     </span>
   );
@@ -86,7 +108,7 @@ function Reputation({
     return (
       <>
         {separator}
-        <span className="text-zinc-500 dark:text-zinc-400">{reviewCount} avis</span>
+        <span className="text-text-muted">{reviewCount} avis</span>
       </>
     );
   }
@@ -94,8 +116,10 @@ function Reputation({
   return (
     <>
       {separator}
-      <span className="text-zinc-600 dark:text-zinc-300">
-        <span aria-hidden className="text-amber-500 dark:text-amber-400">
+      <span className="text-text">
+        {/* The star takes the screen's one accent (direction A): it is a
+            rating, not a state colour. */}
+        <span aria-hidden className="text-accent">
           ★
         </span>{' '}
         <span className="font-medium">{ratingFmt.format(averageRating)}</span> sur 5 ·{' '}
@@ -139,24 +163,28 @@ export function ProviderCard({
     <li>
       <Link
         href={href}
-        className="block rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+        // Direction A (R1): a translucent card with a light edge, NO
+        // `backdrop-filter` (this list scrolls — the form panel is the screen's
+        // only frosted layer). The whole card stays one link.
+        className="block rounded-2xl border border-on-accent/70 bg-surface p-5 transition motion-reduce:transition-none hover:border-accent/40 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">{name}</h3>
+            <h3 className="font-semibold text-text">{name}</h3>
             {provider.headline && (
-              <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-300">
+              <p className="mt-0.5 text-sm text-text-muted">
                 {provider.headline}
               </p>
             )}
           </div>
           {isVerified && (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-              ✓ Licence vérifiée
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-accent/30 bg-accent/5 px-2.5 py-0.5 text-xs font-medium text-accent">
+              <ShieldIcon />
+              Licence vérifiée
             </span>
           )}
         </div>
-        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
           <span>{formatDistance(provider.distanceMeters)}</span>
           {/* Rendered by the component, not by a condition here: a provider with
               no reviews self-nulls, so there is no `if` on reputation in the

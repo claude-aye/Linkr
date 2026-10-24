@@ -36,11 +36,22 @@ function parseCoord(value: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Direction A (R1) — one card surface for every state of this screen: a
+ * translucent `bg-surface` with a light edge, the screen's single radius
+ * (`rounded-2xl`), and NO `backdrop-filter`. The form panel is the only frosted
+ * layer of the screen; cards sit in a list that scrolls, where a blur costs
+ * every frame on a phone.
+ *
+ * The light edge reads `--color-on-accent` (ivory in light, near-black in dark):
+ * the socle has no dedicated edge token yet, and this is the only token that is
+ * near-white in the light theme and still sits quietly on the dark one.
+ */
 function StateCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{children}</p>
+    <div className="rounded-2xl border border-on-accent/70 bg-surface p-8 text-center">
+      <h2 className="text-lg font-semibold text-text">{title}</h2>
+      <p className="mt-2 text-sm text-text-muted">{children}</p>
     </div>
   );
 }
@@ -184,13 +195,27 @@ export default async function RecherchePage({
   }
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    // Direction A (R1): a very soft beige → bordeaux ground with two blurred
+    // bordeaux halos behind the content. `isolate` keeps the decorative layer's
+    // negative z-index inside this screen; `overflow-hidden` keeps the halos
+    // from widening the page on a phone.
+    <main className="relative isolate flex flex-1 justify-center overflow-hidden bg-linear-to-b from-bg via-bg to-accent/15 p-6">
+      {/* Decoration only: no content, no pointer events, hidden from assistive
+          tech. Plain CSS (`filter: blur`), no image. This is NOT a
+          `backdrop-filter` — the form panel remains the screen's only one. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-40 -right-32 h-96 w-96 rounded-full bg-accent/20 blur-3xl" />
+        <div className="absolute top-1/2 -left-48 h-112 w-md rounded-full bg-accent/10 blur-3xl" />
+      </div>
+
       <section className="w-full max-w-3xl">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <header className="mb-8">
+          {/* Parisienne (`font-script`) on this display title ONLY — never on
+              body text, labels or buttons (CLAUDE.md §13.1 nº 20). */}
+          <h1 className="font-script text-5xl leading-tight text-accent sm:text-6xl">
             Rechercher un prestataire
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-base text-text-muted">
             Choisissez un métier, puis trouvez les prestataires près de vous.
           </p>
         </header>
