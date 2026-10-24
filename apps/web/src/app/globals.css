@@ -1,26 +1,100 @@
 @import "tailwindcss";
 
+/*
+ * Socle visuel Linkr (refonte visuelle, étape 2) — CLAUDE.md §13.1 « Socle visuel ».
+ *
+ * Les tokens vivent ICI et nulle part ailleurs. Le nouveau code les consomme par
+ * les utilitaires Tailwind (`bg-bg`, `bg-surface`, `text-text`, `text-text-muted`,
+ * `bg-accent`, `text-on-accent`…) ou par `var(--color-*)`, jamais par un hex ni par
+ * une classe de palette (`zinc-*`, `red-*`…).
+ *
+ * ⚠️ LE MODE SOMBRE EST DÉFINI MAIS COUPÉ. `app/layout.tsx` pose
+ * `data-theme="light"` sur `<html>` : c'est l'interrupteur. Tant qu'il est là, ni
+ * l'OS en mode sombre ni les classes `dark:` existantes ne changent rien. Ne
+ * JAMAIS le retirer avant la fin de la migration des couleurs codées en dur vers
+ * ces tokens (dette CLAUDE.md §6) : les écrans actuels mélangeraient des fonds
+ * zinc et des tokens beige.
+ */
+
+/*
+ * `dark:` suit l'attribut `data-theme`, et non plus prefers-color-scheme (le
+ * défaut de Tailwind v4). Avec `data-theme="light"` sur `<html>`, aucune classe
+ * `dark:` ne s'applique, quel que soit le réglage de l'OS.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Thème clair — émis par Tailwind dans `:root` (couche `theme`).
+ *
+ * `static` : Tailwind n'émet d'ordinaire que les variables qu'un utilitaire ou
+ * une règle utilise. Un token encore inutilisé (`--color-on-accent` aujourd'hui)
+ * disparaîtrait alors du CSS, et le premier `var(--color-on-accent)` écrit dans
+ * un composant ne vaudrait rien. `static` les émet toujours.
+ *
+ * Pas `@theme inline` ici : le token est la variable elle-même (`--color-bg`),
+ * et l'utilitaire doit la lire à l'exécution (`var(--color-bg)`) pour suivre la
+ * bascule sombre ci-dessous. Une version `inline` qui pointerait sur un
+ * `:root { --color-bg }` se définirait par elle-même.
+ */
+@theme static {
+  --color-bg: #f3ebdf;
+  --color-surface: rgba(251, 247, 241, 0.66);
+  --color-text: #2e211e;
+  --color-text-muted: #55504d;
+  --color-accent: #6e1e2b;
+  --color-on-accent: #f8f2ea;
+}
+
+/*
+ * Thème sombre. Ces règles sont hors couche : elles l'emportent sur la couche
+ * `theme` ci-dessus, quelle que soit leur spécificité.
+ */
+[data-theme="dark"] {
+  --color-bg: #1a1315;
+  --color-surface: #241a1c;
+  --color-text: #f3ebdf;
+  --color-text-muted: #b8ada6;
+  --color-accent: #d9828e;
+  --color-on-accent: #1a1315;
+}
+
+/* L'OS en sombre ne bascule QUE si `data-theme="light"` n'est pas posé. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #1a1315;
+    --color-surface: #241a1c;
+    --color-text: #f3ebdf;
+    --color-text-muted: #b8ada6;
+    --color-accent: #d9828e;
+    --color-on-accent: #1a1315;
+  }
+}
+
+/* Variables du scaffold create-next-app : seul `body` les lit, elles suivent les tokens. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
 }
 
 @theme inline {
+  /* Alias de marque : valeurs fixes, ils ne suivent pas le thème. */
+  --color-beige: #f3ebdf;
+  --color-bordeaux: #6e1e2b;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* Variables posées sur `<html>` par next/font (`app/layout.tsx`). */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-script: var(--font-parisienne);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.006em;
 }
