@@ -67,4 +67,6 @@ sonde-*.json
 /req.json
 
 # Configuration locale de Claude Code (launch.json, etc.) — propre à chaque poste
-/.claude/
+/.claude/*
+# …sauf les skills du projet, versionnés (socle visuel, CLAUDE.md §13.1 nº 20)
+!/.claude/skills/
