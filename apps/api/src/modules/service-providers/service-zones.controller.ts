@@ -10,9 +10,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateServiceZoneDto } from './dto/create-service-zone.dto';
 import { UpdateServiceZoneDto } from './dto/update-service-zone.dto';
@@ -37,13 +36,20 @@ export class ServiceZonesController {
     return this.providersService.createZone(user.sub, providerId, dto);
   }
 
-  @Public()
+  // NOT public: a zone polygon maps where someone works, often around their
+  // home. The owner and ADMIN only (404 unknown provider, 403 anyone else).
   @Get()
-  @ApiOperation({ summary: 'List a provider service zones (GeoJSON polygons).' })
+  @ApiOperation({
+    summary: "List a provider's service zones (GeoJSON polygons) — owner or ADMIN only.",
+  })
+  @ApiResponse({ status: 200, type: ServiceZoneResponseDto, isArray: true })
+  @ApiResponse({ status: 403, description: 'Not the owner of this provider, and not ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Unknown or deleted provider.' })
   list(
+    @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) providerId: string,
   ): Promise<ServiceZoneResponseDto[]> {
-    return this.providersService.listZones(providerId);
+    return this.providersService.listZones(user.sub, providerId);
   }
 
   @Patch(':zoneId')

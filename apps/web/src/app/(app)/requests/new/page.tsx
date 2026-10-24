@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { pickTranslation } from '@/lib/i18n/translations';
-import type { ProviderCatalogItem, ProviderProfile } from '@/lib/providers/types';
+import type { ProviderCatalogItem } from '@/lib/providers/types';
 
 import { CreateRequestForm } from './create-request-form';
 
@@ -106,7 +106,7 @@ export default async function NewRequestPage({
       params: { path: { id: providerId } },
     });
     if (!error && response.ok && data) {
-      businessName = (data as unknown as ProviderProfile).businessName;
+      businessName = data.businessName;
     }
   } catch {
     // Leave null → sober fallback below (no invented field, no extra call).

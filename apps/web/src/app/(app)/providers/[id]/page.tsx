@@ -12,7 +12,7 @@ import {
   type GalleryRead,
   type PublicGalleryItem,
 } from '@/lib/portfolio/public-gallery';
-import type { ProviderCatalogItem, ProviderProfile } from '@/lib/providers/types';
+import type { ProviderCatalogItem, PublicProviderProfile } from '@/lib/providers/types';
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
@@ -261,7 +261,7 @@ export default async function ProviderProfilePage({
   // Capture status/flags inside the try; do all control flow (notFound / JSX)
   // AFTER it — `notFound()` throws a signal that a catch here would swallow,
   // and the lint rule forbids constructing JSX inside try/catch.
-  let provider: ProviderProfile | null = null;
+  let provider: PublicProviderProfile | null = null;
   let identityStatus: number | null = null;
   let identityFailed = false;
   try {
@@ -275,9 +275,8 @@ export default async function ProviderProfilePage({
     } else if (error || !response.ok || !data) {
       identityFailed = true;
     } else {
-      // Generated type degrades nullable fields to `Record<string, never>` —
-      // cast through the faithful local mirror (see lib/providers/types.ts).
-      provider = data as unknown as ProviderProfile;
+      // The public allow-list, typed natively by the generated schema.
+      provider = data;
     }
   } catch {
     identityFailed = true;

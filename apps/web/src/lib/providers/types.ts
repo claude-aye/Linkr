@@ -36,9 +36,14 @@ export interface GeoJsonPoint {
 }
 
 /**
- * Mirror of `ServiceProviderResponseDto` (shared by `GET /service-providers/me`
- * and `GET /service-providers/{id}`). Every `*Utc` field is a `Date`
- * server-side but crosses the JSON boundary as an ISO-8601 string.
+ * Mirror of `ServiceProviderResponseDto` — the OWNER's view, returned by
+ * `GET /service-providers/me` only (and by the owner's POST/PATCH). Every
+ * `*Utc` field is a `Date` server-side but crosses the JSON boundary as an
+ * ISO-8601 string.
+ *
+ * ⚠️ NOT the public profile: `GET /service-providers/{id}` answers with the
+ * allow-listed {@link PublicProviderProfile}, which has no location and no
+ * account id. Never cast a public read into this type.
  */
 export interface ProviderProfile {
   id: string;
@@ -56,6 +61,17 @@ export interface ProviderProfile {
   createdAtUtc: string;
   updatedAtUtc: string;
 }
+
+/**
+ * The public profile — `GET /service-providers/{id}`, readable by anyone.
+ * Consumed NATIVELY from the generated schema: the backend annotates every
+ * field with a concrete type, so there is no nullable quirk to mirror.
+ *
+ * An allow-list (id, resolved business name, headline, bio): no base location,
+ * no radius, no account id. Source of truth:
+ * apps/api/src/modules/service-providers/dto/public-service-provider.dto.ts
+ */
+export type PublicProviderProfile = components['schemas']['PublicServiceProviderDto'];
 
 /**
  * Public bookable-service item — the response element of

@@ -559,7 +559,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Resolve the authenticated user's own provider (Pro dashboard identity). Same contract as GET :id; returns even when is_active = false (paused). 404 if the user never activated Pro mode. */
+        /** Resolve the authenticated user's own provider (Pro dashboard identity). FULL owner DTO, base location included (GET :id serves only the public allow-list); returns even when is_active = false (paused). 404 if the user never activated Pro mode. */
         get: operations["ServiceProvidersController_getMine"];
         put?: never;
         post?: never;
@@ -576,7 +576,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Public provider profile; geo returned as GeoJSON, business_name resolved. */
+        /** Public provider profile (allow-list: id, resolved business name, headline, bio). No location, no account id. */
         get: operations["ServiceProvidersController_getOne"];
         put?: never;
         post?: never;
@@ -595,7 +595,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List a provider service zones (GeoJSON polygons). */
+        /** List a provider's service zones (GeoJSON polygons) — owner or ADMIN only. */
         get: operations["ServiceZonesController_list"];
         put?: never;
         /** Create a named service zone (owner only). GeoJSON Polygon coordinates are [lng, lat]; rings must be closed. */
@@ -1963,6 +1963,13 @@ export interface components {
             /** Format: date-time */
             updatedAtUtc: string;
         };
+        PublicServiceProviderDto: {
+            id: string;
+            /** @description Resolved business name (falls back to organization.display_name for ORGANIZATION providers). */
+            businessName: string | null;
+            headline: string | null;
+            bio: string | null;
+        };
         UpdateServiceProviderDto: {
             businessName?: string;
             headline?: string;
@@ -2015,6 +2022,17 @@ export interface components {
             zonePolygon: Record<string, never>;
             /** @example Val-Bélair */
             zoneLabel: string;
+        };
+        ServiceZoneResponseDto: {
+            id: string;
+            serviceProviderId: string;
+            /** @description GeoJSON Polygon — coordinates are [longitude, latitude]. */
+            zonePolygon: Record<string, never>;
+            zoneLabel: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            updatedAtUtc: string;
         };
         UpdateServiceZoneDto: {
             /** @description GeoJSON Polygon — coordinates are [longitude, latitude], rings closed. */
@@ -3913,6 +3931,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["PublicServiceProviderDto"];
+                };
+            };
+            /** @description Unknown or deleted provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
             };
         };
@@ -3971,6 +3998,22 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceZoneResponseDto"][];
+                };
+            };
+            /** @description Not the owner of this provider, and not ADMIN. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or deleted provider. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
