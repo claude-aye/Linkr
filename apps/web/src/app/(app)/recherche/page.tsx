@@ -5,10 +5,7 @@ import type { components } from '@linkr/api-client';
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { tradesOfferedAtLaunch } from '@/lib/catalog/launch-scope';
 import { pickTranslation } from '@/lib/i18n/translations';
-import type {
-  CategoryOption,
-  DiscoveredProviderList,
-} from '@/lib/providers/discovery-types';
+import type { CategoryOption } from '@/lib/providers/discovery-types';
 
 import { CandidateList } from './_components/candidate-list';
 import { DemandSignalRecorder } from './_components/demand-signal-recorder';
@@ -151,7 +148,7 @@ export default async function RecherchePage({
     !discoverQuery && validCategoryId && q ? { q, limit: 5 } : null;
 
   // --- Discovery (only on a valid coordinate search) -------------------------
-  let result: DiscoveredProviderList | null = null;
+  let result: components['schemas']['DiscoveredProviderListDto'] | null = null;
   let searchFailed = false;
   if (discoverQuery) {
     try {
@@ -159,10 +156,8 @@ export default async function RecherchePage({
         params: { query: discoverQuery },
       });
       if (!error && response.ok && data) {
-        // The contract annotates this as a BARE array, but the runtime returns
-        // the pagination envelope — cast through the local mirror (tracked debt,
-        // CLAUDE.md « fix contrat discover »).
-        result = data as unknown as DiscoveredProviderList;
+        // Typed natively since R2a (`DiscoveredProviderListDto`): no mirror, no cast.
+        result = data;
       } else {
         searchFailed = true;
       }

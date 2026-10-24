@@ -18,6 +18,7 @@ import { UpdateServiceZoneDto } from './dto/update-service-zone.dto';
 import { ServiceZoneResponseDto } from './dto/service-zone-response.dto';
 import { DiscoverProvidersQueryDto } from './dto/discover-providers-query.dto';
 import { DiscoveredProviderDto } from './dto/discovered-provider.dto';
+import { DiscoveredProviderListDto } from './dto/discovered-provider-list.dto';
 import { ProviderType } from './enums/provider-type.enum';
 import {
   ServiceProviderRecord,
@@ -165,12 +166,7 @@ export class ServiceProvidersService {
    * right way round: the user cannot act on it, and an error card where a rating
    * would go tells them nothing useful.
    */
-  async discover(query: DiscoverProvidersQueryDto): Promise<{
-    items: DiscoveredProviderDto[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
+  async discover(query: DiscoverProvidersQueryDto): Promise<DiscoveredProviderListDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 

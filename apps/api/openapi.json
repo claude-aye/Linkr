@@ -1156,10 +1156,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DiscoveredProviderDto"
-                  }
+                  "$ref": "#/components/schemas/DiscoveredProviderListDto"
                 }
               }
             }
@@ -1168,7 +1165,7 @@
             "description": "Missing or invalid lat/lng/categoryId."
           }
         },
-        "summary": "Discover providers covering a client location for a category (radius OR named zone), sorted by distance. Authenticated users only.",
+        "summary": "Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Distances and locations are deliberately approximate (100/500 m steps, ~555 m grid cell). Authenticated users only.",
         "tags": [
           "service-providers"
         ]
@@ -4699,6 +4696,25 @@
           "serviceRadiusKm"
         ]
       },
+      "ApproximateLocationDto": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "format": "double",
+            "example": 46.7775
+          },
+          "lng": {
+            "type": "number",
+            "format": "double",
+            "example": -71.27355
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ]
+      },
       "DiscoveredProviderDto": {
         "type": "object",
         "properties": {
@@ -4714,21 +4730,33 @@
             ]
           },
           "displayName": {
-            "type": "object",
+            "type": "string",
             "description": "Public name: business_name, falling back to organization.display_name.",
             "nullable": true
           },
           "headline": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "serviceRadiusKm": {
-            "type": "number",
+            "type": "integer",
             "description": "Primary service radius in km (0 = zone-only coverage)."
           },
           "distanceMeters": {
-            "type": "number",
-            "description": "Distance from the provider base to the client, in metres (rounded)."
+            "type": "integer",
+            "minimum": 100,
+            "description": "Coarsened distance from the provider base to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100. The exact distance is never returned.",
+            "example": 1500
+          },
+          "approximateLocation": {
+            "nullable": true,
+            "description": "Centre of the grid cell holding the provider base (≈ 555 m cell), or null when the provider has no base point.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApproximateLocationDto"
+              }
+            ]
           },
           "categoryVerificationStatus": {
             "type": "string",
@@ -4756,11 +4784,41 @@
         "required": [
           "id",
           "providerType",
+          "displayName",
+          "headline",
           "serviceRadiusKm",
           "distanceMeters",
+          "approximateLocation",
           "categoryVerificationStatus",
           "reviewCount",
           "averageRating"
+        ]
+      },
+      "DiscoveredProviderListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredProviderDto"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Eligible providers in total, all pages."
+          },
+          "page": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
         ]
       },
       "ServiceProviderResponseDto": {

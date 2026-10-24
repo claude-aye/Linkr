@@ -1,10 +1,26 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { ProviderType } from '../enums/provider-type.enum';
 import { PscVerificationStatus } from '../enums/psc-verification-status.enum';
 
 /**
- * A single discovered provider. Exact coordinates are never exposed — the
- * client only needs `distanceMeters` (base→client, in metres).
+ * Centre of the fixed grid cell (0.005° lat × 0.0073° lng, ≈ 555 m) holding the
+ * provider's base. A map pin, never an address.
+ */
+export class ApproximateLocationDto {
+  @ApiProperty({ type: 'number', format: 'double', example: 46.7775 })
+  lat!: number;
+
+  @ApiProperty({ type: 'number', format: 'double', example: -71.27355 })
+  lng!: number;
+}
+
+/**
+ * A single discovered provider.
+ *
+ * ⚠️ NOTHING EXACT ABOUT WHERE THE PROVIDER IS (CLAUDE.md §13.1, entry 22). The
+ * distance is coarsened and the location is a grid cell, both in SQL; three
+ * exact distances from three search points would place the base by
+ * trilateration. Do not add a field that is finer than these two.
  */
 export class DiscoveredProviderDto {
   @ApiProperty({ format: 'uuid' })
@@ -13,20 +29,38 @@ export class DiscoveredProviderDto {
   @ApiProperty({ enum: ProviderType })
   providerType!: ProviderType;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: String,
     description: 'Public name: business_name, falling back to organization.display_name.',
     nullable: true,
   })
   displayName!: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   headline!: string | null;
 
-  @ApiProperty({ description: 'Primary service radius in km (0 = zone-only coverage).' })
+  @ApiProperty({
+    type: 'integer',
+    description: 'Primary service radius in km (0 = zone-only coverage).',
+  })
   serviceRadiusKm!: number;
 
-  @ApiProperty({ description: 'Distance from the provider base to the client, in metres (rounded).' })
+  @ApiProperty({
+    type: 'integer',
+    minimum: 100,
+    description:
+      'Coarsened distance from the provider base to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100. The exact distance is never returned.',
+    example: 1500,
+  })
   distanceMeters!: number;
+
+  @ApiProperty({
+    type: ApproximateLocationDto,
+    nullable: true,
+    description:
+      'Centre of the grid cell holding the provider base (≈ 555 m cell), or null when the provider has no base point.',
+  })
+  approximateLocation!: ApproximateLocationDto | null;
 
   @ApiProperty({
     enum: PscVerificationStatus,
