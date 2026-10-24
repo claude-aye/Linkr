@@ -79,14 +79,17 @@ export function NoResults({
   ) : null;
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+    // Direction A (R1): the same translucent card as every other state of the
+    // screen — no `backdrop-filter`. Only colours changed; the three branches
+    // and their copy are untouched.
+    <div className="rounded-2xl border border-on-accent/70 bg-surface p-8">
+      <h2 className="text-lg font-semibold text-text">
         {isRegulated
           ? 'Aucun professionnel vérifié dans ce secteur'
           : 'Aucun prestataire dans ce secteur'}
       </h2>
 
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+      <p className="mt-2 text-sm text-text">
         {isRegulated ? (
           <>
             Aucun professionnel vérifié en <strong>{trade}</strong> ne couvre encore ce
@@ -104,16 +107,18 @@ export function NoResults({
           trade, absence HERE does not mean absence in the world. Omitted entirely
           when the level is unknown: no explanation beats a wrong one. */}
       {explanation !== null && (
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{explanation}</p>
+        <p className="mt-2 text-sm text-text-muted">{explanation}</p>
       )}
 
       {/* Never a dead end — both search inputs sit in the form just above, and
           the full trade list is one link away. */}
-      <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-4 text-sm text-text-muted">
         Modifiez le métier ou l’adresse ci-dessus, ou{' '}
         <Link
           href="/"
-          className="font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+          // An inline link inside a sentence: WCAG 2.5.8's « inline »
+          // exception applies, and a 44px box would break the line it sits in.
+          className="font-medium text-accent underline underline-offset-2 hover:no-underline outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
           parcourez tous les métiers
         </Link>

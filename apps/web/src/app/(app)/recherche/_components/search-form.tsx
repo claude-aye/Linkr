@@ -103,16 +103,30 @@ export function SearchForm({
     router.push(`/recherche?${params.toString()}`);
   }
 
-  const primaryButtonClass =
-    'inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto';
+  // Direction A (R1). One radius on the whole screen (`rounded-2xl`), a 44px
+  // floor on everything clickable (`min-h-11`), and a visible bordeaux focus
+  // ring. « Près de moi » is the one filled action; the address submit is the
+  // secondary outline — the two are equal alternatives, and the accent fills
+  // one control only.
+  const focusRing =
+    'outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
+  const buttonBase = `inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-5 text-sm font-medium transition motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${focusRing}`;
+  const primaryButtonClass = `${buttonBase} bg-accent text-on-accent hover:bg-accent/90`;
+  const secondaryButtonClass = `${buttonBase} border border-accent/40 text-accent hover:bg-accent/10`;
+  const fieldClass =
+    'mt-1 min-h-11 w-full rounded-2xl border border-text/20 bg-bg/60 px-4 text-base text-text outline-none transition motion-reduce:transition-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-50';
+  const labelClass = 'block text-sm font-medium text-text';
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    // The screen's ONE frosted layer (`backdrop-blur`). Nothing else on
+    // `/recherche` may carry a `backdrop-filter`: the result cards scroll, and a
+    // blur on a scrolling list costs every frame on a phone.
+    <div className="rounded-2xl border border-on-accent/70 bg-surface p-5 shadow-xl shadow-accent/10 backdrop-blur-xl sm:p-6">
       {/* Trade — chosen FIRST; both location methods stay inert until it is. */}
       <div>
         <label
           htmlFor="category"
-          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+          className={labelClass}
         >
           Métier
         </label>
@@ -120,7 +134,7 @@ export function SearchForm({
           id="category"
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800"
+          className={fieldClass}
         >
           <option value="">Choisir un métier</option>
           {categories.map((c) => (
@@ -132,7 +146,7 @@ export function SearchForm({
       </div>
 
       {noCategory && (
-        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 text-xs text-text-muted">
           Choisissez d’abord un métier.
         </p>
       )}
@@ -150,10 +164,10 @@ export function SearchForm({
           </button>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-zinc-400 dark:text-zinc-500">
-          <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+        <div className="flex items-center gap-3 text-xs text-text-muted">
+          <span className="h-px flex-1 bg-text/15" />
           ou
-          <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+          <span className="h-px flex-1 bg-text/15" />
         </div>
 
         {/* Address method — submit fires geocoding; Enter in the field submits. */}
@@ -161,7 +175,7 @@ export function SearchForm({
           <div className="flex-1">
             <label
               htmlFor="address"
-              className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              className={labelClass}
             >
               Adresse
             </label>
@@ -172,11 +186,11 @@ export function SearchForm({
               onChange={(e) => setAddress(e.target.value)}
               disabled={noCategory}
               placeholder="Ex. : 100 rue Sainte-Catherine, Montréal"
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800"
+              className={fieldClass}
             />
           </div>
           <div className="sm:shrink-0">
-            <button type="submit" disabled={noCategory} className={primaryButtonClass}>
+            <button type="submit" disabled={noCategory} className={secondaryButtonClass}>
               Rechercher cette adresse
             </button>
           </div>
@@ -186,7 +200,10 @@ export function SearchForm({
       {geoError && (
         <div
           role="alert"
-          className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+          // State colour (amber warning) kept on purpose until the state
+          // colours get their own tokens (CLAUDE.md §6); its dark variants
+          // are gone with the rest.
+          className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
         >
           {/* The address field is now a visible alternative right above, so this
               stays focused on geolocation — no vaporware « address search » hint. */}
@@ -195,7 +212,7 @@ export function SearchForm({
             type="button"
             onClick={locate}
             disabled={noCategory || locating}
-            className="mt-2 font-medium underline underline-offset-2 hover:no-underline disabled:opacity-60"
+            className={`mt-1 inline-flex min-h-11 items-center rounded-2xl font-medium underline underline-offset-2 hover:no-underline disabled:opacity-60 ${focusRing}`}
           >
             Réessayer
           </button>
