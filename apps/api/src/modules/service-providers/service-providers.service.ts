@@ -8,9 +8,11 @@ import { UsersRepository } from '../users/users.repository';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
 import { OrganizationMembershipsRepository } from '../organization-memberships/organization-memberships.repository';
 import { OrganizationRole } from '../organization-memberships/enums/organization-role.enum';
+import { SystemRole } from '../users/enums/system-role.enum';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
+import { PublicServiceProviderDto } from './dto/public-service-provider.dto';
 import { CreateServiceZoneDto } from './dto/create-service-zone.dto';
 import { UpdateServiceZoneDto } from './dto/update-service-zone.dto';
 import { ServiceZoneResponseDto } from './dto/service-zone-response.dto';
@@ -30,6 +32,12 @@ import {
   NotProviderOwnerException,
   ProviderOwnerConflictException,
 } from './exceptions/provider-exceptions';
+
+/**
+ * Decimal places kept when a searched point is written to the log: 2, the same
+ * cell as `demand_signals` (sector.ts) — about 1 km, a neighbourhood.
+ */
+const LOGGED_COORDINATE_DECIMALS = 2;
 
 @Injectable()
 export class ServiceProvidersService {
@@ -103,17 +111,23 @@ export class ServiceProvidersService {
     return this.toResponse(record);
   }
 
-  async getPublicById(id: string): Promise<ServiceProviderResponseDto> {
+  /**
+   * The public profile (`GET /service-providers/:id`, no token required).
+   * Answers with the allow-listed `PublicServiceProviderDto` — never the owner
+   * DTO, which carries the exact base location and the owning account's id.
+   */
+  async getPublicById(id: string): Promise<PublicServiceProviderDto> {
     const record = await this.providerRepo.findById(id);
     if (!record) throw new NotFoundException('Service provider not found');
-    return this.toResponse(record);
+    return PublicServiceProviderDto.from(record, await this.resolveBusinessName(record));
   }
 
   /**
    * Resolve the caller's own provider identity from their JWT `sub` — the
-   * `GET /service-providers/me` backing. Same contract as getPublicById (same
-   * DTO/mapper, same 404 path), but keyed on user_id instead of an :id, so it
-   * is owner-safe by construction (no cross-user leak possible).
+   * `GET /service-providers/me` backing. Same visibility and 404 path as
+   * getPublicById, but keyed on user_id instead of an :id, so it is owner-safe
+   * by construction (no cross-user leak possible). That is why it, and only the
+   * owner routes, may answer with the FULL DTO, base location included.
    *
    * Includes paused providers: findByUserId does NOT filter on is_active, so a
    * Pro on vacation (is_active = false) still resolves — opposite semantics to
@@ -191,8 +205,12 @@ export class ServiceProvidersService {
       averageRating: ratings.get(item.id)?.averageRating ?? null,
     }));
 
+    // The searched point is often someone's address: the log keeps the ~1 km
+    // cell of `demand_signals` (sector.ts), never the exact point.
     this.logger.log(
-      `Discovery for category ${query.categoryId} at (${query.lat}, ${query.lng}): ${total} match(es)`,
+      `Discovery for category ${query.categoryId} at ` +
+        `(${query.lat.toFixed(LOGGED_COORDINATE_DECIMALS)}, ` +
+        `${query.lng.toFixed(LOGGED_COORDINATE_DECIMALS)}): ${total} match(es)`,
     );
 
     return { items: enriched, total, page, limit };
@@ -276,9 +294,21 @@ export class ServiceProvidersService {
 
   // ── Service zones (nested under a provider) ───────────────────────────────
 
-  async listZones(providerId: string): Promise<ServiceZoneResponseDto[]> {
-    const provider = await this.providerRepo.findById(providerId);
-    if (!provider) throw new NotFoundException('Service provider not found');
+  /**
+   * A provider's named zones — the owner and ADMIN only. A zone polygon is a
+   * drawn map of where someone works, often around their home: it is never
+   * served to another user. 404 if the provider is unknown, else 403.
+   */
+  async listZones(
+    currentUserId: string,
+    providerId: string,
+  ): Promise<ServiceZoneResponseDto[]> {
+    if (await this.isAdmin(currentUserId)) {
+      const provider = await this.providerRepo.findById(providerId);
+      if (!provider) throw new NotFoundException('Service provider not found');
+    } else {
+      await this.loadOwnedProvider(currentUserId, providerId);
+    }
     const zones = await this.zoneRepo.findByProviderId(providerId);
     return zones.map((z) => ServiceZoneResponseDto.from(z));
   }
@@ -379,19 +409,28 @@ export class ServiceProvidersService {
     }
   }
 
+  private async isAdmin(userId: string): Promise<boolean> {
+    const user = await this.usersRepository.findById(userId);
+    return user?.systemRole === SystemRole.ADMIN;
+  }
+
   // Resolve business_name fallback to organization.display_name at read time.
-  private async toResponse(
-    record: ServiceProviderRecord,
-  ): Promise<ServiceProviderResponseDto> {
-    let businessName = record.businessName;
+  private async resolveBusinessName(record: ServiceProviderRecord): Promise<string | null> {
     if (
-      !businessName &&
+      !record.businessName &&
       record.providerType === ProviderType.ORGANIZATION &&
       record.organizationId
     ) {
       const org = await this.organizationsRepository.findById(record.organizationId);
-      businessName = org?.displayName ?? null;
+      return org?.displayName ?? null;
     }
-    return ServiceProviderResponseDto.from(record, businessName);
+    return record.businessName;
+  }
+
+  // The OWNER's view (create, update, /me) — never for a route another user can call.
+  private async toResponse(
+    record: ServiceProviderRecord,
+  ): Promise<ServiceProviderResponseDto> {
+    return ServiceProviderResponseDto.from(record, await this.resolveBusinessName(record));
   }
 }

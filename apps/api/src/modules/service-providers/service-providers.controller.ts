@@ -18,6 +18,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
+import { PublicServiceProviderDto } from './dto/public-service-provider.dto';
 import { DiscoverProvidersQueryDto } from './dto/discover-providers-query.dto';
 import { DiscoveredProviderDto } from './dto/discovered-provider.dto';
 import { ServiceProvidersService } from './service-providers.service';
@@ -68,7 +69,7 @@ export class ServiceProvidersController {
   @Get('me')
   @ApiOperation({
     summary:
-      "Resolve the authenticated user's own provider (Pro dashboard identity). Same contract as GET :id; returns even when is_active = false (paused). 404 if the user never activated Pro mode.",
+      "Resolve the authenticated user's own provider (Pro dashboard identity). FULL owner DTO, base location included (GET :id serves only the public allow-list); returns even when is_active = false (paused). 404 if the user never activated Pro mode.",
   })
   @ApiResponse({ status: 200, type: ServiceProviderResponseDto })
   @ApiResponse({ status: 404, description: 'The authenticated user has no provider.' })
@@ -76,14 +77,19 @@ export class ServiceProvidersController {
     return this.providersService.getMine(user.sub);
   }
 
+  // Public, so it answers with the allow-listed PublicServiceProviderDto: no
+  // base location, no account id. The owner DTO is for the owner routes only.
   @Public()
   @Get(':id')
   @ApiOperation({
-    summary: 'Public provider profile; geo returned as GeoJSON, business_name resolved.',
+    summary:
+      'Public provider profile (allow-list: id, resolved business name, headline, bio). No location, no account id.',
   })
+  @ApiResponse({ status: 200, type: PublicServiceProviderDto })
+  @ApiResponse({ status: 404, description: 'Unknown or deleted provider.' })
   getOne(
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ServiceProviderResponseDto> {
+  ): Promise<PublicServiceProviderDto> {
     return this.providersService.getPublicById(id);
   }
 

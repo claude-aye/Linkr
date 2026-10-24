@@ -1193,7 +1193,7 @@
             "description": "The authenticated user has no provider."
           }
         },
-        "summary": "Resolve the authenticated user's own provider (Pro dashboard identity). Same contract as GET :id; returns even when is_active = false (paused). 404 if the user never activated Pro mode.",
+        "summary": "Resolve the authenticated user's own provider (Pro dashboard identity). FULL owner DTO, base location included (GET :id serves only the public allow-list); returns even when is_active = false (paused). 404 if the user never activated Pro mode.",
         "tags": [
           "service-providers"
         ]
@@ -1214,10 +1214,20 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicServiceProviderDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or deleted provider."
           }
         },
-        "summary": "Public provider profile; geo returned as GeoJSON, business_name resolved.",
+        "summary": "Public provider profile (allow-list: id, resolved business name, headline, bio). No location, no account id.",
         "tags": [
           "service-providers"
         ]
@@ -1324,10 +1334,26 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceZoneResponseDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the owner of this provider, and not ADMIN."
+          },
+          "404": {
+            "description": "Unknown or deleted provider."
           }
         },
-        "summary": "List a provider service zones (GeoJSON polygons).",
+        "summary": "List a provider's service zones (GeoJSON polygons) — owner or ADMIN only.",
         "tags": [
           "service-providers"
         ]
@@ -4817,6 +4843,33 @@
           "updatedAtUtc"
         ]
       },
+      "PublicServiceProviderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "businessName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Resolved business name (falls back to organization.display_name for ORGANIZATION providers)."
+          },
+          "headline": {
+            "type": "string",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "businessName",
+          "headline",
+          "bio"
+        ]
+      },
       "UpdateServiceProviderDto": {
         "type": "object",
         "properties": {
@@ -4894,6 +4947,40 @@
         "required": [
           "zonePolygon",
           "zoneLabel"
+        ]
+      },
+      "ServiceZoneResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "serviceProviderId": {
+            "type": "string"
+          },
+          "zonePolygon": {
+            "type": "object",
+            "description": "GeoJSON Polygon — coordinates are [longitude, latitude]."
+          },
+          "zoneLabel": {
+            "type": "string"
+          },
+          "createdAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAtUtc": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "serviceProviderId",
+          "zonePolygon",
+          "zoneLabel",
+          "createdAtUtc",
+          "updatedAtUtc"
         ]
       },
       "UpdateServiceZoneDto": {
