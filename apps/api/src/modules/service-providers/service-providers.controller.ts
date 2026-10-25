@@ -44,7 +44,7 @@ export class ServiceProvidersController {
   @Get('discover')
   @ApiOperation({
     summary:
-      'Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Distances and locations are deliberately approximate (100/500 m steps, ~555 m grid cell). Authenticated users only.',
+      'Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Radius, distance and order are computed from the centre of the ~555 m grid cell holding each provider base, never the exact base. Authenticated users only.',
   })
   @ApiQuery({ name: 'lat', type: Number, required: true })
   @ApiQuery({ name: 'lng', type: Number, required: true })

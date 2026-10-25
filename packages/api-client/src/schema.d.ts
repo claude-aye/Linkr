@@ -542,7 +542,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Distances and locations are deliberately approximate (100/500 m steps, ~555 m grid cell). Authenticated users only. */
+        /** Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Radius, distance and order are computed from the centre of the ~555 m grid cell holding each provider base, never the exact base. Authenticated users only. */
         get: operations["ServiceProvidersController_discover"];
         put?: never;
         post?: never;
@@ -1928,7 +1928,7 @@ export interface components {
             /** @description Primary service radius in km (0 = zone-only coverage). */
             serviceRadiusKm: number;
             /**
-             * @description Coarsened distance from the provider base to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100. The exact distance is never returned.
+             * @description Coarsened distance from the centre of the provider's grid cell (not the base) to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100.
              * @example 1500
              */
             distanceMeters: number;

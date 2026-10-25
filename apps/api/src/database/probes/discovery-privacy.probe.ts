@@ -24,8 +24,9 @@ import { ServiceProvider } from '../../modules/service-providers/entities/servic
 import {
   BASE_LAT_FROM_PARAM,
   BASE_LNG_FROM_PARAM,
-  EXACT_DISTANCE_FROM_PARAM,
+  CELL_DISTANCE_FROM_PARAM,
   gridCentreSql,
+  PROVIDER_CELL_CENTRE_SQL,
   roundedDistanceSql,
 } from '../../modules/service-providers/repositories/discovery-privacy.sql';
 import { ServiceProviderRepository } from '../../modules/service-providers/repositories/service-provider.repository';
@@ -47,7 +48,7 @@ function check(label: string, ok: boolean, detail: unknown): void {
 
 async function rounded(ds: DataSource, metres: number): Promise<number> {
   const rows: Array<{ v: number }> = await ds.query(
-    `SELECT ${roundedDistanceSql(EXACT_DISTANCE_FROM_PARAM)} AS v`,
+    `SELECT ${roundedDistanceSql(CELL_DISTANCE_FROM_PARAM)} AS v`,
     [metres],
   );
   return rows[0].v;
@@ -135,10 +136,9 @@ async function seed(ds: DataSource): Promise<void> {
      VALUES ($1, 'privacy-probe', '{"fr-CA":"Sonde"}', '{}', '', 'INFORMAL', true, 99)`,
     [CATEGORY],
   );
-  // B sits ~37 m north-east of A. From a search point ~1.9 km north-east of
-  // both they fall in the same 500 m tier (2 000 m) while B is EXACTLY closer,
-  // so a sort on the exact distance would put B first. The id sort must put A
-  // (smaller uuid) first.
+  // B sits ~37 m north-east of A, IN THE SAME CELL. From the north-east search
+  // point below B is EXACTLY closer, so any answer read from the exact base
+  // would tell them apart. Swapping their bases must change nothing.
   const bases: Array<[string, string, [number, number]]> = [
     [P_A, U_A, BASE],
     [P_B, U_B, [BASE[0] + 0.0004, BASE[1] + 0.0002]],
@@ -165,10 +165,36 @@ async function partB(ds: DataSource): Promise<void> {
   const at = (lng: number, lat: number) =>
     repo.findEligibleForDiscovery({ lng, lat, categoryId: CATEGORY, page: 1, limit: 20 });
 
+  // A search ON the exact base is measured from the cell centre like any other
+  // point: it reports the rounded cell→base distance, never 0, and nothing that
+  // singles the base out. Only a search on the CELL CENTRE hits the floor.
+  const [raw] = await ds.query(
+    `SELECT ST_Distance(${PROVIDER_CELL_CENTRE_SQL},
+            ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS m
+       FROM service_providers sp WHERE sp.id = $3`,
+    [BASE[0], BASE[1], P_A],
+  );
+  const [cellToBase] = await ds.query(
+    `SELECT ${roundedDistanceSql(CELL_DISTANCE_FROM_PARAM)} AS d`,
+    [Number(raw.m)],
+  );
   const onBase = await at(BASE[0], BASE[1]);
   const a = onBase.items.find((i) => i.id === P_A);
-  check('search ON the base → 100 m, never 0', a?.distanceMeters === 100, a?.distanceMeters);
+  check(
+    'search ON the base → rounded cell→base distance, never 0',
+    a?.distanceMeters === Number(cellToBase.d) && a?.distanceMeters !== 0,
+    { got: a?.distanceMeters, cellToBase: Number(cellToBase.d) },
+  );
   check('total agrees with items (anti false positive)', onBase.total === 2 && onBase.items.length === 2, onBase.total);
+
+  const centre = a?.approximateLocation;
+  if (centre) {
+    const onCentre = await at(centre.lng, centre.lat);
+    const ac = onCentre.items.find((i) => i.id === P_A);
+    check('search ON the cell centre → 100 m (floor), never 0', ac?.distanceMeters === 100, ac?.distanceMeters);
+  } else {
+    check('search ON the cell centre → 100 m (floor), never 0', false, 'no approximateLocation');
+  }
 
   // Three search points around A: same cell every time, never the exact base.
   const points: Array<[number, number]> = [
@@ -192,21 +218,77 @@ async function partB(ds: DataSource): Promise<void> {
     cells[0],
   );
 
-  // Same tier, deterministic order by id, not by exact distance. From a point
-  // north-east of both, B is the closer one exactly.
-  const ne = await at(BASE[0] + 0.02, BASE[1] + 0.01);
+  // Same cell ⇒ same distance, and the id breaks the tie. From this point B is
+  // EXACTLY closer, which the control proves, so an exact-distance sort would
+  // have put B first.
+  const NE: [number, number] = [BASE[0] + 0.02, BASE[1] + 0.01];
+  const ne = await at(NE[0], NE[1]);
   const order = ne.items.map((i) => `${i.id.slice(-1)}:${i.distanceMeters}`);
   const exact: Array<{ id: string; d: number }> = await ds.query(
     `SELECT sp.id, ST_Distance(sp.service_base_location,
               ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS d
        FROM service_providers sp WHERE sp.id = ANY($3::uuid[])`,
-    [BASE[0] + 0.02, BASE[1] + 0.01, [P_A, P_B]],
+    [NE[0], NE[1], [P_A, P_B]],
   );
   const bIsCloser =
     exact.find((r) => r.id === P_B)!.d < exact.find((r) => r.id === P_A)!.d;
-  const sameTier = ne.items[0]?.distanceMeters === ne.items[1]?.distanceMeters;
-  check('control: B is exactly closer, both in one tier', bIsCloser && sameTier, { order, exact });
+  const sameDistance = ne.items[0]?.distanceMeters === ne.items[1]?.distanceMeters;
+  check('control: B is exactly closer, same reported distance', bIsCloser && sameDistance, { order, exact });
   check('tie broken by id (A first), not by exact distance', ne.items[0]?.id === P_A, order);
+
+  // ── The radius is drawn around the CELL, not the base ────────────────────
+  // EDGE_IN_BASE: 24 950 m from A's exact base, beyond 25 km from its cell.
+  // EDGE_IN_CELL: 24 950 m from A's cell, beyond 25 km from its exact base.
+  // An exact-base circle would answer the opposite on each.
+  const edges: Array<{ lat: number; lng: number; base_m: number; cell_m: number }> = await ds.query(
+    `WITH a AS (SELECT service_base_location AS base, ${PROVIDER_CELL_CENTRE_SQL} AS cell
+                  FROM service_providers sp WHERE sp.id = $1),
+          p AS (SELECT ST_Project(a.base, 24950, ST_Azimuth(a.cell, a.base))::geography AS pt FROM a
+                UNION ALL
+                SELECT ST_Project(a.cell, 24950, ST_Azimuth(a.base, a.cell))::geography FROM a)
+     SELECT ST_Y(p.pt::geometry) AS lat, ST_X(p.pt::geometry) AS lng,
+            ST_Distance(a.base, p.pt) AS base_m, ST_Distance(a.cell, p.pt) AS cell_m
+       FROM p, a`,
+    [P_A],
+  );
+  const [edgeInBase, edgeInCell] = edges;
+  check(
+    'control: edge points straddle the two circles',
+    edgeInBase.base_m < 25000 && edgeInBase.cell_m > 25000 &&
+      edgeInCell.base_m > 25000 && edgeInCell.cell_m < 25000,
+    edges.map((e) => ({ base_m: Math.round(e.base_m), cell_m: Math.round(e.cell_m) })),
+  );
+  const atEdgeBase = await at(edgeInBase.lng, edgeInBase.lat);
+  check('inside the exact circle but outside the cell circle → A absent', !atEdgeBase.items.some((i) => i.id === P_A), atEdgeBase.total);
+  const atEdgeCell = await at(edgeInCell.lng, edgeInCell.lat);
+  check('inside the cell circle but outside the exact circle → A present', atEdgeCell.items.some((i) => i.id === P_A), atEdgeCell.total);
+
+  // ── discover never reads the exact base: swap A's and B's bases ──────────
+  // Same cell, different exact points. Presence, distance, pin and order must
+  // be byte-identical before and after the swap, from every search point.
+  const searchPoints: Array<[number, number]> = [
+    BASE, ...points, NE,
+    [edgeInBase.lng, edgeInBase.lat],
+    [edgeInCell.lng, edgeInCell.lat],
+  ];
+  const snapshot = async (): Promise<string> =>
+    JSON.stringify(await Promise.all(searchPoints.map(([lng, lat]) => at(lng, lat))));
+  const before = await snapshot();
+  await ds.query(
+    `UPDATE service_providers sp
+        SET service_base_location = o.service_base_location
+       FROM service_providers o
+      WHERE (sp.id, o.id) IN (($1::uuid, $2::uuid), ($2::uuid, $1::uuid))`,
+    [P_A, P_B],
+  );
+  const swapped: Array<{ id: string; lng: number }> = await ds.query(
+    `SELECT id, ST_X(service_base_location::geometry) AS lng FROM service_providers
+      WHERE id = ANY($1::uuid[]) ORDER BY id`,
+    [[P_A, P_B]],
+  );
+  check('control: the swap really moved A onto B\'s base', near(swapped[0].lng, BASE[0] + 0.0004), swapped);
+  const after = await snapshot();
+  check(`discover identical after swapping exact bases (${searchPoints.length} points)`, before === after, before === after ? 'same' : { before, after });
 }
 
 async function main(): Promise<void> {

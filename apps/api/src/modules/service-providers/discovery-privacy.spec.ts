@@ -16,11 +16,12 @@ import {
   DISCOVERY_DISTANCE_FLOOR_M,
   DISCOVERY_GRID_LAT_DEG,
   DISCOVERY_GRID_LNG_DEG,
-  EXACT_DISTANCE_FROM_SUBQUERY,
+  BASE_LAT_FROM_PROVIDER,
+  BASE_LNG_FROM_PROVIDER,
+  CELL_DISTANCE_FROM_SUBQUERY,
   gridCentreSql,
+  PROVIDER_CELL_CENTRE_SQL,
   roundedDistanceSql,
-  BASE_LAT_FROM_SUBQUERY,
-  BASE_LNG_FROM_SUBQUERY,
 } from './repositories/discovery-privacy.sql';
 import { ServiceProvidersService } from './service-providers.service';
 
@@ -31,9 +32,9 @@ import { ServiceProvidersService } from './service-providers.service';
  * arithmetic (tiers, floor, cell centres, negative longitudes) is evaluated
  * against Postgres by `src/database/probes/discovery-privacy.probe.ts`; no mock
  * can prove a `ROUND` or a `FLOOR`. What THIS file pins is everything around
- * them that TypeScript decides: that the exact values stay inside the
- * subquery, what is sorted on, what the record carries, and that a missing base
- * renders as `null` instead of throwing.
+ * them that TypeScript decides: that the exact base is read only through the
+ * cell-centre expression, what is sorted on, what the record carries, and that
+ * a missing base renders as `null` instead of throwing.
  */
 
 const ID_A = '11111111-1111-4111-8111-111111111111';
@@ -73,32 +74,68 @@ function outerSelect(sql: string): string {
   return sql.slice(0, sql.indexOf('FROM ('));
 }
 
-describe('discover — the exact location never leaves the query', () => {
-  it('computes the exact distance and base only inside the subquery', async () => {
+/**
+ * Every query discovery runs — the count, the rows, and the id-only reading the
+ * tender fan-out and the demand-signal check share.
+ */
+async function discoveryQueries(): Promise<string[]> {
+  const { repo, query } = repoReturning([rawRow()]);
+  await repo.findEligibleForDiscovery(PARAMS);
+  query.mockResolvedValueOnce([]);
+  await repo.findEligibleProviderIds(PARAMS.lng, PARAMS.lat, PARAMS.categoryId);
+  return query.mock.calls.map((call) => call[0] as string);
+}
+
+describe('discover — nothing is ever computed from the exact base', () => {
+  /**
+   * ⚠️ THE NON-REGRESSION GUARD. `service_base_location` may appear in a
+   * discovery query ONLY inside the one cell-centre expression. A radius, a
+   * distance, a sort or a pin read from the base itself would locate it (three
+   * distances, the edge of a distance step, the edge of the radius). Remove
+   * every occurrence of the cell expression and nothing of the base may remain.
+   */
+  it('reads service_base_location only through PROVIDER_CELL_CENTRE_SQL', async () => {
+    expect(PROVIDER_CELL_CENTRE_SQL).toContain('sp.service_base_location');
+    const queries = await discoveryQueries();
+    expect(queries).toHaveLength(3);
+    for (const sql of queries) {
+      expect(sql).toContain(PROVIDER_CELL_CENTRE_SQL);
+      expect(sql.split(PROVIDER_CELL_CENTRE_SQL).join('')).not.toMatch(/service_base_location/);
+    }
+  });
+
+  it('draws the service radius around the cell centre', async () => {
+    for (const sql of await discoveryQueries()) {
+      expect(sql).toContain(`ST_DWithin(${PROVIDER_CELL_CENTRE_SQL}, `);
+    }
+  });
+
+  it('keeps zones on their exact polygon (open debt, §6)', async () => {
+    for (const sql of await discoveryQueries()) {
+      expect(sql).toMatch(/ST_Covers\(z\.zone_polygon, /);
+    }
+  });
+
+  it('measures the distance from the cell centre, and rounds it in the outer SELECT', async () => {
     const { repo, query } = repoReturning([rawRow()]);
     await repo.findEligibleForDiscovery(PARAMS);
     const sql = query.mock.calls[1][0] as string;
-
+    expect(sql).toContain(`ST_Distance(${PROVIDER_CELL_CENTRE_SQL}, `);
     const outer = outerSelect(sql);
-    expect(outer).toContain(roundedDistanceSql(EXACT_DISTANCE_FROM_SUBQUERY));
-    // The exact columns are only ever read through the coarsening fragments.
-    const stripped = outer
-      .replace(roundedDistanceSql(EXACT_DISTANCE_FROM_SUBQUERY), '')
-      .replace(gridCentreSql(BASE_LAT_FROM_SUBQUERY, BASE_LNG_FROM_SUBQUERY).lat, '')
-      .replace(gridCentreSql(BASE_LAT_FROM_SUBQUERY, BASE_LNG_FROM_SUBQUERY).lng, '');
-    expect(stripped).not.toMatch(/exact_distance_m|base_lat|base_lng|ST_Distance|ST_X|ST_Y/);
+    expect(outer).toContain(roundedDistanceSql(CELL_DISTANCE_FROM_SUBQUERY));
+    expect(outer).toContain('ST_Y(e.cell_centre::geometry) AS approximate_lat');
+    expect(outer).toContain('ST_X(e.cell_centre::geometry) AS approximate_lng');
   });
 
-  it('sorts on the ROUNDED distance, then the id — never on the exact one', async () => {
+  it('sorts on the ROUNDED distance, then the id', async () => {
     const { repo, query } = repoReturning([rawRow()]);
     await repo.findEligibleForDiscovery(PARAMS);
     const sql = query.mock.calls[1][0] as string;
 
     const orderBy = sql.slice(sql.lastIndexOf('ORDER BY'), sql.indexOf('LIMIT'));
     expect(orderBy).toMatch(/ORDER BY distance_meters ASC, e\.id ASC/);
-    expect(orderBy).not.toMatch(/exact_distance_m|ST_Distance/);
+    expect(orderBy).not.toMatch(/cell_distance_m|ST_Distance/);
   });
-
   it('carries the coarsened values through unchanged', async () => {
     const { repo } = repoReturning([rawRow()]);
     const { items } = await repo.findEligibleForDiscovery(PARAMS);
@@ -137,7 +174,7 @@ describe('toApproximateLocation', () => {
 
 describe('discovery-privacy.sql — the rule is the one the brief locked', () => {
   it('floors at 100 m and steps 100 m / 500 m around 1 km', () => {
-    const sql = roundedDistanceSql(EXACT_DISTANCE_FROM_SUBQUERY);
+    const sql = roundedDistanceSql(CELL_DISTANCE_FROM_SUBQUERY);
     expect(DISCOVERY_DISTANCE_FLOOR_M).toBe(100);
     expect(sql).toMatch(/GREATEST\(\s*100,/);
     expect(sql).toMatch(/< 1000/);
@@ -148,12 +185,12 @@ describe('discovery-privacy.sql — the rule is the one the brief locked', () =>
   it('uses the 0.005° × 0.0073° grid and returns the cell CENTRE (+ 0.5)', () => {
     expect(DISCOVERY_GRID_LAT_DEG).toBe('0.005');
     expect(DISCOVERY_GRID_LNG_DEG).toBe('0.0073');
-    const { lat, lng } = gridCentreSql(BASE_LAT_FROM_SUBQUERY, BASE_LNG_FROM_SUBQUERY);
-    expect(lat).toMatch(/FLOOR\(\(e\.base_lat\)::numeric \/ 0\.005\) \+ 0\.5\) \* 0\.005/);
-    expect(lng).toMatch(/FLOOR\(\(e\.base_lng\)::numeric \/ 0\.0073\) \+ 0\.5\) \* 0\.0073/);
+    const { lat, lng } = gridCentreSql(BASE_LAT_FROM_PROVIDER, BASE_LNG_FROM_PROVIDER);
+    expect(lat).toMatch(/FLOOR\(\(ST_Y\(sp\.service_base_location::geometry\)\)::numeric \/ 0\.005\) \+ 0\.5\) \* 0\.005/);
+    expect(lng).toMatch(/FLOOR\(\(ST_X\(sp\.service_base_location::geometry\)\)::numeric \/ 0\.0073\) \+ 0\.5\) \* 0\.0073/);
+    expect(PROVIDER_CELL_CENTRE_SQL).toBe(`ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography`);
   });
 });
-
 /**
  * Non-regression: the discover DTO carries nothing finer than the coarsened
  * distance and the grid cell. A field added to the record must be a decision,

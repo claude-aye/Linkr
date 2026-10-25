@@ -17,10 +17,11 @@ export class ApproximateLocationDto {
 /**
  * A single discovered provider.
  *
- * ⚠️ NOTHING EXACT ABOUT WHERE THE PROVIDER IS (CLAUDE.md §13.1, entry 22). The
- * distance is coarsened and the location is a grid cell, both in SQL; three
- * exact distances from three search points would place the base by
- * trilateration. Do not add a field that is finer than these two.
+ * ⚠️ NOTHING HERE IS COMPUTED FROM THE EXACT BASE (CLAUDE.md §13.1, entry 22).
+ * Presence, distance and order all come from the centre of the provider's grid
+ * cell, which `approximateLocation` shows; an answer computed from the base —
+ * three distances, a distance step, the edge of the radius — would locate it.
+ * Do not add a field that is finer than the cell.
  */
 export class DiscoveredProviderDto {
   @ApiProperty({ format: 'uuid' })
@@ -49,7 +50,7 @@ export class DiscoveredProviderDto {
     type: 'integer',
     minimum: 100,
     description:
-      'Coarsened distance from the provider base to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100. The exact distance is never returned.',
+      'Coarsened distance from the centre of the provider\'s grid cell (not the base) to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100.',
     example: 1500,
   })
   distanceMeters!: number;
