@@ -11,7 +11,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -20,7 +20,7 @@ import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
 import { PublicServiceProviderDto } from './dto/public-service-provider.dto';
 import { DiscoverProvidersQueryDto } from './dto/discover-providers-query.dto';
-import { DiscoveredProviderDto } from './dto/discovered-provider.dto';
+import { DiscoveredProviderListDto } from './dto/discovered-provider-list.dto';
 import { ServiceProvidersService } from './service-providers.service';
 
 @ApiTags('service-providers')
@@ -44,21 +44,16 @@ export class ServiceProvidersController {
   @Get('discover')
   @ApiOperation({
     summary:
-      'Discover providers covering a client location for a category (radius OR named zone), sorted by distance. Authenticated users only.',
+      'Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Radius, distance and order are computed from the centre of the ~555 m grid cell holding each provider base, never the exact base. Authenticated users only.',
   })
   @ApiQuery({ name: 'lat', type: Number, required: true })
   @ApiQuery({ name: 'lng', type: Number, required: true })
   @ApiQuery({ name: 'categoryId', type: String, required: true })
   @ApiQuery({ name: 'page', type: Number, required: false })
   @ApiQuery({ name: 'limit', type: Number, required: false })
-  @ApiResponse({ status: 200, type: DiscoveredProviderDto, isArray: true })
+  @ApiOkResponse({ type: DiscoveredProviderListDto })
   @ApiResponse({ status: 400, description: 'Missing or invalid lat/lng/categoryId.' })
-  discover(@Query() query: DiscoverProvidersQueryDto): Promise<{
-    items: DiscoveredProviderDto[];
-    total: number;
-    page: number;
-    limit: number;
-  }> {
+  discover(@Query() query: DiscoverProvidersQueryDto): Promise<DiscoveredProviderListDto> {
     return this.providersService.discover(query);
   }
 

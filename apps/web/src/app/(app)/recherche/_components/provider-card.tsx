@@ -1,6 +1,8 @@
 import Link from 'next/link';
 
-import type { DiscoveredProvider } from '@/lib/providers/discovery-types';
+import type { components } from '@linkr/api-client';
+
+type DiscoveredProvider = components['schemas']['DiscoveredProviderDto'];
 
 /**
  * One discovered provider (Phase 3.14a) — a Server Component (no `'use client'`).
@@ -18,11 +20,18 @@ import type { DiscoveredProvider } from '@/lib/providers/discovery-types';
  */
 
 const kmFmt = new Intl.NumberFormat('fr-CA', {
-  minimumFractionDigits: 1,
+  minimumFractionDigits: 0,
   maximumFractionDigits: 1,
 });
 
-/** « à 460 m » under 1 km; « à 1,2 km » otherwise (fr-CA, one decimal). */
+/**
+ * « à 800 m » under 1 km; « à 1 km », « à 1,5 km » from there (fr-CA).
+ *
+ * The API already coarsens the distance (100 m steps under 1 km, 500 m steps
+ * from 1 km, never below 100 — CLAUDE.md §13.1, entry 22), so the value always
+ * lands on a step: no rounding happens here, only the unit. A trailing « ,0 »
+ * would suggest a precision the value deliberately does not have.
+ */
 function formatDistance(meters: number): string {
   if (meters < 1000) return `à ${Math.round(meters)} m`;
   return `à ${kmFmt.format(meters / 1000)} km`;

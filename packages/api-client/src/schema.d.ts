@@ -542,7 +542,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Discover providers covering a client location for a category (radius OR named zone), sorted by distance. Authenticated users only. */
+        /** Discover providers covering a client location for a category (radius OR named zone), sorted by coarsened distance. Radius, distance and order are computed from the centre of the ~555 m grid cell holding each provider base, never the exact base. Authenticated users only. */
         get: operations["ServiceProvidersController_discover"];
         put?: never;
         post?: never;
@@ -1905,18 +1905,35 @@ export interface components {
              */
             serviceRadiusKm: number;
         };
+        ApproximateLocationDto: {
+            /**
+             * Format: double
+             * @example 46.7775
+             */
+            lat: number;
+            /**
+             * Format: double
+             * @example -71.27355
+             */
+            lng: number;
+        };
         DiscoveredProviderDto: {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
             providerType: "INDIVIDUAL" | "ORGANIZATION";
             /** @description Public name: business_name, falling back to organization.display_name. */
-            displayName?: Record<string, never> | null;
-            headline?: Record<string, never> | null;
+            displayName: string | null;
+            headline: string | null;
             /** @description Primary service radius in km (0 = zone-only coverage). */
             serviceRadiusKm: number;
-            /** @description Distance from the provider base to the client, in metres (rounded). */
+            /**
+             * @description Coarsened distance from the centre of the provider's grid cell (not the base) to the search point, in metres: 100 m steps under 1 km, 500 m steps from 1 km, never below 100.
+             * @example 1500
+             */
             distanceMeters: number;
+            /** @description Centre of the grid cell holding the provider base (≈ 555 m cell), or null when the provider has no base point. */
+            approximateLocation: components["schemas"]["ApproximateLocationDto"] | null;
             /**
              * @description VERIFIED (Hard Trust) | NOT_REQUIRED (Social Trust) for the requested category.
              * @enum {string}
@@ -1933,6 +1950,13 @@ export interface components {
              * @example 4.67
              */
             averageRating: number | null;
+        };
+        DiscoveredProviderListDto: {
+            items: components["schemas"]["DiscoveredProviderDto"][];
+            /** @description Eligible providers in total, all pages. */
+            total: number;
+            page: number;
+            limit: number;
         };
         ServiceProviderResponseDto: {
             id: string;
@@ -3878,7 +3902,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiscoveredProviderDto"][];
+                    "application/json": components["schemas"]["DiscoveredProviderListDto"];
                 };
             };
             /** @description Missing or invalid lat/lng/categoryId. */

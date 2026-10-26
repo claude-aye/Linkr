@@ -30,6 +30,8 @@
  * carries the alias contract, instead of interpolating at its own call site.
  */
 
+import { PROVIDER_CELL_CENTRE_SQL } from './discovery-privacy.sql';
+
 /** Client coordinate bound as `$1` = lng, `$2` = lat. */
 export const ELIGIBILITY_POINT_FROM_PARAMS =
   'ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography' as const;
@@ -98,7 +100,10 @@ export function eligibilityFromWhere(
       WHERE sp.is_active = true
         AND sp.deleted_at_utc IS NULL
         AND (
-          ST_DWithin(sp.service_base_location, ${point}, sp.service_radius_km * 1000)
+          -- The radius is drawn around the provider's CELL CENTRE, never the
+          -- exact base: matched against the base, the edge of the circle would
+          -- locate it (CLAUDE.md §13.1, entry 22). Zones stay exact (debt §6).
+          ST_DWithin(${PROVIDER_CELL_CENTRE_SQL}, ${point}, sp.service_radius_km * 1000)
           OR EXISTS (
             SELECT 1 FROM professional_service_zones z
             WHERE z.service_provider_id = sp.id

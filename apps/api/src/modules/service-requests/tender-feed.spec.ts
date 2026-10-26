@@ -13,6 +13,7 @@ import {
   eligibilityFromWhere,
 } from '../service-providers/repositories/eligibility.sql';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { PROVIDER_CELL_CENTRE_SQL } from '../service-providers/repositories/discovery-privacy.sql';
 
 /**
  * ⚠️ WHAT THIS FILE CANNOT PROVE, SAID PLAINLY.
@@ -229,7 +230,8 @@ describe('Tender feed — the shared eligibility fragment', () => {
     ['the trade claim is not soft-deleted', 'psc.deleted_at_utc IS NULL'],
     ['the provider is active', 'sp.is_active = true'],
     ['the provider is not soft-deleted', 'sp.deleted_at_utc IS NULL'],
-    ['the radius branch exists', 'ST_DWithin(sp.service_base_location'],
+    // The radius is drawn around the provider's cell centre (§13.1 entry 22).
+    ['the radius branch exists', `ST_DWithin(${PROVIDER_CELL_CENTRE_SQL}`],
     ['the zone branch exists', 'ST_Covers(z.zone_polygon'],
     ['zones are not soft-deleted', 'z.deleted_at_utc IS NULL'],
   ])('keeps "%s" in both readings', (_label, clause) => {

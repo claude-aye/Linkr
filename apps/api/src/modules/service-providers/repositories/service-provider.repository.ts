@@ -11,6 +11,11 @@ import {
   eligibilityFromWhere,
 } from './eligibility.sql';
 import { PROVIDER_DISPLAY_NAME_SQL } from './display-name.sql';
+import {
+  CELL_DISTANCE_FROM_SUBQUERY,
+  PROVIDER_CELL_CENTRE_SQL,
+  roundedDistanceSql,
+} from './discovery-privacy.sql';
 
 export interface DiscoveryParams {
   lat: number;
@@ -20,25 +25,51 @@ export interface DiscoveryParams {
   limit: number;
 }
 
+/** Centre of the grid cell holding the provider's base — never the base itself. */
+export interface ApproximateLocation {
+  lat: number;
+  lng: number;
+}
+
 export interface DiscoveredProviderRecord {
   id: string;
   providerType: ProviderType;
   displayName: string | null;
   headline: string | null;
   serviceRadiusKm: number;
+  /** Cell centre → search point, coarsened in SQL (`discovery-privacy.sql.ts`). */
   distanceMeters: number;
+  approximateLocation: ApproximateLocation | null;
   categoryVerificationStatus: PscVerificationStatus;
 }
 
-interface RawDiscoveryRow {
+export interface RawDiscoveryRow {
   id: string;
   provider_type: ProviderType;
   display_name: string | null;
   headline: string | null;
   service_radius_km: number;
-  distance_meters: string;
+  /** Already rounded (`::int`). */
+  distance_meters: number;
+  approximate_lat: number | null;
+  approximate_lng: number | null;
   category_verification_status: PscVerificationStatus;
 }
+
+/**
+ * Both halves or nothing. `service_base_location` is NOT NULL today, so `null`
+ * never happens in practice; it exists so that a provider without a base point
+ * (should one ever be matched by a zone alone) renders without a map pin
+ * instead of breaking the list.
+ */
+export function toApproximateLocation(
+  row: Pick<RawDiscoveryRow, 'approximate_lat' | 'approximate_lng'>,
+): ApproximateLocation | null {
+  if (row.approximate_lat == null || row.approximate_lng == null) return null;
+  return { lat: Number(row.approximate_lat), lng: Number(row.approximate_lng) };
+}
+
+const ROUNDED_DISTANCE = roundedDistanceSql(CELL_DISTANCE_FROM_SUBQUERY);
 
 /** Domain record with geography read back as GeoJSON (never raw WKB/WKT). */
 export interface ServiceProviderRecord {
@@ -265,7 +296,9 @@ export class ServiceProviderRepository {
    * Hybrid geo discovery (CLAUDE.md §5.3). Returns active providers practising
    * `categoryId` (VERIFIED | NOT_REQUIRED) whose coverage includes the client
    * point — either within `service_radius_km` (in metres) OR inside one of their
-   * named zones. Sorted by base→client distance ASC.
+   * named zones. Radius, distance and order are all measured from the provider's
+   * CELL CENTRE, never the exact base (§13.1 entry 22). Sorted by the coarsened
+   * cell→client distance ASC, then id.
    *
    * Spatial columns are geography(4326): ST_DWithin / ST_Distance return metres
    * directly, and zone containment uses ST_Covers (ST_Contains is geometry-only).
@@ -284,19 +317,38 @@ export class ServiceProviderRepository {
     );
     const total = parseInt(countRows[0]?.count ?? '0', 10);
 
+    // ⚠️ Every answer below — presence (through the eligibility fragment),
+    // distance, order and pin — is computed from the CELL CENTRE. The exact base
+    // is read only inside PROVIDER_CELL_CENTRE_SQL (CLAUDE.md §13.1, entry 22);
+    // the non-regression spec fails if it appears anywhere else in this query.
     const rows: RawDiscoveryRow[] = await this.repo.query(
       `SELECT
-         sp.id,
-         sp.provider_type,
-         -- The public-name rule has one SQL source (display-name.sql.ts),
-         -- shared with the client's received-quotes list.
-         ${PROVIDER_DISPLAY_NAME_SQL} AS display_name,
-         sp.headline,
-         sp.service_radius_km,
-         ST_Distance(sp.service_base_location, ${ELIGIBILITY_POINT_FROM_PARAMS}) AS distance_meters,
-         psc.verification_status AS category_verification_status
-       ${ELIGIBILITY_FROM_WHERE}
-       ORDER BY distance_meters ASC
+         e.id,
+         e.provider_type,
+         e.display_name,
+         e.headline,
+         e.service_radius_km,
+         ${ROUNDED_DISTANCE} AS distance_meters,
+         ST_Y(e.cell_centre::geometry) AS approximate_lat,
+         ST_X(e.cell_centre::geometry) AS approximate_lng,
+         e.category_verification_status
+       FROM (
+         SELECT
+           sp.id,
+           sp.provider_type,
+           -- The public-name rule has one SQL source (display-name.sql.ts),
+           -- shared with the client's received-quotes list.
+           ${PROVIDER_DISPLAY_NAME_SQL} AS display_name,
+           sp.headline,
+           sp.service_radius_km,
+           ${PROVIDER_CELL_CENTRE_SQL} AS cell_centre,
+           ST_Distance(${PROVIDER_CELL_CENTRE_SQL}, ${ELIGIBILITY_POINT_FROM_PARAMS}) AS cell_distance_m,
+           psc.verification_status AS category_verification_status
+         ${ELIGIBILITY_FROM_WHERE}
+       ) e
+       -- Sorted on the ROUNDED cell distance, then the id: two providers in the
+       -- same cell are indistinguishable, whatever their exact bases.
+       ORDER BY distance_meters ASC, e.id ASC
        LIMIT $4 OFFSET $5`,
       [params.lng, params.lat, params.categoryId, params.limit, offset],
     );
@@ -307,7 +359,8 @@ export class ServiceProviderRepository {
       displayName: row.display_name,
       headline: row.headline,
       serviceRadiusKm: row.service_radius_km,
-      distanceMeters: Math.round(parseFloat(row.distance_meters)),
+      distanceMeters: row.distance_meters,
+      approximateLocation: toApproximateLocation(row),
       categoryVerificationStatus: row.category_verification_status,
     }));
 
