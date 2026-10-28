@@ -41,8 +41,11 @@ export default function AuthLayout({
         </div>
 
         {/* The brand, never an `<h1>`: each screen's one heading is its form's
-            title. Plain text for now, not a link. */}
-        <p className="mb-6 font-script text-6xl leading-none text-accent">Linkr</p>
+            title. Plain text for now, not a link. 40px below `sm` — the
+            smallest size Parisienne stays legible at — so that with a phone
+            keyboard open the submit button sits as high as it can; from `sm`
+            up, the full 60px. */}
+        <p className="mb-4 font-script text-[2.5rem] leading-none text-accent sm:mb-6 sm:text-6xl">Linkr</p>
 
         {children}
       </main>

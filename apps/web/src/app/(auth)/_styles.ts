@@ -29,12 +29,17 @@ const focusRing =
  * ⚠️ Written positively on purpose: Tailwind 4.3 does NOT generate a composite
  * `not-supports-[(a)_or_(b)]` variant (measured: the class was absent from the
  * built CSS). Two single-condition `supports-[…]` variants are.
+ *
+ * The `border-edge` hairline is what sets the card apart in the fallback:
+ * there the opaque surface is only 1.07:1 against the beige ground, and the
+ * former `border-on-accent/70` was invisible on it (1.005:1). Kept in glass
+ * mode too, so both modes draw the same edge.
  */
 //
 // Every class is written out literally: Tailwind finds classes by scanning
 // the source, so a string assembled at run time would never be generated.
 export const authCardClass =
-  'w-full max-w-sm rounded-2xl border border-on-accent/70 bg-bg bg-linear-to-b from-surface to-surface p-6 shadow-xl shadow-accent/10 backdrop-blur-xl sm:p-8 ' +
+  'w-full max-w-sm rounded-2xl border border-edge bg-bg bg-linear-to-b from-surface to-surface p-6 shadow-xl shadow-accent/10 backdrop-blur-xl sm:p-8 ' +
   'supports-[backdrop-filter:blur(1px)]:bg-none supports-[backdrop-filter:blur(1px)]:bg-surface ' +
   'supports-[-webkit-backdrop-filter:blur(1px)]:bg-none supports-[-webkit-backdrop-filter:blur(1px)]:bg-surface';
 

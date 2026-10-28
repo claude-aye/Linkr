@@ -1906,6 +1906,7 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 - **Smoke** : `/login` mauvais mot de passe → « Identifiants invalides… », puis carol → `/` ; `/signup` sans la case → message, `aria-invalid`, focus sur la case, **0 appel** à `/api/auth/signup`, puis inscription `smoke-r4-20261028@linkr.test` → `/` (compte de test laissé en base de dev) ; `/forgot-password` : écran **identique** pour carol et pour une adresse inconnue ; `/reset-password` sans jeton → « lien incomplet », jeton invalide → « remplacé ou a expiré » et jeton retiré de l'URL, `Referrer-Policy: no-referrer` ; `/login?reset=1` → avis vert.
 - **Validé** : typecheck, lint (0 erreur, les 2 avertissements préexistants), `node --test` 263/263, build : `/login`, `/signup`, `/forgot-password` en `○`, `/reset-password` en `ƒ`.
 - **Dettes** : cinq entrées ajoutées au §6 (erreurs par champ, titres d'onglet, lien de réinitialisation sur toute erreur, 429 de réinitialisation, `distanceKm` de `received-quotes`) ; le bouton d'envoi sous le pli clavier ouvert (ci-dessus).
+- **Retouche avant merge (même PR)** : (1) **marque réduite sous `sm`** : `text-[2.5rem]` (40 px, le plus petit corps où Parisienne reste lisible) et `mb-4`, puis `sm:text-6xl sm:mb-6` (60 px, 24 px), inchangée à partir de `sm` (mesuré : 40 px à 320, 375, 414 et 639 px ; 60 px à 640 et 1280 px). Le bouton d'envoi remonte de **28 px** : `/login` 433 → **405 px**, `/signup` 725 → **697 px**, aux deux claviers simulés (375×360 et 320×300 ; avant R4 : 329 et 609 à 649). Il reste sous le pli clavier ouvert, sur les deux pages. (2) **Filet de carte** : en repli, la carte ne se détachait du fond que par son ombre (surface opaque à 1,07:1 contre `bg`, bordure `on-accent/70` à 1,005:1, donc invisible). La bordure passe à **`border-edge`** (1,39:1 contre `bg`, 1,49:1 contre la carte), en repli comme en verre. Remesuré à 320, 375, 414 et 1280 px : toujours 0 débordement, 0 cible sous 44 px, un seul `<h1>`.
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
@@ -2394,7 +2395,7 @@ ne le corrige pas.
 
     **(c) `<main>` appartient au layout, et `overflow-hidden` est sur le conteneur des halos, pas sur `<main>`** : sur un élément flex, il ferait tomber `min-height: auto` à 0 et rognerait un formulaire haut au lieu de faire défiler la page.
 
-    **(d) La marque « Linkr » est un `<p>`, jamais un `<h1>`.** Chaque écran garde un seul `<h1>`, le titre de son formulaire.
+    **(d) La marque « Linkr » est un `<p>`, jamais un `<h1>`.** Chaque écran garde un seul `<h1>`, le titre de son formulaire. Sous `sm`, elle fait 40 px, le plus petit corps lisible de Parisienne : ne pas descendre plus bas pour gagner de la place.
 ---
 
 ## 14. Out-of-Scope (For Reference)
