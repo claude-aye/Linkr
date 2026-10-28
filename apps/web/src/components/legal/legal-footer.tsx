@@ -32,8 +32,9 @@ const LABELS: Readonly<
  * nav (G-1). The `-mx-2` on the list cancels the `px-2` of the first link so the
  * labels line up with the `p-6` of the page `<main>` above.
  *
- * Same background as the pages (`bg-zinc-50`) so the footer reads as the end of
- * the page, not as a separate band.
+ * Tokens of the visual foundation (R3): same ground as the body (`bg-bg`) and the
+ * shell's hairline (`border-edge`), so the footer reads as the end of the page,
+ * not as a separate band. No palette class and no dark variant (CLAUDE.md §13.1 nº 20).
  */
 export function LegalFooter({ locale = 'fr' }: { locale?: LegalLocale }) {
   const labels = LABELS[locale];
@@ -42,13 +43,13 @@ export function LegalFooter({ locale = 'fr' }: { locale?: LegalLocale }) {
   return (
     <footer
       lang={locale === 'en' ? 'en-CA' : 'fr-CA'}
-      className="border-t border-zinc-200 bg-zinc-50 px-6 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+      className="border-t border-edge bg-bg px-6 py-2">
       <nav aria-label={labels.nav}>
-        <ul className="-mx-2 flex flex-wrap items-center gap-x-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <ul className="-mx-2 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
           <li>
             <Link
               href={LEGAL_DOCUMENTS[links.privacy].path}
-              className="inline-flex min-h-11 items-center px-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {labels.privacy}
             </Link>
@@ -56,7 +57,7 @@ export function LegalFooter({ locale = 'fr' }: { locale?: LegalLocale }) {
           <li>
             <Link
               href={LEGAL_DOCUMENTS[links.terms].path}
-              className="inline-flex min-h-11 items-center px-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {labels.terms}
             </Link>
@@ -64,7 +65,7 @@ export function LegalFooter({ locale = 'fr' }: { locale?: LegalLocale }) {
           <li>
             <a
               href={`mailto:${SUPPORT_EMAIL}`}
-              className="inline-flex min-h-11 items-center px-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {labels.contact} {SUPPORT_EMAIL}
             </a>
