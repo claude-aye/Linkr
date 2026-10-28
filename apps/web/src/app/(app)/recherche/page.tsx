@@ -5,12 +5,15 @@ import type { components } from '@linkr/api-client';
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
 import { tradesOfferedAtLaunch } from '@/lib/catalog/launch-scope';
 import { pickTranslation } from '@/lib/i18n/translations';
+import { buildProviderFeatureCollection } from '@/lib/map/map-data';
 import type { CategoryOption } from '@/lib/providers/discovery-types';
 
 import { CandidateList } from './_components/candidate-list';
 import { DemandSignalRecorder } from './_components/demand-signal-recorder';
 import { NoResults } from './_components/no-results';
 import { ProviderCard } from './_components/provider-card';
+import { ResultsMapSlot } from './_components/results-map-slot';
+import { ResultsSyncProvider, SyncedResult } from './_components/results-sync';
 import { SearchForm } from './_components/search-form';
 
 // `/geocode` ships a CLEAN generated envelope (`GeocodeResultDto`), so the
@@ -189,6 +192,81 @@ export default async function RecherchePage({
     }
   }
 
+  const intro = (
+    <p className="mt-2 text-base text-text-muted">
+      Choisissez un métier, puis trouvez les prestataires près de vous.
+    </p>
+  );
+  const form = (embedded: boolean) => (
+    <SearchForm
+      categories={categoryOptions}
+      selectedCategoryId={validCategoryId ?? undefined}
+      selectedAddress={q}
+      embedded={embedded}
+    />
+  );
+
+  // --- R2b: results WITH a map ------------------------------------------------
+  // ⚠️ The map mounts ONLY here: a valid discover search that returned at least
+  // one provider. Every other state (State 0, State 0 with a trade, geocode
+  // candidates, geolocation refusal, geocode or discover failure, `total === 0`)
+  // keeps the R1 layout below and never loads `maplibre-gl`.
+  if (discoverQuery && !searchFailed && providers.length > 0) {
+    // Approximate locations only (cell centres, CLAUDE.md §13.1 nº 22).
+    const mapFeatures = buildProviderFeatureCollection(providers);
+    return (
+      <main className="relative flex flex-1 flex-col bg-bg lg:block lg:min-h-[calc(100dvh-4.5rem)]">
+        <ResultsSyncProvider>
+          {/* Desktop: full-bleed map behind the side panel. Phone: map on top,
+              a fixed panel below it (no drag gesture in V1). */}
+          <div className="h-[42svh] w-full lg:absolute lg:inset-0 lg:h-auto">
+            <ResultsMapSlot
+              providers={mapFeatures}
+              searched={[discoverQuery.lng, discoverQuery.lat]}
+            />
+          </div>
+
+          {/* The screen's ONE frosted layer: the form inside is `embedded`, so it
+              drops its own. The cards below stay blur-free (they scroll). */}
+          <section
+            aria-label="Recherche et résultats"
+            className="relative border-t border-on-accent/70 bg-surface p-5 shadow-xl shadow-accent/10 backdrop-blur-xl sm:p-6 lg:absolute lg:top-6 lg:bottom-6 lg:left-6 lg:w-md lg:overflow-y-auto lg:rounded-2xl lg:border"
+          >
+            <header className="mb-5">
+              <h1 className="font-script text-4xl leading-tight text-accent">
+                Rechercher un prestataire
+              </h1>
+              {intro}
+            </header>
+
+            {form(true)}
+
+            <h2 className="mt-6 text-sm font-medium text-text">
+              {providers.length === 1
+                ? '1 prestataire trouvé'
+                : `${providers.length} prestataires trouvés`}
+            </h2>
+            {/* Phone: the list scrolls inside the fixed panel. Desktop: the
+                whole panel scrolls. The 4px inner padding keeps the active
+                highlight ring (ring + offset) from being clipped. */}
+            <ul className="-mx-1 mt-3 max-h-[60svh] space-y-4 overflow-y-auto p-1 lg:max-h-none lg:overflow-visible">
+              {providers.map((provider) => (
+                <SyncedResult key={provider.id} id={provider.id}>
+                  {/* Same card, same link (`?lat=&lng=` threaded, voie Ⓐ). */}
+                  <ProviderCard
+                    provider={provider}
+                    lat={discoverQuery.lat}
+                    lng={discoverQuery.lng}
+                  />
+                </SyncedResult>
+              ))}
+            </ul>
+          </section>
+        </ResultsSyncProvider>
+      </main>
+    );
+  }
+
   return (
     // Direction A (R1): a very soft beige → bordeaux ground with two blurred
     // bordeaux halos behind the content. `isolate` keeps the decorative layer's
@@ -210,18 +288,13 @@ export default async function RecherchePage({
           <h1 className="font-script text-5xl leading-tight text-accent sm:text-6xl">
             Rechercher un prestataire
           </h1>
-          <p className="mt-2 text-base text-text-muted">
-            Choisissez un métier, puis trouvez les prestataires près de vous.
-          </p>
+          {intro}
         </header>
 
-        <SearchForm
-          categories={categoryOptions}
-          selectedCategoryId={validCategoryId ?? undefined}
-          selectedAddress={q}
-        />
+        {form(false)}
 
-        {/* Discriminator: discover cards → geocode candidates → State 0 (form
+        {/* Discriminator: discover (failure or zero — results with providers
+            took the map layout above) → geocode candidates → State 0 (form
             alone, no results section). */}
         {discoverQuery ? (
           <div className="mt-8">
@@ -229,7 +302,7 @@ export default async function RecherchePage({
               <StateCard title="Recherche impossible">
                 La recherche n’a pas pu aboutir pour le moment. Veuillez réessayer plus tard.
               </StateCard>
-            ) : providers.length === 0 ? (
+            ) : (
               // Chantier H — a product surface, not a bare « aucun résultat ». It
               // names the trade and explains WHY zero is possible, which differs
               // by regulation level. See the component header.
@@ -249,19 +322,6 @@ export default async function RecherchePage({
                   lng={discoverQuery.lng}
                 />
               </>
-            ) : (
-              <ul className="space-y-4">
-                {providers.map((provider) => (
-                  // `discoverQuery` is non-null here → its lat/lng are the finite
-                  // searched coords; thread them onward (voie Ⓐ, Phase 3.14c-1).
-                  <ProviderCard
-                    key={provider.id}
-                    provider={provider}
-                    lat={discoverQuery.lat}
-                    lng={discoverQuery.lng}
-                  />
-                ))}
-              </ul>
             )}
           </div>
         ) : geocodeQuery && validCategoryId ? (

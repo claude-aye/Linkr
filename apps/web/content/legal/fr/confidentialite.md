@@ -54,7 +54,7 @@ La page d'ajout d'un moyen de paiement charge le script de Stripe, qui peut dép
 
 ## 5. Avec qui nous les partageons
 
-Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite que les renseignements strictement nécessaires à son service. Les quatre premiers sont tenus par contrat de protéger vos renseignements ; Nominatim est un service public régi par la [politique d'utilisation de la Fondation OpenStreetMap](https://operations.osmfoundation.org/policies/nominatim/).
+Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite que les renseignements strictement nécessaires à son service. Les quatre premiers sont tenus par contrat de protéger vos renseignements ; Nominatim est un service public régi par la [politique d'utilisation de la Fondation OpenStreetMap](https://operations.osmfoundation.org/policies/nominatim/) ; MapTiler fournit les fonds de carte selon ses [conditions et sa politique de confidentialité](https://www.maptiler.com/privacy-policy/).
 
 | Service | Rôle | Localisation des serveurs |
 | --- | --- | --- |
@@ -62,9 +62,15 @@ Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite 
 | **Stripe** | Traitement des paiements et vérification d'identité des prestataires | États-Unis |
 | **Brevo** | Envoi des courriels transactionnels et des notifications | Union européenne |
 | **Zoho** | Messagerie de soutien | Canada |
-| **OpenStreetMap (Nominatim)** | Conversion de l'adresse saisie en coordonnées géographiques (géocodage) | Royaume-Uni et Union européenne |
+| **OpenStreetMap (Nominatim)** | Conversion de l'adresse saisie en coordonnées géographiques (géocodage), interrogé par notre serveur | Royaume-Uni et Union européenne |
+| **MapTiler** | Fonds de carte affichés sur la page de résultats de recherche, chargés par votre navigateur | Suisse |
 
-**Renseignements communiqués hors du Québec.** Stripe, Brevo et OpenStreetMap traitent des renseignements à l'extérieur du Québec. Conformément à la Loi 25, une évaluation des facteurs relatifs à la vie privée (ÉFVP) est réalisée avant toute communication, afin de s'assurer que ces renseignements bénéficient d'une protection adéquate.
+**Géocodage et carte : deux échanges différents.**
+
+1. **Géocodage (Nominatim).** Quand vous saisissez une adresse, c'est **notre serveur** qui interroge Nominatim. Votre navigateur ne contacte jamais Nominatim : la Fondation OpenStreetMap ne reçoit que le texte de l'adresse, sans votre adresse IP ni votre identité.
+2. **Carte (MapTiler).** Quand une recherche donne des résultats, **votre navigateur** télécharge les fonds de carte directement chez MapTiler. MapTiler reçoit donc votre **adresse IP**, l'**en-tête de votre navigateur** (type et version) et les **fonds de carte de la zone affichée**, ce qui révèle la **zone de recherche approximative**. Il ne reçoit ni votre nom, ni votre courriel, ni l'adresse saisie, ni le point exact de la recherche. Selon sa politique, MapTiler peut conserver l'adresse IP jusqu'à deux mois à des fins de sécurité. La carte n'est chargée que lorsqu'il y a des résultats à afficher.
+
+**Renseignements communiqués hors du Québec.** Stripe, Brevo, OpenStreetMap et MapTiler traitent des renseignements à l'extérieur du Québec. Conformément à la Loi 25, une évaluation des facteurs relatifs à la vie privée (ÉFVP) est réalisée avant toute communication, afin de s'assurer que ces renseignements bénéficient d'une protection adéquate.
 
 Nous pouvons aussi communiquer des renseignements si la loi l'exige (par exemple, à la demande d'une autorité judiciaire).
 
@@ -72,6 +78,7 @@ Nous pouvons aussi communiquer des renseignements si la loi l'exige (par exemple
 
 - **Profil de prestataire** : le nom d'affaires, le titre, la présentation, les métiers, les prix indicatifs, les secteurs desservis et les avis reçus sont visibles par les utilisateurs connectés. L'adresse courriel et les pièces justificatives de licence ne sont jamais rendues publiques.
 - **Avis** : un avis laissé sur une prestation terminée affiche la note, le commentaire facultatif, ainsi que le **prénom et l'initiale du nom de famille** de son auteur (ex. « Carol R. »). Le prestataire peut publier une réponse sous l'avis. Si vous supprimez votre avis, la réponse du prestataire est retirée aussi. Si votre compte est supprimé, la note et l'avis restent visibles pour la réputation du service, mais sous une mention anonyme (« — »).
+- **Carte des résultats** : un prestataire y apparaît au centre d'une case d'environ 550 m de côté qui contient sa base, jamais à son adresse. Les distances affichées sont arrondies et calculées depuis ce même centre.
 - **Demandes directes** : une demande de réservation directe et l'adresse complète de la prestation ne sont visibles que par le client qui l'a faite et le prestataire assigné.
 - **Appels d'offres** : lorsqu'une demande est ouverte à plusieurs prestataires d'un même secteur, les prestataires admissibles voient le titre, la description du besoin, le budget indicatif, les dates souhaitées et une distance approximative, arrondie au kilomètre. Ils ne voient ni votre nom ni votre adresse. L'adresse précise n'est transmise qu'au prestataire retenu.
 

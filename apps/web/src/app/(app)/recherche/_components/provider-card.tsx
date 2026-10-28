@@ -168,42 +168,42 @@ export function ProviderCard({
       ? `/providers/${provider.id}?lat=${lat}&lng=${lng}`
       : `/providers/${provider.id}`;
 
+  // R2b: the `<li>` is `SyncedResult`'s (list ↔ map highlight); this component
+  // renders the card's link only, unchanged.
   return (
-    <li>
-      <Link
-        href={href}
-        // Direction A (R1): a translucent card with a light edge, NO
-        // `backdrop-filter` (this list scrolls — the form panel is the screen's
-        // only frosted layer). The whole card stays one link.
-        className="block rounded-2xl border border-on-accent/70 bg-surface p-5 transition motion-reduce:transition-none hover:border-accent/40 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="font-semibold text-text">{name}</h3>
-            {provider.headline && (
-              <p className="mt-0.5 text-sm text-text-muted">
-                {provider.headline}
-              </p>
-            )}
-          </div>
-          {isVerified && (
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-accent/30 bg-accent/5 px-2.5 py-0.5 text-xs font-medium text-accent">
-              <ShieldIcon />
-              Licence vérifiée
-            </span>
+    <Link
+      href={href}
+      // Direction A (R1): a translucent card with a light edge, NO
+      // `backdrop-filter` (this list scrolls — the form panel is the screen's
+      // only frosted layer). The whole card stays one link.
+      className="block rounded-2xl border border-on-accent/70 bg-surface p-5 transition motion-reduce:transition-none hover:border-accent/40 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-text">{name}</h3>
+          {provider.headline && (
+            <p className="mt-0.5 text-sm text-text-muted">
+              {provider.headline}
+            </p>
           )}
         </div>
-        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
-          <span>{formatDistance(provider.distanceMeters)}</span>
-          {/* Rendered by the component, not by a condition here: a provider with
-              no reviews self-nulls, so there is no `if` on reputation in the
-              card and no separator left dangling. */}
-          <Reputation
-            reviewCount={provider.reviewCount}
-            averageRating={provider.averageRating}
-          />
-        </p>
-      </Link>
-    </li>
+        {isVerified && (
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-accent/30 bg-accent/5 px-2.5 py-0.5 text-xs font-medium text-accent">
+            <ShieldIcon />
+            Licence vérifiée
+          </span>
+        )}
+      </div>
+      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
+        <span>{formatDistance(provider.distanceMeters)}</span>
+        {/* Rendered by the component, not by a condition here: a provider with
+            no reviews self-nulls, so there is no `if` on reputation in the
+            card and no separator left dangling. */}
+        <Reputation
+          reviewCount={provider.reviewCount}
+          averageRating={provider.averageRating}
+        />
+      </p>
+    </Link>
   );
 }

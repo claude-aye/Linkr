@@ -54,7 +54,7 @@ The page for adding a payment method loads Stripe's script, which may set its ow
 
 ## 5. Who we share it with
 
-We rely on the following services to operate Linkr. Each one processes only the information strictly necessary for its service. The first four are contractually bound to protect your information; Nominatim is a public service governed by the [OpenStreetMap Foundation's usage policy](https://operations.osmfoundation.org/policies/nominatim/).
+We rely on the following services to operate Linkr. Each one processes only the information strictly necessary for its service. The first four are contractually bound to protect your information; Nominatim is a public service governed by the [OpenStreetMap Foundation's usage policy](https://operations.osmfoundation.org/policies/nominatim/); MapTiler provides the base maps under its [terms and privacy policy](https://www.maptiler.com/privacy-policy/).
 
 | Service | Role | Server location |
 | --- | --- | --- |
@@ -62,9 +62,15 @@ We rely on the following services to operate Linkr. Each one processes only the 
 | **Stripe** | Payment processing and provider identity verification | United States |
 | **Brevo** | Sending transactional emails and notifications | European Union |
 | **Zoho** | Support mailbox | Canada |
-| **OpenStreetMap (Nominatim)** | Converting an entered address into geographic coordinates (geocoding) | United Kingdom and European Union |
+| **OpenStreetMap (Nominatim)** | Converting an entered address into geographic coordinates (geocoding), queried by our server | United Kingdom and European Union |
+| **MapTiler** | Base maps shown on the search results page, loaded by your browser | Switzerland |
 
-**Information communicated outside Québec.** Stripe, Brevo and OpenStreetMap process information outside Québec. As required by Law 25, a privacy impact assessment is carried out before any such communication, to ensure the information receives adequate protection.
+**Geocoding and the map: two different exchanges.**
+
+1. **Geocoding (Nominatim).** When you enter an address, **our server** queries Nominatim. Your browser never contacts Nominatim: the OpenStreetMap Foundation receives only the text of the address, without your IP address or your identity.
+2. **Map (MapTiler).** When a search returns results, **your browser** downloads the base maps directly from MapTiler. MapTiler therefore receives your **IP address**, your **browser header** (type and version) and the **map tiles of the area displayed**, which reveals the **approximate search area**. It receives neither your name, your email, the address you entered, nor the exact search point. According to its policy, MapTiler may keep the IP address for up to two months for security purposes. The map is loaded only when there are results to show.
+
+**Information communicated outside Québec.** Stripe, Brevo, OpenStreetMap and MapTiler process information outside Québec. As required by Law 25, a privacy impact assessment is carried out before any such communication, to ensure the information receives adequate protection.
 
 We may also disclose information where required by law (for example, at the request of a judicial authority).
 
@@ -72,6 +78,7 @@ We may also disclose information where required by law (for example, at the requ
 
 - **Provider profile**: the business name, title, description, trades, indicative prices, areas served and reviews received are visible to signed-in users. The email address and licence documents are never made public.
 - **Reviews**: a review left on a completed service shows the rating, the optional comment, and the author's **first name and last-name initial** (e.g. "Carol R."). The provider may post a reply under the review. If you delete your review, the provider's reply is removed as well. If your account is deleted, the rating and review remain visible for the provider's reputation, but under an anonymous mention ("—").
+- **Results map**: a provider appears at the centre of a cell about 550 m wide that contains their base, never at their address. The distances shown are rounded and measured from that same centre.
 - **Direct requests**: a direct booking request and the full service address are visible only to the client who made it and the assigned provider.
 - **Open requests**: when a request is open to several providers in the same trade, eligible providers see the title, the description of the need, the indicative budget, the preferred dates and an approximate distance, rounded to the kilometre. They see neither your name nor your address. The exact address is shared only with the provider selected.
 
