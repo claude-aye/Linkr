@@ -13,7 +13,12 @@ import { ReviewActions } from './review-actions';
 // Reads the access cookie + live admin data — always rendered per request, never a build snapshot.
 export const dynamic = 'force-dynamic';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+import { resolveApiBaseUrl } from '@/lib/api-base-url';
+
+const API_BASE_URL = resolveApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_URL,
+  process.env.NODE_ENV,
+);
 
 const DOCUMENT_TYPE_LABELS: Record<RequiredDocumentType, string> = {
   LICENSE_NUMBER: 'Numéro de licence',

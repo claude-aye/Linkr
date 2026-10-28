@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { withClientIp } from '@/lib/http/client-ip';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+import { resolveApiBaseUrl } from '@/lib/api-base-url';
+
+const API_BASE_URL = resolveApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_URL,
+  process.env.NODE_ENV,
+);
 
 interface ResetPasswordRequestBody {
   token?: unknown;

@@ -1942,6 +1942,11 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 - **noindex en trois endroits** : `robots: { index: false, follow: false }` (métadonnées racine), `app/robots.ts` (`Disallow: /`), en-tête `X-Robots-Tag: noindex, nofollow` sur `/:path*` dans `next.config.ts` (couvre `/media/*` et `/images/*`). `/robots.txt` passe le proxy (le matcher exclut tout chemin à point).
 - **Métadonnées** : `title { default: "Linkr", template: "%s · Linkr" }`, description « De la coiffure à domicile… », `<html lang="fr-CA">` (déjà correct). Geist Mono en `preload: false`.
 - **Convention** : les captures de vérification vont en commentaire de PR, jamais committées dans le dépôt.
+**Configuration de production (D1, API + web).** Inventaire de toutes les variables dans `docs/deploy/env.md` (nom, application, obligatoire, build ou exécution, secret, exemple, notes). **ZÉRO migration, contrat inchangé, aucune dépendance.** Hors périmètre : `TRUSTED_PROXY_IPS` / `X-Forwarded-For` (PR D2), Dockerfile, déploiement.
+- **API** : `validate()` (`env.validation.ts`) ajoute `productionConfigProblems` : avec `NODE_ENV=production`, le boot échoue si `WEB_APP_BASE_URL`, `CONNECT_ONBOARDING_RETURN_URL` ou `CONNECT_ONBOARDING_REFRESH_URL` n'est pas posée (leur défaut localhost n'existe que pour le développement) ou si `LOG_LEVEL=debug`. Les messages nomment la variable, **jamais sa valeur**. Les erreurs Joi existantes et celles-ci sont rapportées ensemble.
+- **Web** : `lib/api-base-url.ts` (`resolveApiBaseUrl`, sans import) remplace les 7 sites `NEXT_PUBLIC_API_URL ?? 'http://localhost:5000'` (le §12 en comptait 5 : `session.ts`, `refresh.ts`, 4 relais d'auth, console admin). Repli localhost en développement seulement ; en production la variable absente ou blanche **fait échouer `next build`** (« Collecting page data »).
+- **Constat sur `cancel` (lecture seule, rien modifié)** : `ServiceRequestsService.cancel` laisse le client propriétaire (ou un admin) annuler en `ASSIGNED` **et** `IN_PROGRESS` (`ALLOWED_TRANSITIONS`), sans règle des 24 h, sans remboursement. Les conditions (§5) disent qu'une prestation commencée ne s'annule plus et renvoient les annulations au support. **Incohérence déjà inscrite au §6** (« Les annulations que promettent les conditions… », points 2 à 4) : confirmée, aucune nouvelle dette. Aucun écran n'appelle `cancel` côté client, donc l'écart n'est atteignable que par appel direct à l'API.
+- **Validé** : jest (`env.validation.spec.ts`, 7 tests) ; mutation jouée (`debug` → `nope` dans la garde) : 2 rouges, restaurée ; `node --test` web 277/277 (+3) ; lint web 0 erreur ; builds API et web verts ; `next build` sans `NEXT_PUBLIC_API_URL` : échec clair ; avec : succès ; démarrage simulé de `validate` en production (variable manquante + `debug` → erreur claire sans valeur secrète ; config complète → ok).
 
 ---
 
@@ -2070,9 +2075,7 @@ NEXT_PUBLIC_MAPTILER_KEY=
 - **`NEXT_PUBLIC_MAPTILER_KEY`** : une clé de **production distincte**, restreinte au domaine de production **sans `localhost`**, présente **au moment du `next build`** (elle est inlinée). La clé de développement ne part jamais en production.
 - **Pages légales figées** : à partir du premier déploiement, tout changement de fond de `/confidentialite`, `/privacy`, `/conditions` ou `/terms` change `LEGAL_VERSION` (et `CURRENT_TERMS_VERSION`). La modification en place n'est permise qu'avant (§11, entrée R2b).
 
-⚠️ **`apps/web` n'a AUCUN schéma de validation d'environnement.** L'app démarre sans `.env.local` :
-`NEXT_PUBLIC_API_URL` porte un repli codé en dur `'http://localhost:5000'` sur 5 sites
-(`api/auth/{signup,login}/route.ts`, `(app)/admin/verifications/page.tsx`, `lib/auth/{refresh,session}.ts`).
+⚠️ **`apps/web` n'a pas de schéma de validation d'environnement, mais depuis D1 `NEXT_PUBLIC_API_URL` ne se replie plus sur `localhost:5000` qu'en développement** (`lib/api-base-url.ts`) : en production, son absence fait échouer `next build`. Inventaire complet : `docs/deploy/env.md`.
 
 ⚠️ **`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` EXISTE DEPUIS 5.1 — la ligne « n'existe nulle part dans
 le code, ne pas la réintroduire » qui figurait ici est PÉRIMÉE.** Elle est lue à un seul endroit

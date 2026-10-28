@@ -227,6 +227,38 @@ const envSchema = Joi.object({
   // worker log, long after boot would have been the cheap place to catch it.
   .and('SMTP_USER', 'SMTP_PASSWORD');
 
+/**
+ * Variables that carry a localhost default in the schema (fine on a dev
+ * machine) but must be set explicitly in production: a silent default would
+ * send a password-reset link or a Stripe onboarding return to localhost.
+ */
+const REQUIRED_EXPLICITLY_IN_PRODUCTION = [
+  'WEB_APP_BASE_URL',
+  'CONNECT_ONBOARDING_RETURN_URL',
+  'CONNECT_ONBOARDING_REFRESH_URL',
+];
+
+/**
+ * Production-only problems. Names the variable, NEVER its value: the message
+ * ends up in the boot log, and a value can be a secret.
+ */
+export function productionConfigProblems(config: Record<string, unknown>): string[] {
+  if (config.NODE_ENV !== 'production') return [];
+  const problems: string[] = [];
+  for (const name of REQUIRED_EXPLICITLY_IN_PRODUCTION) {
+    const v = config[name];
+    if (typeof v !== 'string' || v.trim() === '') {
+      problems.push(`${name} must be set explicitly when NODE_ENV=production (no localhost default)`);
+    }
+  }
+  if (config.LOG_LEVEL === 'debug') {
+    problems.push(
+      'LOG_LEVEL must not be "debug" when NODE_ENV=production (debug logs include user-entered addresses)',
+    );
+  }
+  return problems;
+}
+
 export function validate(config: Record<string, unknown>): Record<string, unknown> {
   const { error, value } = envSchema.validate(config, {
     abortEarly: false,
@@ -234,9 +266,12 @@ export function validate(config: Record<string, unknown>): Record<string, unknow
     stripUnknown: false,
   });
 
-  if (error) {
-    const messages = error.details.map((d) => d.message).join('\n  ');
-    throw new Error(`Environment validation failed:\n  ${messages}`);
+  const messages = [
+    ...(error ? error.details.map((d) => d.message) : []),
+    ...productionConfigProblems(config),
+  ];
+  if (messages.length > 0) {
+    throw new Error(`Environment validation failed:\n  ${messages.join('\n  ')}`);
   }
 
   return value as Record<string, unknown>;
