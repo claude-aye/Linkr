@@ -43,6 +43,12 @@
   --color-text-muted: #55504d;
   --color-accent: #6e1e2b;
   --color-on-accent: #f8f2ea;
+  /*
+   * Filet des surfaces (R3) : bordure basse du header, haut du pied de page,
+   * contour de « Déconnexion ». Un trait décoratif, pas un contour de composant
+   * qui porterait seul son sens : 1,4:1 sur bg, 1,5:1 sur surface (mesuré).
+   */
+  --color-edge: #d8c7b3;
 }
 
 /*
@@ -56,6 +62,7 @@
   --color-text-muted: #b8ada6;
   --color-accent: #d9828e;
   --color-on-accent: #1a1315;
+  --color-edge: #45343a;
 }
 
 /* L'OS en sombre ne bascule QUE si `data-theme="light"` n'est pas posé. */
@@ -67,7 +74,19 @@
     --color-text-muted: #b8ada6;
     --color-accent: #d9828e;
     --color-on-accent: #1a1315;
+  --color-edge: #45343a;
   }
+}
+
+/*
+ * Hauteur de la RANGÉE DU HAUT du header du shell `(app)` (R3), qui est aussi la
+ * hauteur du header fermé : la bordure basse est une ombre intérieure, sans
+ * place. `nav-menu.tsx` l'applique à cette rangée, jamais au `<header>` entier
+ * (le panneau mobile ouvert serait rogné), et `/recherche` la soustrait de
+ * l'écran pour que la carte le remplisse exactement. Pas un token de thème.
+ */
+:root {
+  --shell-header-h: 4rem;
 }
 
 /* Variables du scaffold create-next-app : seul `body` les lit, elles suivent les tokens. */

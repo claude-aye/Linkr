@@ -215,7 +215,7 @@ export default async function RecherchePage({
     // Approximate locations only (cell centres, CLAUDE.md §13.1 nº 22).
     const mapFeatures = buildProviderFeatureCollection(providers);
     return (
-      <main className="relative flex flex-1 flex-col bg-bg lg:block lg:min-h-[calc(100dvh-4.5rem)]">
+      <main className="relative flex flex-1 flex-col bg-bg lg:block lg:min-h-[calc(100dvh-var(--shell-header-h))]">
         <ResultsSyncProvider>
           {/* Desktop: full-bleed map behind the side panel. Phone: map on top,
               a fixed panel below it (no drag gesture in V1). */}
