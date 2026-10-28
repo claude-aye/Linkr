@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 
 import { getServerApiClient } from '@/lib/auth/session';
 import { tradesOfferedAtLaunch } from '@/lib/catalog/launch-scope';
@@ -7,7 +6,9 @@ import { pickTranslation } from '@/lib/i18n/translations';
 import { getShellCapabilities } from '@/lib/nav/capabilities';
 import type { CategoryOption } from '@/lib/providers/discovery-types';
 
-// Reads the session cookie — always rendered per request.
+import { Landing } from './_components/landing';
+
+// Reads the session cookie — always rendered per request (landing or hub).
 export const dynamic = 'force-dynamic';
 
 /**
@@ -51,10 +52,14 @@ export const dynamic = 'force-dynamic';
 export default async function HubPage() {
   const { user, isProvider } = await getShellCapabilities();
 
-  // Session gate (defence-in-depth — proxy.ts redirects first). `redirect`
-  // throws, so it is called outside any try/catch.
+  // R5a: `/` is public (exact match in `proxy.ts`), so THIS is where an
+  // unrecognised visitor is told apart — no cookie, a dead cookie, or the API
+  // unreachable all resolve to no user and get the public landing, never a
+  // redirect. Without a cookie, `getCurrentUser` makes no API call. A
+  // `redirect('/login')` here would turn « API down » into a loop with the
+  // proxy's signed-in bounce. The hub below is unchanged.
   if (!user) {
-    redirect('/login');
+    return <Landing />;
   }
 
   const firstName =

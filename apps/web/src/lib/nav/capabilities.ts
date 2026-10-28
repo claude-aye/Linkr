@@ -31,8 +31,8 @@ export interface ShellCapabilities {
 export async function getShellCapabilities(): Promise<ShellCapabilities> {
   const user = await getCurrentUser();
   if (!user) {
-    // Unauthenticated (theoretical here — proxy.ts redirects first). No point
-    // probing the provider endpoint without a session.
+    // Unauthenticated: the public home on `/` (R5a), or a dead cookie elsewhere.
+    // No point probing the provider endpoint without a session.
     return { user: null, isProvider: false };
   }
 
