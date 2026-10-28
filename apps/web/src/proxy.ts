@@ -7,6 +7,7 @@ import {
   REFRESH_MAX_AGE,
   baseCookieOptions,
 } from '@/lib/auth/cookies';
+import { decideProxyRoute } from '@/lib/auth/proxy-decision';
 import { refreshTokens } from '@/lib/auth/refresh';
 import { resolveClientIp } from '@/lib/http/client-ip';
 import { LEGAL_PATHS } from '@/lib/legal/legal-pages';
@@ -19,8 +20,8 @@ import { isPortfolioMediaPath } from '@/lib/portfolio/portfolio-media';
  * Node.js runtime — edge is no longer offered for this file). Node runtime is what
  * lets the refresh branch below issue a server-to-server `fetch`. The guard stays
  * dependency-light: it imports ONLY the cookie contract, the refresh helper, the
- * client-IP helper, the legal-pages registry and the portfolio-media predicate
- * (both import-free by contract) —
+ * client-IP helper, the routing decision, the legal-pages registry and the
+ * portfolio-media predicate (the last three import-free by contract) —
  * never `session.ts` (server-only), the api-client, or any crypto lib.
  *
  * Design — presence guard (Option 1): routing is decided ONLY on cookie EXISTENCE.
@@ -41,38 +42,10 @@ import { isPortfolioMediaPath } from '@/lib/portfolio/portfolio-media';
  * redirect-HTML.
  */
 
-// Deny-by-default: every route is protected EXCEPT the ones listed here.
-// `/` is now the authenticated client hub (3.13-PR2) — no longer public.
-// `/signup` is the second auth surface and MUST be listed: under
-// deny-by-default an anonymous visitor — i.e. every visitor who needs it — would
-// otherwise be bounced to `/login`, leaving the page reachable only by an
-// account that already exists. Its BFF (`/api/auth/signup`) needs no entry: it
-// already falls under `PUBLIC_API_PREFIX`.
-const PUBLIC_PAGES = ['/login', '/signup', '/forgot-password', '/reset-password'];
-
-/**
- * Public pages that must ALSO be reachable while signed in.
- *
- * ⚠️ A NARROW EXEMPTION FROM THE BOUNCE BELOW, NOT A FIX OF IT. Step 2 sends an
- * authenticated visitor from any public page to `/dashboard` — a bonus-UX branch
- * that predates this change and stays exactly as it is for `/login` and
- * `/signup`.
- *
- * These two cannot afford it. There is NO authenticated change-password screen
- * in this application (verified: nothing outside the auth module touches a
- * password), so the emailed link is a signed-in user's ONLY route to a new
- * password. Bouncing them to the dashboard would remove their sole recourse in
- * the exact scenario where they need it — a live session on a device they no
- * longer trust, or a session that outlived their memory of the password. It
- * would also make the link behave differently depending on whether the reader
- * happens to be signed in somewhere, which is not a distinction a mailed link
- * should have.
- *
- * The day an authenticated change-password screen exists, this list is worth
- * revisiting; until then it is load-bearing.
- */
-const PUBLIC_PAGES_ALLOWED_WHILE_SIGNED_IN = ['/forgot-password', '/reset-password'];
-const PUBLIC_API_PREFIX = '/api/auth';
+// Deny-by-default: every route is protected EXCEPT the ones `decideProxyRoute`
+// lets through (`lib/auth/proxy-decision.ts`, import-free and unit-tested). The
+// public-page lists, the `/` home branch (R5a) and the signed-in bounce all live
+// there; this file only turns a decision into a response.
 const API_PREFIX = '/api/';
 
 // Not meant for direct display — the front maps by HTTP code alone (locked since
@@ -81,61 +54,33 @@ const UNAUTHENTICATED_MESSAGE = 'Votre session a expiré. Veuillez vous reconnec
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasAccess = request.cookies.has(ACCESS_COOKIE);
-
-  // 1. Auth BFF endpoints: always let through (login/logout/refresh). Guarding
-  //    them would break sign-in itself — a classic self-lockout.
-  if (pathname.startsWith(PUBLIC_API_PREFIX)) {
-    return NextResponse.next();
-  }
-
-  // 1b. Legal pages (PR L1): ALWAYS let through, signed in or not.
-  //     ⚠️ They are deliberately NOT in `PUBLIC_PAGES`: that branch bounces a
-  //     signed-in visitor to `/dashboard`, so a logged-in user clicking
-  //     « Confidentialité » in the footer would never reach the policy. Exact
-  //     match, like `PUBLIC_PAGES`. No refresh attempted — these pages read no
-  //     session.
-  if (LEGAL_PATHS.includes(pathname)) {
-    return NextResponse.next();
-  }
-
-  // 1c. Portfolio images (P1): ALWAYS let through, signed in or not. They are
-  //     public — the API route is `@Public()` — and every `<img>` of a public
-  //     gallery points here. Under deny-by-default an anonymous visitor would
-  //     otherwise be redirected to `/login`, and an `<img>` that receives an HTML
-  //     page shows nothing. Exactly `/media/portfolio/{one segment}`; the route
-  //     itself answers 404 to anything that is not a uuid. No refresh attempted
-  //     — the relay reads no session.
-  if (isPortfolioMediaPath(pathname)) {
-    return NextResponse.next();
-  }
-
-  // 2. Public pages. We NEVER refresh here — public pages only care about the
-  //    access cookie's presence (a bonus-UX bounce to the dashboard).
-  if (PUBLIC_PAGES.includes(pathname)) {
-    if (hasAccess && !PUBLIC_PAGES_ALLOWED_WHILE_SIGNED_IN.includes(pathname)) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
-    return NextResponse.next();
-  }
-
-  // 3. Protected route (deny-by-default). Every denial below goes through
-  //    `denyUnauthenticated`, which alone decides 401-JSON (`/api/*`) vs
-  //    redirect-HTML (pages).
-  //    3a. Access cookie present → let through (unchanged; page does real auth).
-  if (hasAccess) {
-    return NextResponse.next();
-  }
-
-  //    3b. Access gone but refresh still present → attempt a silent refresh.
   const refreshValue = request.cookies.get(REFRESH_COOKIE)?.value;
-  if (refreshValue) {
-    return attemptRefresh(request, refreshValue);
-  }
 
-  //    3c. Neither cookie → genuinely unauthenticated. Nothing to purge (this
-  //        exit never carried a `Set-Cookie`).
-  return denyUnauthenticated(request, { clearCookies: false });
+  const decision = decideProxyRoute({
+    pathname,
+    hasAccess: request.cookies.has(ACCESS_COOKIE),
+    hasRefresh: Boolean(refreshValue),
+    // Legal pages (PR L1) and portfolio images (P1): always through, signed in
+    // or not, no refresh attempted. ⚠️ The legal pages are deliberately NOT
+    // public pages: that branch bounces a signed-in visitor away, so a
+    // logged-in user clicking « Confidentialité » would never reach the policy.
+    // Portfolio images are public (the API route is `@Public()`); an `<img>`
+    // that received the `/login` page would show nothing.
+    isAlwaysOpen: LEGAL_PATHS.includes(pathname) || isPortfolioMediaPath(pathname),
+  });
+
+  switch (decision.kind) {
+    case 'next':
+      return NextResponse.next();
+    case 'redirect':
+      return NextResponse.redirect(new URL(decision.to, request.url));
+    case 'refresh':
+      // `refreshValue` is set whenever the decision is `refresh`.
+      return attemptRefresh(request, refreshValue as string, decision.onFailure);
+    case 'deny':
+      // Neither cookie → genuinely unauthenticated. Nothing to purge.
+      return denyUnauthenticated(request, { clearCookies: false });
+  }
 }
 
 /**
@@ -176,19 +121,34 @@ function denyUnauthenticated(
     : NextResponse.redirect(new URL('/login', request.url));
 
   if (clearCookies) {
-    response.cookies.delete({ name: ACCESS_COOKIE, path: baseCookieOptions.path });
-    response.cookies.delete({ name: REFRESH_COOKIE, path: baseCookieOptions.path });
+    clearAuthCookies(response);
   }
 
   return response;
 }
 
+/** Drop both auth cookies, on the path they were posed with (see above). */
+function clearAuthCookies(response: NextResponse) {
+  response.cookies.delete({ name: ACCESS_COOKIE, path: baseCookieOptions.path });
+  response.cookies.delete({ name: REFRESH_COOKIE, path: baseCookieOptions.path });
+}
+
 /**
  * Exchange the refresh cookie for a fresh pair, then either:
  *  - SUCCESS → R2 double-write (request header rewrite + response Set-Cookie), or
- *  - FAILURE → deny-clear (fail-safe strict, both cookies dropped).
+ *  - FAILURE → both cookies dropped, then `onFailure`:
+ *      `deny` → deny-clear (fail-safe strict), every protected route;
+ *      `pass` → let the request through WITHOUT redirect — the home `/` only
+ *               (R5a). The request still carries the dead refresh cookie and no
+ *               access cookie, so the page resolves no user and renders the
+ *               landing. A redirect here would send a returning visitor with a
+ *               stale cookie to `/login` instead of the public home.
  */
-async function attemptRefresh(request: NextRequest, refreshToken: string) {
+async function attemptRefresh(
+  request: NextRequest,
+  refreshToken: string,
+  onFailure: 'deny' | 'pass',
+) {
   // The visitor's address rides along, same as the auth relays do — this hop is
   // server-to-server too, so without it the API would meter this server.
   const result = await refreshTokens(refreshToken, resolveClientIp(request));
@@ -198,6 +158,11 @@ async function attemptRefresh(request: NextRequest, refreshToken: string) {
   // The decision to refresh, the rotation and the R2 double-write below are
   // untouched — only the SHAPE of this failure response varies (see the helper).
   if (!result.ok) {
+    if (onFailure === 'pass') {
+      const response = NextResponse.next();
+      clearAuthCookies(response);
+      return response;
+    }
     return denyUnauthenticated(request, { clearCookies: true });
   }
 

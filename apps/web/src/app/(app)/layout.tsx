@@ -12,9 +12,10 @@ import { Nav } from './nav';
  * Component (no `'use client'`) that resolves `getShellCapabilities()` ONCE per
  * request and renders the role-conditional `<Nav>` above the page.
  *
- * If there is no user (theoretical — `proxy.ts` redirects unauthenticated
- * requests before we get here), render `children` WITHOUT the nav rather than
- * crash: the page's own session gate then handles the redirect.
+ * If there is no user, render `children` WITHOUT the nav. That is the normal
+ * case on `/` since R5a (the public home renders its own screen); on every other
+ * `(app)` page `proxy.ts` redirects first, and the page's own session gate
+ * handles a dead cookie.
  *
  * The legal footer (PR L1) closes every page, with or without the nav: the
  * privacy policy and the terms must stay one click away from any screen.
