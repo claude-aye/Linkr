@@ -32,10 +32,17 @@ export function SearchForm({
   categories,
   selectedCategoryId,
   selectedAddress,
+  embedded = false,
 }: {
   categories: CategoryChoice[];
   selectedCategoryId?: string;
   selectedAddress?: string;
+  /**
+   * R2b: in the results-with-map layout the form sits INSIDE the frosted side
+   * panel, which is then the screen's one `backdrop-filter`. Embedded, the form
+   * drops its own frosted shell so the screen never carries two.
+   */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   // Initialise from the URL so the controls stay coherent after a search
@@ -120,8 +127,15 @@ export function SearchForm({
   return (
     // The screen's ONE frosted layer (`backdrop-blur`). Nothing else on
     // `/recherche` may carry a `backdrop-filter`: the result cards scroll, and a
-    // blur on a scrolling list costs every frame on a phone.
-    <div className="rounded-2xl border border-on-accent/70 bg-surface p-5 shadow-xl shadow-accent/10 backdrop-blur-xl sm:p-6">
+    // blur on a scrolling list costs every frame on a phone. Embedded in the
+    // map layout's side panel (R2b), the panel carries it instead.
+    <div
+      className={
+        embedded
+          ? ''
+          : 'rounded-2xl border border-on-accent/70 bg-surface p-5 shadow-xl shadow-accent/10 backdrop-blur-xl sm:p-6'
+      }
+    >
       {/* Trade — chosen FIRST; both location methods stay inert until it is. */}
       <div>
         <label
@@ -171,7 +185,12 @@ export function SearchForm({
         </div>
 
         {/* Address method — submit fires geocoding; Enter in the field submits. */}
-        <form onSubmit={submitAddress} className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        {/* Embedded in the ~450px side panel, the field and its button stay
+            stacked: side by side, the field would shrink to a few characters. */}
+        <form
+          onSubmit={submitAddress}
+          className={embedded ? 'flex flex-col gap-2' : 'flex flex-col gap-2 sm:flex-row sm:items-end'}
+        >
           <div className="flex-1">
             <label
               htmlFor="address"
