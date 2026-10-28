@@ -20,7 +20,8 @@ obligatoire. Les auteurs sont crédités ici par courtoisie.
 Pour chaque image : recadrage (portrait 2:3 du hero pour téléphone, cartes
 4:5 qui gardent le geste et écartent visages, texte lisible et marques),
 redimensionnement, conversion en sRGB, encodage AVIF (qualité 50) et WebP
-(qualité 72), **suppression de toutes les métadonnées** (EXIF, GPS, XMP, IPTC,
+(qualité 72) — sauf `hero-portrait-1536` (tablettes portrait, téléphones à
+densité 3), encodé en AVIF 40 / WebP 50 pour tenir le budget —, **suppression de toutes les métadonnées** (EXIF, GPS, XMP, IPTC,
 profil ICC). Les recadrages exacts sont dans le script.
 
 ## Régénération

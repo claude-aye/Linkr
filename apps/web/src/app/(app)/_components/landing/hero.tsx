@@ -38,8 +38,8 @@ export function Hero() {
           srcSet={srcSet('hero-paysage', [1280, 1920], 'webp')}
           sizes="100vw"
         />
-        <source type="image/avif" srcSet={srcSet('hero-portrait', [640, 828], 'avif')} sizes="100vw" />
-        <source type="image/webp" srcSet={srcSet('hero-portrait', [640, 828], 'webp')} sizes="100vw" />
+        <source type="image/avif" srcSet={srcSet('hero-portrait', [640, 828, 1536], 'avif')} sizes="100vw" />
+        <source type="image/webp" srcSet={srcSet('hero-portrait', [640, 828, 1536], 'webp')} sizes="100vw" />
         <img
           src={imageUrl('hero-portrait', 828, 'webp')}
           alt=""

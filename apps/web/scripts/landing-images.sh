@@ -41,6 +41,14 @@ render hero.jpg hero-paysage 1280 853
 render hero.jpg hero-paysage 1920 1280
 render hero.jpg hero-portrait 640 960 0 904 1559 2338
 render hero.jpg hero-portrait 828 1242 0 904 1559 2338
+# 1536 px: portrait tablets and density-3 phones. Lower quality on purpose:
+# at q50/q72 this file weighs 203 KB (AVIF), at q40/q50 46 KB / 160 KB, with
+# no visible loss at that density under the hero veil.
+AVIF=(-f avif -q 40 --effort 6)
+WEBP=(-f webp -q 50 --effort 6)
+render hero.jpg hero-portrait 1536 2304 0 904 1559 2338
+AVIF=(-f avif -q 50 --effort 6)
+WEBP=(-f webp -q 72 --effort 6)
 
 # Trade cards, 4:5. Each crop keeps the gesture and leaves out faces,
 # readable text and brand marks.
