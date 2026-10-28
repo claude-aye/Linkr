@@ -24,7 +24,7 @@ import { buttonBase, focusRing, focusRingOnPhoto } from './styles';
  */
 export function Hero() {
   return (
-    <section className="relative isolate flex min-h-svh flex-col justify-end overflow-hidden bg-bordeaux">
+    <section className="relative isolate flex min-h-[calc(100svh-var(--trial-banner-h))] flex-col justify-end overflow-hidden bg-bordeaux">
       <picture>
         <source
           media="(min-aspect-ratio: 1/1)"
