@@ -7,6 +7,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
+import {
+  authButtonClass,
+  authCardClass,
+  authErrorBannerClass,
+  authFieldClass,
+  authFooterTextClass,
+  authLabelClass,
+  authStandaloneLinkClass,
+  authSubtitleClass,
+  authTitleClass,
+} from '../_styles';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -53,103 +64,97 @@ export default function LoginPage() {
     }
   }
 
-  const fieldClass =
-    'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-  const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <section className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Connexion
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Accédez à votre portail Linkr.
+    <section className={authCardClass}>
+      <header className="mb-6">
+        <h1 className={authTitleClass}>
+          Connexion
+        </h1>
+        <p className={authSubtitleClass}>
+          Accédez à votre portail Linkr.
+        </p>
+      </header>
+
+      {/* Shown after a successful reset (A-2.21: no auto-login, so the user
+          lands here and needs to be told the change worked). Suspense is
+          required by `useSearchParams()` and is what keeps /login static. */}
+      <Suspense fallback={null}>
+        <ResetSuccessNotice />
+      </Suspense>
+
+      {/* `method="post"` n'est pas décoratif : sans lui, une soumission qui
+          part avant l'hydratation encode les champs dans la query string.
+          Voir la règle no-restricted-syntax du bloc (auth) dans
+          eslint.config.mjs. */}
+      <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div>
+          <label htmlFor="email" className={authLabelClass}>
+            Courriel
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className={authFieldClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={authLabelClass}>
+            Mot de passe
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className={authFieldClass}
+          />
+        </div>
+
+        {error && (
+          <p
+            role="alert"
+            className={authErrorBannerClass}
+          >
+            {error}
           </p>
-        </header>
+        )}
 
-        {/* Shown after a successful reset (A-2.21: no auto-login, so the user
-            lands here and needs to be told the change worked). Suspense is
-            required by `useSearchParams()` and is what keeps /login static. */}
-        <Suspense fallback={null}>
-          <ResetSuccessNotice />
-        </Suspense>
+        <button
+          type="submit"
+          disabled={submitting}
+          className={authButtonClass}
+        >
+          {submitting ? 'Connexion…' : 'Se connecter'}
+        </button>
+      </form>
 
-        {/* `method="post"` n'est pas décoratif : sans lui, une soumission qui
-            part avant l'hydratation encode les champs dans la query string.
-            Voir la règle no-restricted-syntax du bloc (auth) dans
-            eslint.config.mjs. */}
-        <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <div>
-            <label htmlFor="email" className={labelClass}>
-              Courriel
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={fieldClass}
-            />
-          </div>
+      <p className={authFooterTextClass}>
+        <Link
+          href="/forgot-password"
+          className={authStandaloneLinkClass}
+        >
+          Mot de passe oublié?
+        </Link>
+      </p>
 
-          <div>
-            <label htmlFor="password" className={labelClass}>
-              Mot de passe
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className={fieldClass}
-            />
-          </div>
-
-          {error && (
-            <p
-              role="alert"
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-            >
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {submitting ? 'Connexion…' : 'Se connecter'}
-          </button>
-        </form>
-
-        <p className="mt-4 text-center text-sm">
-          <Link
-            href="/forgot-password"
-            className="font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
-          >
-            Mot de passe oublié?
-          </Link>
-        </p>
-
-        <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          Vous n’avez pas de compte?{' '}
-          <Link
-            href="/signup"
-            className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
-          >
-            Créer un compte
-          </Link>
-        </p>
-      </section>
-    </main>
+      <p className={authFooterTextClass}>
+        Vous n’avez pas de compte?{' '}
+        <Link
+          href="/signup"
+          className={authStandaloneLinkClass}
+        >
+          Créer un compte
+        </Link>
+      </p>
+    </section>
   );
 }

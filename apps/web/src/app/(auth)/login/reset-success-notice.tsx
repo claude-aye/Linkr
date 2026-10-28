@@ -2,6 +2,8 @@
 
 import { useSearchParams } from 'next/navigation';
 
+import { authSuccessBannerClass } from '../_styles';
+
 /**
  * "Your password was changed" — shown on the sign-in page after a reset.
  *
@@ -29,7 +31,7 @@ export function ResetSuccessNotice() {
   return (
     <p
       role="status"
-      className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+      className={authSuccessBannerClass}
     >
       Votre mot de passe a été changé. Connectez-vous avec votre nouveau mot de
       passe.

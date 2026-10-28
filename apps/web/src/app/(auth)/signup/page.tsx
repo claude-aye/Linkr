@@ -18,6 +18,21 @@ import { useRouter } from 'next/navigation';
  */
 
 import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
+import {
+  authButtonClass,
+  authCardClass,
+  authCheckboxClass,
+  authCheckboxErrorClass,
+  authErrorBannerClass,
+  authFieldClass,
+  authFooterTextClass,
+  authHintClass,
+  authInlineLinkClass,
+  authLabelClass,
+  authStandaloneLinkClass,
+  authSubtitleClass,
+  authTitleClass,
+} from '../_styles';
 
 /** The 409 branch is the only one that offers a way out, hence the flag. */
 type FormError = { text: string; withLoginLink: boolean };
@@ -152,198 +167,192 @@ export default function SignupPage() {
     }
   }
 
-  const fieldClass =
-    'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-  const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <section className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Créer un compte
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Rejoignez Linkr pour réserver un service ou en offrir un.
+    <section className={authCardClass}>
+      <header className="mb-6">
+        <h1 className={authTitleClass}>
+          Créer un compte
+        </h1>
+        <p className={authSubtitleClass}>
+          Rejoignez Linkr pour réserver un service ou en offrir un.
+        </p>
+      </header>
+
+      {/* `method="post"` n'est pas décoratif : sans lui, une soumission qui
+          part avant l'hydratation encode les champs dans la query string.
+          Voir la règle no-restricted-syntax du bloc (auth) dans
+          eslint.config.mjs. */}
+      <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div>
+          <label htmlFor="firstName" className={authLabelClass}>
+            Prénom
+          </label>
+          <input
+            id="firstName"
+            name="firstName"
+            type="text"
+            autoComplete="given-name"
+            required
+            maxLength={NAME_MAX}
+            value={firstName}
+            onChange={(event) => setFirstName(event.target.value)}
+            className={authFieldClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="lastName" className={authLabelClass}>
+            Nom
+          </label>
+          <input
+            id="lastName"
+            name="lastName"
+            type="text"
+            autoComplete="family-name"
+            required
+            maxLength={NAME_MAX}
+            value={lastName}
+            onChange={(event) => setLastName(event.target.value)}
+            className={authFieldClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="email" className={authLabelClass}>
+            Courriel
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className={authFieldClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={authLabelClass}>
+            Mot de passe
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            // `new-password` and NOT `current-password`: it tells password
+            // managers to offer a generated one instead of autofilling an
+            // existing credential.
+            autoComplete="new-password"
+            required
+            maxLength={PASSWORD_MAX}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className={authFieldClass}
+            aria-describedby="password-hint"
+          />
+          <p
+            id="password-hint"
+            className={authHintClass}
+          >
+            Au moins {PASSWORD_MIN} caractères.
           </p>
-        </header>
+        </div>
 
-        {/* `method="post"` n'est pas décoratif : sans lui, une soumission qui
-            part avant l'hydratation encode les champs dans la query string.
-            Voir la règle no-restricted-syntax du bloc (auth) dans
-            eslint.config.mjs. */}
-        <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <div>
-            <label htmlFor="firstName" className={labelClass}>
-              Prénom
-            </label>
+        {/* Consent (PR L2). The whole row is the label, so the tap target is
+            ≥ 44px (`min-h-11`), not just the 20px box. The two links open a
+            NEW TAB so reading the texts never loses what was typed; a click
+            on a link inside a label follows the link and does not toggle the
+            box. */}
+        <div>
+          <label
+            htmlFor="acceptTerms"
+            className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm text-text"
+          >
             <input
-              id="firstName"
-              name="firstName"
-              type="text"
-              autoComplete="given-name"
-              required
-              maxLength={NAME_MAX}
-              value={firstName}
-              onChange={(event) => setFirstName(event.target.value)}
-              className={fieldClass}
+              ref={termsRef}
+              id="acceptTerms"
+              name="acceptTerms"
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={(event) => {
+                setAcceptTerms(event.target.checked);
+                if (event.target.checked) setTermsError(false);
+              }}
+              aria-invalid={termsError}
+              aria-describedby={termsError ? 'acceptTerms-error' : undefined}
+              className={authCheckboxClass}
             />
-          </div>
-
-          <div>
-            <label htmlFor="lastName" className={labelClass}>
-              Nom
-            </label>
-            <input
-              id="lastName"
-              name="lastName"
-              type="text"
-              autoComplete="family-name"
-              required
-              maxLength={NAME_MAX}
-              value={lastName}
-              onChange={(event) => setLastName(event.target.value)}
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="email" className={labelClass}>
-              Courriel
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className={labelClass}>
-              Mot de passe
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              // `new-password` and NOT `current-password`: it tells password
-              // managers to offer a generated one instead of autofilling an
-              // existing credential.
-              autoComplete="new-password"
-              required
-              maxLength={PASSWORD_MAX}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className={fieldClass}
-              aria-describedby="password-hint"
-            />
-            <p
-              id="password-hint"
-              className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
-            >
-              Au moins {PASSWORD_MIN} caractères.
-            </p>
-          </div>
-
-          {/* Consent (PR L2). The whole row is the label, so the tap target is
-              ≥ 44px (`min-h-11`), not just the 20px box. The two links open a
-              NEW TAB so reading the texts never loses what was typed; a click
-              on a link inside a label follows the link and does not toggle the
-              box. */}
-          <div>
-            <label
-              htmlFor="acceptTerms"
-              className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm text-zinc-700 dark:text-zinc-300"
-            >
-              <input
-                ref={termsRef}
-                id="acceptTerms"
-                name="acceptTerms"
-                type="checkbox"
-                checked={acceptTerms}
-                onChange={(event) => {
-                  setAcceptTerms(event.target.checked);
-                  if (event.target.checked) setTermsError(false);
-                }}
-                aria-invalid={termsError}
-                aria-describedby={termsError ? 'acceptTerms-error' : undefined}
-                className="mt-0.5 h-5 w-5 shrink-0 rounded border-zinc-300 accent-zinc-900 dark:border-zinc-700 dark:accent-zinc-50"
-              />
-              <span>
-                J&apos;ai 18 ans ou plus et j&apos;accepte les{' '}
-                <Link
-                  href="/conditions"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-50"
-                >
-                  conditions d&apos;utilisation
-                </Link>{' '}
-                et la{' '}
-                <Link
-                  href="/confidentialite"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-50"
-                >
-                  politique de confidentialité
-                </Link>
-                .
-              </span>
-            </label>
-            {termsError && (
-              <p
-                id="acceptTerms-error"
-                className="mt-1 text-sm text-red-700 dark:text-red-400"
+            <span>
+              J&apos;ai 18 ans ou plus et j&apos;accepte les{' '}
+              <Link
+                href="/conditions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${authInlineLinkClass} text-accent`}
               >
-                Veuillez cocher cette case pour créer votre compte.
-              </p>
-            )}
-          </div>
-
-          {/* `role="alert"` is the app-wide error convention (implicitly an
-              assertive live region) — same markup as the sign-in page. */}
-          {error && (
+                conditions d&apos;utilisation
+              </Link>{' '}
+              et la{' '}
+              <Link
+                href="/confidentialite"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${authInlineLinkClass} text-accent`}
+              >
+                politique de confidentialité
+              </Link>
+              .
+            </span>
+          </label>
+          {termsError && (
             <p
-              role="alert"
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              id="acceptTerms-error"
+              className={authCheckboxErrorClass}
             >
-              {error.text}
-              {error.withLoginLink && (
-                <>
-                  {' '}
-                  <Link href="/login" className="font-medium underline underline-offset-2">
-                    Connectez-vous.
-                  </Link>
-                </>
-              )}
+              Veuillez cocher cette case pour créer votre compte.
             </p>
           )}
+        </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        {/* `role="alert"` is the app-wide error convention (implicitly an
+            assertive live region) — same markup as the sign-in page. */}
+        {error && (
+          <p
+            role="alert"
+            className={authErrorBannerClass}
           >
-            {submitting ? 'Création…' : 'Créer mon compte'}
-          </button>
-        </form>
+            {error.text}
+            {error.withLoginLink && (
+              <>
+                {' '}
+                <Link href="/login" className={authInlineLinkClass}>
+                  Connectez-vous.
+                </Link>
+              </>
+            )}
+          </p>
+        )}
 
-        <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          Vous avez déjà un compte?{' '}
-          <Link
-            href="/login"
-            className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
-          >
-            Se connecter
-          </Link>
-        </p>
-      </section>
-    </main>
+        <button
+          type="submit"
+          disabled={submitting}
+          className={authButtonClass}
+        >
+          {submitting ? 'Création…' : 'Créer mon compte'}
+        </button>
+      </form>
+
+      <p className={authFooterTextClass}>
+        Vous avez déjà un compte?{' '}
+        <Link
+          href="/login"
+          className={authStandaloneLinkClass}
+        >
+          Se connecter
+        </Link>
+      </p>
+    </section>
   );
 }

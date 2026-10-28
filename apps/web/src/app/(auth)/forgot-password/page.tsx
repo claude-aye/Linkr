@@ -4,6 +4,17 @@ import { type FormEvent, useState } from 'react';
 import Link from 'next/link';
 
 import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
+import {
+  authButtonClass,
+  authCardClass,
+  authErrorBannerClass,
+  authFieldClass,
+  authFooterTextClass,
+  authLabelClass,
+  authStandaloneLinkClass,
+  authSubtitleClass,
+  authTitleClass,
+} from '../_styles';
 
 /**
  * Request a password reset link (`/forgot-password`).
@@ -72,101 +83,95 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  const fieldClass =
-    'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-  const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <section className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        {submitted ? (
-          <>
-            <header className="mb-4">
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                Vérifiez vos courriels
-              </h1>
-            </header>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Si un compte existe pour <strong>{email.trim()}</strong>, vous
-              recevrez un lien de réinitialisation dans quelques instants.
+    <section className={authCardClass}>
+      {submitted ? (
+        <>
+          <header className="mb-4">
+            <h1 className={authTitleClass}>
+              Vérifiez vos courriels
+            </h1>
+          </header>
+          <p className="text-sm text-text">
+            Si un compte existe pour <strong>{email.trim()}</strong>, vous
+            recevrez un lien de réinitialisation dans quelques instants.
+          </p>
+          <p className="mt-3 text-sm text-text-muted">
+            Le lien est valide 60 minutes et ne peut servir qu&apos;une seule
+            fois. Pensez à regarder dans vos indésirables.
+          </p>
+          <p className={authFooterTextClass}>
+            <Link
+              href="/login"
+              className={authStandaloneLinkClass}
+            >
+              Retour à la connexion
+            </Link>
+          </p>
+        </>
+      ) : (
+        <>
+          <header className="mb-6">
+            <h1 className={authTitleClass}>
+              Mot de passe oublié
+            </h1>
+            <p className={authSubtitleClass}>
+              Saisissez votre courriel : nous vous enverrons un lien pour
+              choisir un nouveau mot de passe.
             </p>
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-              Le lien est valide 60 minutes et ne peut servir qu&apos;une seule
-              fois. Pensez à regarder dans vos indésirables.
-            </p>
-            <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              <Link
-                href="/login"
-                className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+          </header>
+
+          {/* `method="post"` n'est pas décoratif : sans lui, une soumission
+              qui part avant l'hydratation encode les champs dans la query
+              string. Voir la règle no-restricted-syntax du bloc (auth) dans
+              eslint.config.mjs. */}
+          <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
+            <div>
+              <label htmlFor="email" className={authLabelClass}>
+                Courriel
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                maxLength={EMAIL_MAX}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className={authFieldClass}
+              />
+            </div>
+
+            {error && (
+              <p
+                role="alert"
+                className={authErrorBannerClass}
               >
-                Retour à la connexion
-              </Link>
-            </p>
-          </>
-        ) : (
-          <>
-            <header className="mb-6">
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                Mot de passe oublié
-              </h1>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Saisissez votre courriel : nous vous enverrons un lien pour
-                choisir un nouveau mot de passe.
+                {error}
               </p>
-            </header>
+            )}
 
-            {/* `method="post"` n'est pas décoratif : sans lui, une soumission
-                qui part avant l'hydratation encode les champs dans la query
-                string. Voir la règle no-restricted-syntax du bloc (auth) dans
-                eslint.config.mjs. */}
-            <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div>
-                <label htmlFor="email" className={labelClass}>
-                  Courriel
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  maxLength={EMAIL_MAX}
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className={fieldClass}
-                />
-              </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className={authButtonClass}
+            >
+              {submitting ? 'Envoi…' : 'Envoyer le lien'}
+            </button>
+          </form>
 
-              {error && (
-                <p
-                  role="alert"
-                  className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-                >
-                  {error}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-              >
-                {submitting ? 'Envoi…' : 'Envoyer le lien'}
-              </button>
-            </form>
-
-            <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              Vous vous en souvenez?{' '}
-              <Link
-                href="/login"
-                className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
-              >
-                Se connecter
-              </Link>
-            </p>
-          </>
-        )}
-      </section>
-    </main>
+          <p className={authFooterTextClass}>
+            Vous vous en souvenez?{' '}
+            <Link
+              href="/login"
+              className={authStandaloneLinkClass}
+            >
+              Se connecter
+            </Link>
+          </p>
+        </>
+      )}
+    </section>
   );
 }
