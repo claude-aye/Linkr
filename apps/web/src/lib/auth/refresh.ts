@@ -31,7 +31,12 @@
  * has no request to resolve it from.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+import { resolveApiBaseUrl } from '@/lib/api-base-url';
+
+const API_BASE_URL = resolveApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_URL,
+  process.env.NODE_ENV,
+);
 
 export type RefreshResult =
   | { ok: true; accessToken: string; refreshToken: string }

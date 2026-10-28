@@ -6,7 +6,12 @@ import { createApiClient } from '@linkr/api-client';
 import { ACCESS_COOKIE } from './cookies';
 import type { AuthUser } from './types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+import { resolveApiBaseUrl } from '@/lib/api-base-url';
+
+const API_BASE_URL = resolveApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_URL,
+  process.env.NODE_ENV,
+);
 
 /**
  * An `@linkr/api-client` instance authenticated by the httpOnly access cookie,
