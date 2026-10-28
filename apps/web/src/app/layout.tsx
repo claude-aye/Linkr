@@ -10,6 +10,8 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  // Inutile sur les pages publiques : chargée seulement quand un texte la lit.
+  preload: false,
 });
 
 /*
@@ -27,8 +29,11 @@ const parisienne = Parisienne({
 });
 
 export const metadata: Metadata = {
-  title: "Linkr — Portail web",
-  description: "Portail web Linkr (Next.js) — scaffold 3.11a",
+  title: { default: "Linkr", template: "%s · Linkr" },
+  description:
+    "De la coiffure à domicile aux travaux spécialisés, trouvez le bon pro dans votre quartier.",
+  // Version d'essai : aucune indexation (voir aussi robots.ts et next.config.ts).
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
@@ -47,7 +52,19 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${parisienne.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Hauteur = --trial-banner-h (globals.css) : une seule ligne, à toutes les largeurs. */}
+        <p className="flex h-[var(--trial-banner-h)] shrink-0 items-center justify-center overflow-hidden whitespace-nowrap bg-accent px-4 text-xs text-on-accent">
+          <span className="sm:hidden">
+            Version d&apos;essai · Paiements en mode test
+          </span>
+          <span className="hidden sm:inline">
+            Version d&apos;essai · Les paiements sont en mode test : aucune somme
+            réelle n&apos;est prélevée.
+          </span>
+        </p>
+        {children}
+      </body>
     </html>
   );
 }

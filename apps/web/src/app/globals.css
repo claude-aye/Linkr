@@ -87,6 +87,8 @@
  */
 :root {
   --shell-header-h: 4rem;
+  /* Bandeau « Version d'essai » (layout racine). À retrancher, avec --shell-header-h, de tout calcul basé sur 100dvh/100svh. */
+  --trial-banner-h: 2rem;
 }
 
 /* Variables du scaffold create-next-app : seul `body` les lit, elles suivent les tokens. */

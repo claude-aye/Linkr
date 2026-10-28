@@ -28,6 +28,11 @@ const nextConfig: NextConfig = {
    */
   async headers() {
     return [
+      // Version d'essai : aucune indexation, médias compris (/media/*, /images/*).
+      {
+        source: '/:path*',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
       {
         source: '/reset-password',
         headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
