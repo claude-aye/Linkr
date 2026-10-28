@@ -3,6 +3,19 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import {
+  authButtonClass,
+  authCardClass,
+  authErrorBannerClass,
+  authFieldClass,
+  authFooterTextClass,
+  authHintClass,
+  authInlineLinkClass,
+  authLabelClass,
+  authStandaloneLinkClass,
+  authSubtitleClass,
+  authTitleClass,
+} from '../_styles';
 
 /**
  * The reset form. Receives the token as a prop — see the page's docblock.
@@ -107,94 +120,88 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
     }
   }
 
-  const fieldClass =
-    'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-  const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <section className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Nouveau mot de passe
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Choisissez un nouveau mot de passe pour votre compte Linkr.
-          </p>
-        </header>
+    <section className={authCardClass}>
+      <header className="mb-6">
+        <h1 className={authTitleClass}>
+          Nouveau mot de passe
+        </h1>
+        <p className={authSubtitleClass}>
+          Choisissez un nouveau mot de passe pour votre compte Linkr.
+        </p>
+      </header>
 
-        {token === null ? (
-          <>
+      {token === null ? (
+        <>
+          <p
+            role="alert"
+            className={authErrorBannerClass}
+          >
+            Ce lien est incomplet. Veuillez demander un nouveau lien de
+            réinitialisation.
+          </p>
+          <p className={authFooterTextClass}>
+            <Link
+              href="/forgot-password"
+              className={authStandaloneLinkClass}
+            >
+              Demander un nouveau lien
+            </Link>
+          </p>
+        </>
+      ) : (
+        <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div>
+            <label htmlFor="password" className={authLabelClass}>
+              Nouveau mot de passe
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              // `new-password`, so managers offer a generated one instead of
+              // autofilling the credential being replaced.
+              autoComplete="new-password"
+              required
+              minLength={PASSWORD_MIN}
+              maxLength={PASSWORD_MAX}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className={authFieldClass}
+              aria-describedby="password-hint"
+            />
+            <p
+              id="password-hint"
+              className={authHintClass}
+            >
+              Au moins {PASSWORD_MIN} caractères.
+            </p>
+          </div>
+
+          {error && (
             <p
               role="alert"
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              className={authErrorBannerClass}
             >
-              Ce lien est incomplet. Veuillez demander un nouveau lien de
-              réinitialisation.
-            </p>
-            <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              {error}{' '}
               <Link
                 href="/forgot-password"
-                className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+                className={authInlineLinkClass}
               >
-                Demander un nouveau lien
+                Demander un nouveau lien.
               </Link>
             </p>
-          </>
-        ) : (
-          <form method="post" onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div>
-              <label htmlFor="password" className={labelClass}>
-                Nouveau mot de passe
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                // `new-password`, so managers offer a generated one instead of
-                // autofilling the credential being replaced.
-                autoComplete="new-password"
-                required
-                minLength={PASSWORD_MIN}
-                maxLength={PASSWORD_MAX}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className={fieldClass}
-                aria-describedby="password-hint"
-              />
-              <p
-                id="password-hint"
-                className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
-              >
-                Au moins {PASSWORD_MIN} caractères.
-              </p>
-            </div>
+          )}
 
-            {error && (
-              <p
-                role="alert"
-                className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-              >
-                {error}{' '}
-                <Link
-                  href="/forgot-password"
-                  className="font-medium underline underline-offset-2"
-                >
-                  Demander un nouveau lien.
-                </Link>
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              {submitting ? 'Enregistrement…' : 'Changer mon mot de passe'}
-            </button>
-          </form>
-        )}
-      </section>
-    </main>
+          <button
+            type="submit"
+            disabled={submitting}
+            className={authButtonClass}
+          >
+            {submitting ? 'Enregistrement…' : 'Changer mon mot de passe'}
+          </button>
+        </form>
+      )}
+    </section>
   );
 }
