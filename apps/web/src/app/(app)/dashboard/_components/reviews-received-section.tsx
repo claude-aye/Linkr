@@ -35,9 +35,9 @@ const RESPONSE_MAX = 2000;
 
 function Stars({ rating }: { rating: number }) {
   return (
-    <span aria-hidden className="text-amber-500 dark:text-amber-400">
+    <span aria-hidden className="text-accent">
       {'★'.repeat(rating)}
-      <span className="text-zinc-300 dark:text-zinc-600">{'☆'.repeat(5 - rating)}</span>
+      <span className="text-text-muted">{'☆'.repeat(5 - rating)}</span>
     </span>
   );
 }
@@ -101,32 +101,32 @@ function ReviewRow({ review }: { review: ProviderReview }) {
   }
 
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm">
           <Stars rating={review.rating} />
           <span className="sr-only">{review.rating} sur 5</span>{' '}
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
+          <span className="font-medium text-text">
             {review.authorDisplayName}
           </span>
         </p>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-text-muted">
           {formatDateLong(review.createdAtUtc)}
         </span>
       </div>
 
       {review.comment && (
-        <p className="mt-2 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 whitespace-pre-line text-sm text-text-muted">
           {review.comment}
         </p>
       )}
 
       {review.providerResponse ? (
-        <div className="mt-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        <div className="mt-3 rounded-2xl bg-bg p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
             Votre réponse
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-zinc-700 dark:text-zinc-300">
+          <p className="mt-1 whitespace-pre-line text-sm text-text-muted">
             {review.providerResponse}
           </p>
         </div>
@@ -134,7 +134,7 @@ function ReviewRow({ review }: { review: ProviderReview }) {
         <form onSubmit={submit} noValidate className="mt-3">
           <label
             htmlFor={fieldId}
-            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            className="block text-sm font-medium text-text-muted"
           >
             Répondre publiquement
           </label>
@@ -145,16 +145,16 @@ function ReviewRow({ review }: { review: ProviderReview }) {
             maxLength={RESPONSE_MAX}
             rows={3}
             aria-describedby={`${fieldId}-hint`}
-            className="mt-1 w-full rounded-lg border border-zinc-200 bg-white p-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+            className="mt-1 w-full rounded-2xl border border-edge bg-surface p-2 text-sm text-text"
           />
           {/* Said BEFORE sending, not after — see the file header. */}
-          <p id={`${fieldId}-hint`} className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <p id={`${fieldId}-hint`} className="mt-1 text-xs text-text-muted">
             Vous ne pouvez répondre qu’une seule fois, et votre réponse ne pourra plus être
             modifiée. Elle s’affichera sous l’avis, sur votre profil public.
           </p>
 
           {error && (
-            <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+            <p role="alert" className="mt-2 text-sm text-red-600">
               {error}
             </p>
           )}
@@ -162,7 +162,7 @@ function ReviewRow({ review }: { review: ProviderReview }) {
           <button
             type="submit"
             disabled={pending}
-            className="mt-2 min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-400"
+            className="mt-2 min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent hover:bg-accent/90 disabled:opacity-60"
           >
             {pending ? 'Envoi…' : 'Publier ma réponse'}
           </button>
@@ -183,13 +183,13 @@ export function ReviewsReceivedSection({
     <section aria-labelledby="reviews-received-title">
       <h2
         id="reviews-received-title"
-        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mb-3 text-lg font-semibold text-text"
       >
         Avis reçus
       </h2>
 
       {items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <div className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
           Vous n’avez pas encore reçu d’avis.
         </div>
       ) : (
@@ -200,7 +200,7 @@ export function ReviewsReceivedSection({
             ))}
           </ul>
           {reviewCount > items.length && (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 text-sm text-text-muted">
               Les {items.length} avis les plus récents sur {reviewCount}.
             </p>
           )}

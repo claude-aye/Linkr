@@ -70,9 +70,9 @@ function messageForStatus(status: number): string {
 }
 
 const fieldClass =
-  'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-const hintClass = 'mt-1 text-xs text-zinc-500 dark:text-zinc-400';
+  'mt-1 w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent';
+const labelClass = 'block text-sm font-medium text-text-muted';
+const hintClass = 'mt-1 text-xs text-text-muted';
 
 export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
   const router = useRouter();
@@ -130,7 +130,7 @@ export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-2xl border border-edge bg-surface p-6 shadow-sm"
     >
       <div>
         <label htmlFor="serviceCategoryId" className={labelClass}>
@@ -170,7 +170,7 @@ export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
           same time as its content is very often not announced at all. */}
       <div aria-live="polite">
         {succeeded && (
-          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+          <p className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             Métier déclaré. Vous pouvez maintenant apparaître dans les résultats de
             recherche pour ce métier, selon votre rayon de service et la position du
             client.
@@ -181,7 +181,7 @@ export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
       {error && (
         <p
           role="alert"
-          className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          className="mt-4 rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {error}
         </p>
@@ -190,7 +190,7 @@ export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
       <button
         type="submit"
         disabled={pending || !hasOptions}
-        className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-4 w-full rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? 'Déclaration…' : 'Déclarer ce métier'}
       </button>

@@ -159,7 +159,7 @@ export function ConnectRecheckAction({
         onClick={handleClick}
         disabled={pending}
         aria-busy={pending}
-        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 underline-offset-2 transition hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-400"
+        className="inline-flex items-center gap-2 text-sm font-medium text-accent underline-offset-2 transition hover:underline disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending && <Spinner />}
         {pending ? 'Vérification…' : 'Vérifier de nouveau'}
@@ -170,7 +170,7 @@ export function ConnectRecheckAction({
       {unchanged && (
         <p
           aria-live="polite"
-          className="max-w-sm text-sm text-zinc-600 dark:text-zinc-300"
+          className="max-w-sm text-sm text-text-muted"
         >
           {UNCHANGED_MESSAGE}
         </p>
@@ -179,7 +179,7 @@ export function ConnectRecheckAction({
       {error && (
         <p
           role="alert"
-          className="max-w-sm rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          className="max-w-sm rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {error}
         </p>

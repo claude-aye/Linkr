@@ -109,7 +109,7 @@ export function NotificationsSection({
       <div className="mb-3 flex items-center gap-2">
         <h2
           id="notifications-title"
-          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+          className="text-lg font-semibold text-text"
         >
           Notifications
         </h2>
@@ -118,7 +118,7 @@ export function NotificationsSection({
             inserted at the same time as its content is often not announced. */}
         <span aria-live="polite">
           {unread > 0 && (
-            <span className="inline-flex items-center rounded-full bg-blue-600 px-2.5 py-0.5 text-sm font-medium text-white">
+            <span className="inline-flex items-center rounded-full bg-accent px-2.5 py-0.5 text-sm font-medium text-on-accent">
               {unread}
               <span className="sr-only">{unread > 1 ? ' non lues' : ' non lue'}</span>
             </span>
@@ -130,7 +130,7 @@ export function NotificationsSection({
         // Same dashed shell as the page's `EmptyHint`. That helper lives in the
         // Server Component page and cannot be imported across the client
         // boundary, so its classes are mirrored here rather than exported.
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <div className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
           Aucune notification pour le moment.
         </div>
       ) : (
@@ -148,7 +148,7 @@ export function NotificationsSection({
           {total > items.length && (
             // The cap is a server constant and paging is out of scope — say so
             // rather than let the list look complete.
-            <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 text-xs text-text-muted">
               Les {items.length} plus récentes sur {total}.
             </p>
           )}
@@ -172,8 +172,8 @@ function NotificationRow({
   const shell =
     'block w-full rounded-2xl border p-4 text-left shadow-sm transition ' +
     (read
-      ? 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700'
-      : 'border-blue-300/70 bg-blue-50/40 hover:border-blue-400 dark:border-blue-900 dark:bg-blue-950/20 dark:hover:border-blue-800');
+      ? 'border-edge bg-surface hover:border-edge'
+      : 'border-accent/40 bg-accent/10 hover:border-accent');
 
   return (
     <li>
@@ -202,15 +202,15 @@ function NotificationBody({ item, read }: { item: NotificationView; read: boolea
         <div className="flex items-center gap-2">
           {!read && (
             <span
-              className="h-2 w-2 shrink-0 rounded-full bg-blue-600"
+              className="h-2 w-2 shrink-0 rounded-full bg-accent"
               aria-hidden="true"
             />
           )}
           <span
             className={
               read
-                ? 'font-medium text-zinc-700 dark:text-zinc-300'
-                : 'font-semibold text-zinc-900 dark:text-zinc-50'
+                ? 'font-medium text-text-muted'
+                : 'font-semibold text-text'
             }
           >
             {!read && <span className="sr-only">Non lue. </span>}
@@ -218,7 +218,7 @@ function NotificationBody({ item, read }: { item: NotificationView; read: boolea
           </span>
         </div>
         <span
-          className="text-xs text-zinc-500 dark:text-zinc-400"
+          className="text-xs text-text-muted"
           title={item.timeTitle}
         >
           {item.timeLabel}
@@ -227,7 +227,7 @@ function NotificationBody({ item, read }: { item: NotificationView; read: boolea
 
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         {item.tradeLabel && (
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+          <span className="text-sm text-text-muted">
             {item.tradeLabel}
           </span>
         )}
