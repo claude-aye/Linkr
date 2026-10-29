@@ -237,7 +237,7 @@ export function ConnectStatusBand({
             context === 'dashboard' && (
               <Link
                 href="/dashboard/paiements"
-                className="text-sm font-medium text-accent underline-offset-2 hover:underline"
+                className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
               >
                 Voir mes paiements →
               </Link>

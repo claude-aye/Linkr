@@ -190,7 +190,7 @@ export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
       <button
         type="submit"
         disabled={pending || !hasOptions}
-        className="mt-4 w-full rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-4 min-h-11 w-full rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? 'Déclaration…' : 'Déclarer ce métier'}
       </button>

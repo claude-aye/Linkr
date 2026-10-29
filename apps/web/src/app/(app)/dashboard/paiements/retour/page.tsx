@@ -129,7 +129,7 @@ export default async function ConnectReturnPage() {
           <div className="flex flex-wrap gap-4">
             <Link
               href="/dashboard/paiements"
-              className="text-sm font-medium text-accent underline-offset-2 hover:underline"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
             >
               Voir mes paiements →
             </Link>
