@@ -146,12 +146,12 @@ function useNow(): number | null {
 const MS_PER_HOUR = 60 * 60 * 1000;
 
 const fieldClass =
-  'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 aria-[invalid=true]:border-red-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800 dark:aria-[invalid=true]:border-red-700';
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-const hintClass = 'mt-1 text-xs text-zinc-500 dark:text-zinc-400';
-const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700 dark:text-red-400';
+  'mt-1 w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent aria-[invalid=true]:border-red-400';
+const labelClass = 'block text-sm font-medium text-text-muted';
+const hintClass = 'mt-1 text-xs text-text-muted';
+const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700';
 const radioRowClass =
-  'flex min-h-11 items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-800 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 dark:border-zinc-800 dark:text-zinc-100 dark:has-[:checked]:border-blue-700 dark:has-[:checked]:bg-blue-950';
+  'flex min-h-11 items-center gap-3 rounded-2xl border border-edge px-3 py-2 text-sm text-text has-[:checked]:border-accent has-[:checked]:bg-accent/10 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60';
 
 /** The inline error of one field — its id is what `aria-describedby` points to. */
 function FieldError({ field, errors }: { field: TenderField; errors: TenderErrors }) {
@@ -473,14 +473,14 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
             apply: the target itself must be tall enough. */}
         <Link
           href="/requests"
-          className="inline-flex min-h-11 items-center text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-text-muted underline-offset-2 hover:underline"
         >
           ← Mes demandes
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-text">
           Publier un appel d’offres
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-text-muted">
           Décrivez vos travaux : les prestataires qui couvrent votre secteur pourront vous
           envoyer un devis.
         </p>
@@ -490,7 +490,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
         onSubmit={handleSubmit}
         method="post"
         noValidate
-        className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        className="space-y-6 rounded-2xl border border-edge bg-surface p-6 shadow-sm"
       >
         {/* --- Métier ----------------------------------------------------- */}
         <div>
@@ -583,8 +583,8 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
               a region inserted together with its content is often not announced. */}
           <div aria-live="polite">
             {locationState.kind === 'candidates' && (
-              <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <div className="mt-5 rounded-2xl border border-edge bg-bg p-4">
+                <p className="text-sm font-medium text-text-muted">
                   Choisissez l’adresse exacte&nbsp;:
                 </p>
                 <ul className="mt-3 space-y-2">
@@ -593,7 +593,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
                       <button
                         type="button"
                         onClick={() => chooseCandidate(candidate)}
-                        className="block min-h-11 w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-800 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                        className="block min-h-11 w-full rounded-2xl border border-edge bg-surface px-4 py-3 text-left text-sm text-text shadow-sm transition hover:border-edge hover:bg-bg"
                       >
                         {candidate.label}
                       </button>
@@ -603,7 +603,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
                 <button
                   type="button"
                   onClick={chooseNone}
-                  className="mt-3 min-h-11 text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+                  className="mt-3 min-h-11 text-sm font-medium text-text-muted underline-offset-2 hover:underline"
                 >
                   Aucune de ces adresses
                 </button>
@@ -612,8 +612,8 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
 
             {/* NO « envoyer quand même », by design: reword or retry. */}
             {locationState.kind === 'unresolved' && (
-              <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
-                <p className="text-sm text-amber-900 dark:text-amber-200">
+              <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+                <p className="text-sm text-amber-900">
                   {locationState.reason === 'no-match'
                     ? 'Nous n’avons pas pu localiser cette adresse. Reformulez-la avec le numéro et la rue, une intersection, ou un code postal. Un appel d’offres ne peut pas être publié sans adresse localisée.'
                     : 'La localisation d’adresse est momentanément indisponible. Veuillez réessayer dans quelques instants.'}
@@ -623,7 +623,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
                     <button
                       type="button"
                       onClick={correctAddress}
-                      className="inline-flex min-h-11 items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-zinc-800"
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-300 bg-surface px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100"
                     >
                       Corriger l’adresse
                     </button>
@@ -632,7 +632,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
                       type="button"
                       onClick={retryGeocode}
                       disabled={busy}
-                      className="inline-flex min-h-11 items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-zinc-800"
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-300 bg-surface px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Réessayer
                     </button>
@@ -643,7 +643,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           </div>
 
           {locationState.kind === 'resolved' && (
-            <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+            <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
               Localisé&nbsp;: {locationState.label}
             </p>
           )}
@@ -676,7 +676,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           </div>
 
           {hasWindow && (
-            <div className="mt-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+            <div className="mt-4 rounded-2xl border border-edge p-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="tender-windowStart" className={labelClass}>
@@ -729,7 +729,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           </p>
 
           {!anyValidDeadline && (
-            <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <p className="mt-2 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Aucune date limite n’est possible avec ce début de fenêtre. {startTooSoonMessage()}
             </p>
           )}
@@ -753,7 +753,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
                     {/* The reason travels ON the label: a disabled option is
                         announced with its own text. */}
                     {disabled && anyValidDeadline && (
-                      <span className="text-zinc-500 dark:text-zinc-400">
+                      <span className="text-text-muted">
                         {' '}
                         — trop proche du début des travaux
                       </span>
@@ -796,7 +796,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           )}
 
           {previewMs !== null && anyValidDeadline && (
-            <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+            <p className="mt-2 text-sm text-text-muted">
               Date limite&nbsp;: {formatDateTime(new Date(previewMs).toISOString())} (heure du
               Québec)
             </p>
@@ -826,7 +826,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
             />
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+              className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-text-muted"
             >
               $ CA
             </span>
@@ -841,7 +841,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           <p
             key={errorNonce}
             role="alert"
-            className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+            className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
           >
             {formError}
           </p>
@@ -850,7 +850,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
         <button
           type="submit"
           disabled={busy}
-          className="min-h-11 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 w-full rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {geocoding ? 'Localisation…' : pending ? 'Publication…' : 'Publier l’appel d’offres'}
         </button>

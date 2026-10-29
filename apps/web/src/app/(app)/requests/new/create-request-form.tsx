@@ -162,10 +162,10 @@ function formatMoney(amount: number, currency: string): string {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4">
-      <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+      <dt className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </dt>
-      <dd className="font-medium text-zinc-800 sm:text-right dark:text-zinc-200">
+      <dd className="font-medium text-text sm:text-right">
         {children}
       </dd>
     </div>
@@ -187,8 +187,8 @@ function earliestStartMs(): number {
 }
 
 const fieldClass =
-  'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
+  'mt-1 w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent';
+const labelClass = 'block text-sm font-medium text-text-muted';
 
 export interface CreateRequestFormProps {
   /** Targeted provider id (from the URL) — DIRECT_BOOKING recipient. */
@@ -704,15 +704,15 @@ export function CreateRequestForm({
   if (submitted) {
     return (
       <section className="w-full max-w-xl">
-        <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm dark:border-emerald-900 dark:bg-zinc-900">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <div className="rounded-2xl border border-emerald-200 bg-surface p-8 shadow-sm">
+          <h1 className="text-xl font-semibold text-text">
             Demande envoyée
           </h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+          <p className="mt-2 text-sm text-text-muted">
             Votre demande a été envoyée à {businessName}.
           </p>
 
-          <dl className="mt-6 space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <dl className="mt-6 space-y-2 rounded-2xl border border-edge bg-bg p-4 text-sm">
             <Row label="Service">
               {tradeLabel} · {serviceLabel}
             </Row>
@@ -730,13 +730,13 @@ export function CreateRequestForm({
           <div className="mt-6 flex flex-wrap items-center gap-4">
             <Link
               href="/requests"
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90"
             >
               Voir mes demandes
             </Link>
             <Link
               href="/"
-              className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+              className="text-sm font-medium text-accent underline-offset-2 hover:underline"
             >
               ← Retour à l’accueil
             </Link>
@@ -749,10 +749,10 @@ export function CreateRequestForm({
   return (
     <section className="w-full max-w-xl">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-text">
           Demande à {businessName}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-text-muted">
           {tradeLabel} · {serviceLabel}
         </p>
       </header>
@@ -760,10 +760,10 @@ export function CreateRequestForm({
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="space-y-5 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        className="space-y-5 rounded-2xl border border-edge bg-surface p-6 shadow-sm"
       >
         {/* Read-only context — NOT inputs. The price is derived server-side. */}
-        <dl className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <dl className="space-y-2 rounded-2xl border border-edge bg-bg p-4 text-sm">
           <Row label="Service">
             {tradeLabel} · {serviceLabel}
           </Row>
@@ -828,8 +828,8 @@ export function CreateRequestForm({
             {/* Candidate list (state `candidates`) — the client disambiguates.
                 Each option is `type="button"` (default in a <form> is submit). */}
             {locationState.kind === 'candidates' && (
-              <div className="mt-5 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <div className="mt-5 rounded-2xl border border-edge bg-bg p-4">
+                <p className="text-sm font-medium text-text-muted">
                   Choisissez l’adresse exacte&nbsp;:
                 </p>
                 <ul className="mt-3 space-y-2">
@@ -838,7 +838,7 @@ export function CreateRequestForm({
                       <button
                         type="button"
                         onClick={() => chooseCandidate(candidate)}
-                        className="block w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left text-sm text-zinc-800 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                        className="block w-full rounded-2xl border border-edge bg-surface px-4 py-3 text-left text-sm text-text shadow-sm transition hover:border-edge hover:bg-bg"
                       >
                         {candidate.label}
                       </button>
@@ -848,7 +848,7 @@ export function CreateRequestForm({
                 <button
                   type="button"
                   onClick={chooseNone}
-                  className="mt-3 text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+                  className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-text-muted underline-offset-2 hover:underline"
                 >
                   Aucune de ces adresses
                 </button>
@@ -859,13 +859,13 @@ export function CreateRequestForm({
                 the client has accepted. Left action depends on the reason; the
                 right one is the single, explicit door to the placeholder. */}
             {locationState.kind === 'unresolved' && (
-              <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
+              <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
                 {/* CAUSE — why geocoding failed. The former shared tail
                     « …sans localisation précise » is GONE on purpose: it covered
                     both fallbacks with one vague phrase, which was the whole
                     debt. Adding the truth beside the vagueness would not have
                     replaced it. */}
-                <p className="text-sm text-amber-900 dark:text-amber-200">
+                <p className="text-sm text-amber-900">
                   {locationState.reason === 'no-match'
                     ? 'Nous n’avons pas pu localiser cette adresse. Vérifiez qu’elle est complète.'
                     : 'La localisation d’adresse est momentanément indisponible. Vous pouvez réessayer.'}
@@ -876,7 +876,7 @@ export function CreateRequestForm({
                     for the failure, is what decides the stored provenance. Read
                     from `hasSearchCoords`, the same value `submitAnyway` uses,
                     so this cannot promise one thing and store another. */}
-                <p className="mt-2 text-sm text-amber-900 dark:text-amber-200">
+                <p className="mt-2 text-sm text-amber-900">
                   {hasSearchCoords
                     ? 'Nous enregistrerons le secteur où vous avez cherché. L’adresse que vous avez saisie reste affichée au prestataire.'
                     : 'Nous ne pourrons enregistrer aucune position. Seule l’adresse que vous avez saisie sera transmise au prestataire.'}
@@ -886,7 +886,7 @@ export function CreateRequestForm({
                     <button
                       type="button"
                       onClick={correctAddress}
-                      className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-zinc-800"
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-300 bg-surface px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100"
                     >
                       Corriger l’adresse
                     </button>
@@ -895,7 +895,7 @@ export function CreateRequestForm({
                       type="button"
                       onClick={retryGeocode}
                       disabled={pending || geocoding}
-                      className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-zinc-800"
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-amber-300 bg-surface px-3 py-2 text-sm font-medium text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Réessayer
                     </button>
@@ -904,7 +904,7 @@ export function CreateRequestForm({
                     type="button"
                     onClick={submitAnyway}
                     disabled={pending || geocoding}
-                    className="text-sm font-medium text-amber-800 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-amber-300"
+                    className="inline-flex min-h-11 items-center text-sm font-medium text-amber-800 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Envoyer quand même
                   </button>
@@ -916,7 +916,7 @@ export function CreateRequestForm({
 
         {/* Confirmation line (state `resolved`) — sober, coordinates held. */}
         {locationState.kind === 'resolved' && (
-          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+          <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             Localisé&nbsp;: {locationState.label}
           </p>
         )}
@@ -946,13 +946,13 @@ export function CreateRequestForm({
               aria-invalid={errorField === 'desiredStart' || undefined}
               className={
                 errorField === 'desiredStart'
-                  ? `${fieldClass} border-red-400 focus:border-red-500 focus:ring-red-200 dark:border-red-800 dark:focus:ring-red-900`
+                  ? `${fieldClass} border-red-400 focus:border-red-500 focus:ring-red-200`
                   : fieldClass
               }
             />
             <p
               id="desiredStart-hint"
-              className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
+              className="mt-1 text-xs text-text-muted"
             >
               Dans au moins {MIN_LEAD_TIME_HOURS} heures.
             </p>
@@ -977,13 +977,13 @@ export function CreateRequestForm({
               aria-invalid={errorField === 'desiredEnd' || undefined}
               className={
                 errorField === 'desiredEnd'
-                  ? `${fieldClass} border-red-400 focus:border-red-500 focus:ring-red-200 dark:border-red-800 dark:focus:ring-red-900`
+                  ? `${fieldClass} border-red-400 focus:border-red-500 focus:ring-red-200`
                   : fieldClass
               }
             />
             <p
               id="desiredEnd-hint"
-              className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
+              className="mt-1 text-xs text-text-muted"
             >
               La marge que vous laissez au prestataire.
             </p>
@@ -994,7 +994,7 @@ export function CreateRequestForm({
           <p
             key={errorNonce}
             role="alert"
-            className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+            className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
           >
             {error}
           </p>
@@ -1003,7 +1003,7 @@ export function CreateRequestForm({
         <button
           type="submit"
           disabled={pending || geocoding}
-          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 w-full rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {geocoding ? 'Localisation…' : pending ? 'Envoi…' : 'Envoyer la demande'}
         </button>

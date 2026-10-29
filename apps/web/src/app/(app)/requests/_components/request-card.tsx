@@ -49,39 +49,39 @@ const STATUS_BADGES: Record<Status, { label: string; className: string }> = {
   DRAFT: {
     // Defensive — a DRAFT should not surface in the client list.
     label: 'Brouillon',
-    className: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    className: 'bg-text/5 text-text-muted',
   },
   OPEN: {
     label: 'En attente',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    className: 'bg-amber-100 text-amber-800',
   },
   ASSIGNED: {
     label: 'Acceptée',
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+    className: 'bg-blue-100 text-blue-800',
   },
   IN_PROGRESS: {
     label: 'En cours de réalisation',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    className: 'bg-amber-100 text-amber-800',
   },
   COMPLETED: {
     label: 'Complétée',
-    className: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+    className: 'bg-violet-100 text-violet-800',
   },
   PAID: {
     label: 'Payée',
-    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    className: 'bg-emerald-100 text-emerald-800',
   },
   EXPIRED: {
     label: 'Expirée',
-    className: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+    className: 'bg-text/5 text-text-muted',
   },
   CANCELLED: {
     label: 'Annulée',
-    className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+    className: 'bg-red-100 text-red-800',
   },
   REFUNDED: {
     label: 'Remboursée',
-    className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+    className: 'bg-rose-100 text-rose-800',
   },
 };
 
@@ -114,10 +114,10 @@ function Detail({
 }) {
   return (
     <div className={wide ? 'col-span-2 sm:col-span-3' : undefined}>
-      <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+      <dt className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </dt>
-      <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">{children}</dd>
+      <dd className="mt-0.5 text-text">{children}</dd>
     </div>
   );
 }
@@ -231,7 +231,7 @@ export function RequestCard({
   const locationNotice = clientLocationPrecisionNotice(request.serviceLocationPrecision);
 
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -242,7 +242,7 @@ export function RequestCard({
           {isTender && (
             // Neutral zinc family: a KIND of request, not a state — it must not
             // compete with the status badge's colour.
-            <span className="inline-flex items-center rounded-full border border-zinc-300 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+            <span className="inline-flex items-center rounded-full border border-edge px-2.5 py-0.5 text-xs font-medium text-text-muted">
               Appel d’offres
             </span>
           )}
@@ -250,25 +250,25 @@ export function RequestCard({
             // Informative pill, amber family (the payment banners'). NOT a link:
             // a pill is too small to be a touch target — the action is the
             // 44 px link further down the card.
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
               Paiement à confirmer
             </span>
           )}
         </div>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-text-muted">
           {formatDateLong(request.createdAtUtc)}
         </span>
       </div>
 
-      <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-50">{request.title}</h3>
+      <h3 className="mt-2 font-semibold text-text">{request.title}</h3>
 
       {receivingQuotes && (
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-text-muted">
           Reçoit des devis jusqu’au {formatDateTime(quotesDeadlineUtc)}
         </p>
       )}
       {receptionClosed && (
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-text-muted">
           Réception close — choisissez un devis avant le {formatDateTime(selectionEndUtc)}
         </p>
       )}
@@ -300,7 +300,7 @@ export function RequestCard({
         <div className="mt-4">
           <Link
             href={`/requests/${request.id}/devis`}
-            className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
           >
             Voir les devis reçus →
           </Link>
@@ -313,7 +313,7 @@ export function RequestCard({
               rule), and the banner on the payment page already carries it. */}
           <Link
             href="/account/payment-methods"
-            className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
           >
             Confirmer le paiement →
           </Link>
