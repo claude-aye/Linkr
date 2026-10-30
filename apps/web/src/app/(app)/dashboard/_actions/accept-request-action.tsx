@@ -78,10 +78,10 @@ function formatMoney(amount: string, currency: string): string {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4">
-      <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+      <dt className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </dt>
-      <dd className="font-medium text-zinc-800 sm:text-right dark:text-zinc-200">
+      <dd className="font-medium text-text sm:text-right">
         {children}
       </dd>
     </div>
@@ -189,7 +189,7 @@ export function AcceptRequestAction({
           setTradeLost(false);
           setIsOpen(true);
         }}
-        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="min-h-11 rounded-2xl bg-emerald-600 px-3 py-1.5 text-sm font-medium text-on-accent transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Accepter
       </button>
@@ -203,7 +203,7 @@ export function AcceptRequestAction({
         onConfirm={handleConfirm}
       >
         <div className="space-y-4">
-          <dl className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <dl className="space-y-2 rounded-2xl border border-edge bg-bg p-3">
             <Row label="Demande">{title}</Row>
             <Row label="Client">{clientDisplayName}</Row>
             <Row label="Adresse">
@@ -213,7 +213,7 @@ export function AcceptRequestAction({
                   `role="alert"`/`aria-live`: a displayed state, not an event
                   (unlike the null-amount guard below, which IS an error). */}
               {locationNotice && (
-                <span className="mt-1 block text-xs font-normal text-amber-700 sm:text-right dark:text-amber-400">
+                <span className="mt-1 block text-xs font-normal text-amber-700 sm:text-right">
                   {locationNotice}
                 </span>
               )}
@@ -229,7 +229,7 @@ export function AcceptRequestAction({
             <p>
               En acceptant, un dépôt sera prélevé sur le moyen de paiement du
               client. Montant total estimé du projet&nbsp;:{' '}
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
+              <span className="font-medium text-text">
                 {formatMoney(estimatedAmount, estimatedCurrency)}
               </span>
               .
@@ -237,7 +237,7 @@ export function AcceptRequestAction({
           ) : (
             <p
               role="alert"
-              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+              className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800"
             >
               {MISSING_AMOUNT_MESSAGE}
             </p>
@@ -247,7 +247,7 @@ export function AcceptRequestAction({
             <Link
               href="/dashboard?onglet=metiers"
               onClick={() => setIsOpen(false)}
-              className="inline-flex min-h-11 items-center font-medium text-zinc-900 underline underline-offset-2 hover:text-zinc-600 dark:text-zinc-50 dark:hover:text-zinc-300"
+              className="inline-flex min-h-11 items-center font-medium text-text underline underline-offset-2 hover:text-text-muted"
             >
               Ouvrir l’onglet Mes métiers →
             </Link>

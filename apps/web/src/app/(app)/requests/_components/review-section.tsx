@@ -31,9 +31,9 @@ const COMMENT_MAX = 2000;
 /** Full / empty stars. Decorative — the accessible text is next to it. */
 function Stars({ rating }: { rating: number }) {
   return (
-    <span aria-hidden className="text-amber-500 dark:text-amber-400">
+    <span aria-hidden className="text-accent">
       {'★'.repeat(rating)}
-      <span className="text-zinc-300 dark:text-zinc-600">{'☆'.repeat(5 - rating)}</span>
+      <span className="text-text-muted">{'☆'.repeat(5 - rating)}</span>
     </span>
   );
 }
@@ -77,24 +77,24 @@ export function ReviewSection({
   // ── Already reviewed: show it, offer the retraction ──────────────────────
   if (review) {
     return (
-      <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+      <div className="mt-4 border-t border-edge pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+          <p className="text-sm text-text-muted">
             <span className="font-medium">Votre avis :</span>{' '}
             <Stars rating={review.rating} />{' '}
-            <span className="text-zinc-500 dark:text-zinc-400">{review.rating} sur 5</span>
+            <span className="text-text-muted">{review.rating} sur 5</span>
           </p>
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            className="min-h-11 rounded-lg px-3 text-sm font-medium text-zinc-600 underline-offset-2 hover:underline dark:text-zinc-400"
+            className="min-h-11 rounded-2xl px-3 text-sm font-medium text-text-muted underline-offset-2 hover:underline"
           >
             Retirer mon avis
           </button>
         </div>
 
         {review.comment && (
-          <p className="mt-2 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-2 whitespace-pre-line text-sm text-text-muted">
             {review.comment}
           </p>
         )}
@@ -105,18 +105,18 @@ export function ReviewSection({
             the review takes the reply with it (D-3), which the confirmation
             dialog below says in as many words. */}
         {review.providerResponse && (
-          <div className="mt-3 border-l-2 border-zinc-200 pl-3 dark:border-zinc-700">
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          <div className="mt-3 border-l-2 border-edge pl-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
               Réponse du prestataire
             </p>
-            <p className="mt-1 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mt-1 whitespace-pre-line text-sm text-text-muted">
               {review.providerResponse}
             </p>
           </div>
         )}
 
         {error && (
-          <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          <p role="alert" className="mt-2 text-sm text-red-600">
             {error}
           </p>
         )}
@@ -144,7 +144,7 @@ export function ReviewSection({
             router.refresh();
           }}
         >
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-text-muted">
             Votre avis ne sera plus visible sur le profil du prestataire, et il cessera de
             compter dans sa note. La réponse du prestataire, s’il en a écrit une, disparaîtra
             avec lui. Vous pourrez ensuite en écrire un nouveau pour cette demande.
@@ -190,10 +190,10 @@ export function ReviewSection({
     <form
       onSubmit={submit}
       noValidate
-      className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800"
+      className="mt-4 border-t border-edge pt-4"
     >
       <fieldset>
-        <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <legend className="text-sm font-medium text-text-muted">
           Comment s’est passé ce service&nbsp;?
         </legend>
 
@@ -203,10 +203,10 @@ export function ReviewSection({
           {RATING_VALUES.map((value) => (
             <label
               key={value}
-              className={`flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm ${
+              className={`flex min-h-11 cursor-pointer items-center gap-1.5 rounded-2xl border px-3 text-sm ${
                 rating === value
-                  ? 'border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-500 dark:bg-amber-950 dark:text-amber-200'
-                  : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-400'
+                  ? 'border-amber-400 bg-amber-50 text-amber-900'
+                  : 'border-edge text-text-muted hover:border-edge'
               }`}
             >
               <input
@@ -228,9 +228,9 @@ export function ReviewSection({
 
       <label
         htmlFor={commentId}
-        className="mt-3 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+        className="mt-3 block text-sm font-medium text-text-muted"
       >
-        Commentaire <span className="font-normal text-zinc-500">(facultatif)</span>
+        Commentaire <span className="font-normal text-text-muted">(facultatif)</span>
       </label>
       <textarea
         id={commentId}
@@ -238,11 +238,11 @@ export function ReviewSection({
         onChange={(event) => setComment(event.target.value)}
         maxLength={COMMENT_MAX}
         rows={3}
-        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white p-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+        className="mt-1 w-full rounded-2xl border border-edge bg-surface p-2 text-sm text-text"
       />
 
       {error && (
-        <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="mt-2 text-sm text-red-600">
           {error}
         </p>
       )}
@@ -250,7 +250,7 @@ export function ReviewSection({
       <button
         type="submit"
         disabled={pending}
-        className="mt-3 min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-400"
+        className="mt-3 min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent hover:bg-accent/90 disabled:opacity-60"
       >
         {pending ? 'Envoi…' : 'Publier mon avis'}
       </button>

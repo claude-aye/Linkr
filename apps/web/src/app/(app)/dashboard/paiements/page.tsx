@@ -82,13 +82,13 @@ export default async function PaiementsPage({
   }
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       <section className="w-full max-w-3xl">
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">
             Mes paiements
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-text-muted">
             L’état de votre compte de paiement Stripe.
           </p>
         </header>
@@ -96,7 +96,7 @@ export default async function PaiementsPage({
         {linkUnavailable && (
           <div
             role="alert"
-            className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+            className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900"
           >
             Le lien Stripe que vous avez ouvert n’était plus valide, et nous
             n’avons pas pu en générer un nouveau. Veuillez réessayer depuis cette
@@ -129,12 +129,12 @@ export default async function PaiementsPage({
               <section aria-labelledby="detail-title">
                 <h2
                   id="detail-title"
-                  className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+                  className="mb-3 text-lg font-semibold text-text"
                 >
                   Détail
                 </h2>
 
-                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-edge bg-surface p-5 shadow-sm">
                   <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
                     <Detail label="Encaissement">
                       {connect.chargesEnabled
@@ -161,7 +161,7 @@ export default async function PaiementsPage({
                     The JSONB is for diagnosis, not for display.
                   */}
                   {connect.requirementsCurrentlyDue.length > 0 && (
-                    <p className="mt-4 text-sm text-amber-800 dark:text-amber-300">
+                    <p className="mt-4 text-sm text-amber-800">
                       Stripe attend des informations complémentaires. Utilisez le
                       bouton ci-dessus pour les fournir directement chez Stripe.
                     </p>
@@ -171,7 +171,7 @@ export default async function PaiementsPage({
                     The manual repair, reachable in every state: this is what
                     fixes a mirror left stale by a webhook that never landed.
                   */}
-                  <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+                  <div className="mt-4 border-t border-edge pt-4">
                     <ConnectRecheckAction
                       providerId={provider.id}
                       onboardingStatus={connect.onboardingStatus}
@@ -187,7 +187,7 @@ export default async function PaiementsPage({
               Honesty line — same motif as `/providers/new`: say what does not
               exist yet, and promise NO date for it.
             */}
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-text-muted">
               L’historique de vos versements n’est pas encore disponible sur Linkr.
               En attendant, il est consultable depuis votre compte Stripe.
             </p>
@@ -195,7 +195,7 @@ export default async function PaiementsPage({
             <div>
               <Link
                 href="/dashboard"
-                className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                className="text-sm font-medium text-accent underline-offset-2 hover:underline"
               >
                 ← Retour à mon espace pro
               </Link>
@@ -216,9 +216,9 @@ function StateCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{children}</p>
+    <div className="rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+      <h2 className="text-lg font-semibold text-text">{title}</h2>
+      <p className="mt-2 text-sm text-text-muted">{children}</p>
     </div>
   );
 }
@@ -232,10 +232,10 @@ function Detail({
 }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+      <dt className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </dt>
-      <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">{children}</dd>
+      <dd className="mt-0.5 text-text">{children}</dd>
     </div>
   );
 }
