@@ -187,22 +187,22 @@ export default async function ReceivedQuotesPage({
   }
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       <section className="w-full max-w-3xl">
         <div className="mb-4">
           <Link
             href="/requests"
-            className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
           >
             ← Mes demandes
           </Link>
         </div>
 
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">
             Devis reçus
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-text-muted">
             Comparez les offres reçues pour votre appel d’offres, puis retenez-en une.
           </p>
         </header>
@@ -225,7 +225,7 @@ export default async function ReceivedQuotesPage({
         ) : (
           <>
             {defaultCard === null && (
-              <p className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+              <p className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 Ajoutez une carte pour accepter un devis : l’acompte est prélevé au
                 moment où vous retenez une offre.{' '}
                 <Link
@@ -237,7 +237,7 @@ export default async function ReceivedQuotesPage({
               </p>
             )}
             {defaultCard === undefined && (
-              <p className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+              <p className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 Vos moyens de paiement n’ont pas pu être vérifiés : l’acceptation d’un
                 devis est indisponible pour le moment. Veuillez réessayer plus tard.
               </p>
@@ -256,9 +256,9 @@ export default async function ReceivedQuotesPage({
 /** Same shell as the other pages' state cards — no new style introduced. */
 function StateCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{children}</p>
+    <div className="rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+      <h2 className="text-lg font-semibold text-text">{title}</h2>
+      <p className="mt-2 text-sm text-text-muted">{children}</p>
     </div>
   );
 }

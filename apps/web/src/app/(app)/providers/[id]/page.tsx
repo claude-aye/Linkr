@@ -62,16 +62,16 @@ function serviceLabels(item: ProviderCatalogItem): { trade: string; service: str
 
 function StateCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{children}</p>
+    <div className="rounded-2xl border border-edge bg-surface p-8 text-center">
+      <h2 className="text-lg font-semibold text-text">{title}</h2>
+      <p className="mt-2 text-sm text-text-muted">{children}</p>
     </div>
   );
 }
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+    <div className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
       {children}
     </div>
   );
@@ -104,27 +104,27 @@ function ServiceRow({
   const bookable = item.pricingModel !== 'QUOTE_ONLY' && item.priceAmount != null;
 
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          <p className="text-xs uppercase tracking-wide text-text-muted">
             {trade}
           </p>
-          <h3 className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-50">{service}</h3>
+          <h3 className="mt-0.5 font-semibold text-text">{service}</h3>
         </div>
         <div className="text-right">
           {bookable ? (
-            <p className="font-semibold text-zinc-900 dark:text-zinc-50">
+            <p className="font-semibold text-text">
               {formatMoney(item.priceAmount as number, item.priceCurrency)}
               {item.pricingModel === 'HOURLY' && (
-                <span className="text-sm font-normal text-zinc-500 dark:text-zinc-400">
+                <span className="text-sm font-normal text-text-muted">
                   {' '}
                   / h
                 </span>
               )}
             </p>
           ) : (
-            <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            <span className="inline-flex items-center rounded-full bg-text/5 px-2.5 py-0.5 text-xs font-medium text-text-muted">
               Sur devis
             </span>
           )}
@@ -132,20 +132,20 @@ function ServiceRow({
       </div>
 
       {item.estimatedDurationMinutes != null && (
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 text-sm text-text-muted">
           Durée estimée : {item.estimatedDurationMinutes} min
         </p>
       )}
 
       {item.descriptionOverride && (
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{item.descriptionOverride}</p>
+        <p className="mt-2 text-sm text-text-muted">{item.descriptionOverride}</p>
       )}
 
       {bookable && (
         <div className="mt-4">
           <Link
             href={`/requests/new?providerId=${providerId}&serviceId=${item.id}${coordsQuery}`}
-            className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+            className="inline-flex min-h-11 items-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent transition hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
           >
             Demander
           </Link>
@@ -288,7 +288,7 @@ export default async function ProviderProfilePage({
   }
   if (identityFailed || !provider) {
     return (
-      <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+      <main className="flex flex-1 justify-center bg-bg p-6">
         <section className="w-full max-w-3xl">
           <StateCard title="Profil indisponible">
             Ce profil prestataire n’a pas pu être chargé. Réessayez plus tard.
@@ -313,17 +313,17 @@ export default async function ProviderProfilePage({
   const providerName = provider.businessName ?? 'Prestataire';
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       <section className="w-full max-w-3xl">
         <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="font-script text-4xl text-accent sm:text-5xl">
             {providerName}
           </h1>
           {provider.headline && (
-            <p className="mt-1 text-zinc-600 dark:text-zinc-300">{provider.headline}</p>
+            <p className="mt-1 text-text-muted">{provider.headline}</p>
           )}
           {provider.bio && (
-            <p className="mt-3 whitespace-pre-line text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 whitespace-pre-line text-sm text-text-muted">
               {provider.bio}
             </p>
           )}
@@ -337,7 +337,7 @@ export default async function ProviderProfilePage({
         <section aria-labelledby="services-title">
           <h2
             id="services-title"
-            className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+            className="mb-3 text-lg font-semibold text-text"
           >
             Services
           </h2>

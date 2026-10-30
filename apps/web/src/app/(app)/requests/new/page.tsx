@@ -116,7 +116,7 @@ export default async function NewRequestPage({
   const providerName = businessName ?? 'ce prestataire';
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       <CreateRequestForm
         providerId={providerId}
         businessName={providerName}

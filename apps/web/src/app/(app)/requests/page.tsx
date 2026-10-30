@@ -36,7 +36,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
+      <h2 className="mb-3 text-lg font-semibold text-text">{title}</h2>
       <ul className="space-y-4">
         {requests.map((request) => (
           <RequestCard
@@ -182,17 +182,17 @@ export default async function RequestsPage({
   const isEmpty = requests !== null && active.length === 0 && done.length === 0;
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       <section className="w-full max-w-3xl">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">
             Mes demandes
           </h1>
           {/* The ONE entry to the tender form. Rendered in every state below —
               an empty list or a failed read must not hide the way to publish. */}
           <Link
             href="/requests/new-tender"
-            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90"
           >
             Publier un appel d’offres
           </Link>
@@ -201,20 +201,20 @@ export default async function RequestsPage({
         {justPublishedTender && (
           // Plain text, no `role="alert"`: the navigation already moved the
           // user here, this is a displayed state, not an action error.
-          <p className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+          <p className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Votre appel d’offres est publié. Les prestataires qui couvrent votre secteur en
             sont avisés et peuvent vous envoyer un devis jusqu’à la date limite.
           </p>
         )}
 
         {quoteAccepted && (
-          <p className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+          <p className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Devis accepté. L’acompte a été prélevé.
           </p>
         )}
 
         {quoteAcceptedDepositFailed && (
-          <p className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          <p className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Le devis est accepté et le travail est confié au prestataire. Toutefois,
             l’acompte n’a pas pu être prélevé.{' '}
             {depositsAwaiting.size > 0 ? (
@@ -244,23 +244,23 @@ export default async function RequestsPage({
         )}
 
         {requests === null ? (
-          <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          <div className="rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+            <h2 className="text-lg font-semibold text-text">
               Chargement impossible
             </h2>
-            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-2 text-sm text-text-muted">
               Vos demandes n’ont pas pu être récupérées. Veuillez réessayer plus tard.
             </p>
           </div>
         ) : isEmpty ? (
-          <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-            <p className="font-medium text-zinc-700 dark:text-zinc-300">
+          <div className="rounded-2xl border border-dashed border-edge p-8 text-center text-sm text-text-muted">
+            <p className="font-medium text-text-muted">
               Vous n’avez pas encore de demande.
             </p>
             <p className="mt-1">
               <Link
                 href="/"
-                className="font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                className="font-medium text-accent underline-offset-2 hover:underline"
               >
                 Trouver un prestataire
               </Link>

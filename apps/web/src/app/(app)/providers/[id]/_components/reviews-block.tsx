@@ -26,30 +26,30 @@ const ratingFmt = new Intl.NumberFormat('fr-CA', {
 
 function Stars({ rating }: { rating: number }) {
   return (
-    <span aria-hidden className="text-amber-500 dark:text-amber-400">
+    <span aria-hidden className="text-accent">
       {'★'.repeat(rating)}
-      <span className="text-zinc-300 dark:text-zinc-600">{'☆'.repeat(5 - rating)}</span>
+      <span className="text-text-muted">{'☆'.repeat(5 - rating)}</span>
     </span>
   );
 }
 
 function ReviewRow({ review }: { review: ProviderReview }) {
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm">
           <Stars rating={review.rating} />
           <span className="sr-only">{review.rating} sur 5</span>{' '}
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
+          <span className="font-medium text-text">
             {review.authorDisplayName}
           </span>
         </p>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-text-muted">
           {formatDateLong(review.createdAtUtc)}
         </span>
       </div>
       {review.comment && (
-        <p className="mt-2 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 whitespace-pre-line text-sm text-text-muted">
           {review.comment}
         </p>
       )}
@@ -59,11 +59,11 @@ function ReviewRow({ review }: { review: ProviderReview }) {
           rebalance nothing. Indented and labelled so it reads as an answer to
           the review above, never as a second review. */}
       {review.providerResponse && (
-        <div className="mt-3 border-l-2 border-zinc-200 pl-3 dark:border-zinc-700">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        <div className="mt-3 border-l-2 border-edge pl-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
             Réponse du prestataire
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-1 whitespace-pre-line text-sm text-text-muted">
             {review.providerResponse}
           </p>
         </div>
@@ -78,16 +78,16 @@ export function ReviewsBlock({ reviews }: { reviews: ProviderReviewList | null }
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2
           id="reviews-title"
-          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+          className="text-lg font-semibold text-text"
         >
           Avis
         </h2>
 
         {/* Shown ONLY when the API sent one — i.e. at three reviews or more. */}
         {reviews && reviews.averageRating !== null && (
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+          <p className="text-sm text-text-muted">
             <span className="font-semibold">{ratingFmt.format(reviews.averageRating)}</span>
-            <span className="text-zinc-500 dark:text-zinc-400">
+            <span className="text-text-muted">
               {' '}
               sur 5 · {reviews.reviewCount} avis
             </span>
@@ -96,11 +96,11 @@ export function ReviewsBlock({ reviews }: { reviews: ProviderReviewList | null }
       </div>
 
       {reviews === null ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <div className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
           Les avis n’ont pas pu être chargés.
         </div>
       ) : reviews.reviewCount === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <div className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
           Ce prestataire n’a pas encore reçu d’avis.
         </div>
       ) : (
@@ -110,7 +110,7 @@ export function ReviewsBlock({ reviews }: { reviews: ProviderReviewList | null }
               number would go. It states the RULE — never a promise, and never a
               count of what is missing. */}
           {reviews.averageRating === null && (
-            <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mb-3 text-sm text-text-muted">
               Pas encore assez d’avis pour afficher une note moyenne — il en faut au
               moins trois.
             </p>
@@ -123,7 +123,7 @@ export function ReviewsBlock({ reviews }: { reviews: ProviderReviewList | null }
           </ul>
 
           {reviews.reviewCount > reviews.items.length && (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 text-sm text-text-muted">
               Les {reviews.items.length} avis les plus récents sur {reviews.reviewCount}.
             </p>
           )}
