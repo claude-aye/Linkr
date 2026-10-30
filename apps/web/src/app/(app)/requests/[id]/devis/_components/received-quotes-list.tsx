@@ -114,7 +114,7 @@ export function ReceivedQuotesList({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <span id="quote-sort-label" className="text-sm text-zinc-600 dark:text-zinc-400">
+        <span id="quote-sort-label" className="text-sm text-text-muted">
           Trier par :
         </span>
         <div role="group" aria-labelledby="quote-sort-label" className="flex flex-wrap gap-2">
@@ -124,7 +124,7 @@ export function ReceivedQuotesList({
               type="button"
               aria-pressed={sortMode === mode}
               onClick={() => changeSort(mode)}
-              className="min-h-11 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 aria-pressed:border-zinc-900 aria-pressed:bg-zinc-900 aria-pressed:text-white dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:aria-pressed:border-zinc-50 dark:aria-pressed:bg-zinc-50 dark:aria-pressed:text-zinc-900"
+              className="min-h-11 rounded-2xl border border-edge px-4 text-sm font-medium text-text-muted transition hover:bg-text/5 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-on-accent"
             >
               {label}
             </button>
@@ -159,34 +159,34 @@ export function ReceivedQuotesList({
         {accepting && (
           <dl className="space-y-2">
             <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              <dt className="text-xs uppercase tracking-wide text-text-muted">
                 Prestataire
               </dt>
-              <dd className="text-zinc-800 dark:text-zinc-200">
+              <dd className="text-text">
                 {accepting.providerName ?? 'Prestataire indisponible'}
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              <dt className="text-xs uppercase tracking-wide text-text-muted">
                 Montant du devis
               </dt>
-              <dd className="text-zinc-800 dark:text-zinc-200">{accepting.amountLabel}</dd>
+              <dd className="text-text">{accepting.amountLabel}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              <dt className="text-xs uppercase tracking-wide text-text-muted">
                 Acompte prélevé maintenant
               </dt>
-              <dd className="font-semibold text-zinc-900 dark:text-zinc-50">
+              <dd className="font-semibold text-text">
                 {accepting.depositLabel}
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              <dt className="text-xs uppercase tracking-wide text-text-muted">
                 Carte utilisée
               </dt>
-              <dd className="text-zinc-800 dark:text-zinc-200">{cardSummary}</dd>
+              <dd className="text-text">{cardSummary}</dd>
             </div>
-            <p className="pt-2 text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="pt-2 text-xs text-text-muted">
               Les autres devis de cet appel d’offres seront refusés.
             </p>
           </dl>
@@ -207,7 +207,7 @@ function QuoteCard({
 }) {
   const acceptable = quote.isLive && quote.blocker === null;
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           {quote.providerName !== null && quote.providerHref !== null ? (
@@ -215,75 +215,75 @@ function QuoteCard({
               href={quote.providerHref}
               // Standalone link, not inline in a sentence: WCAG 2.5.8's « inline »
               // exception does not apply, so it gets the 44 px target (G-1).
-              className="inline-flex min-h-11 items-center font-semibold text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+              className="inline-flex min-h-11 items-center font-semibold text-text underline-offset-2 hover:underline"
             >
               {quote.providerName}
             </Link>
           ) : (
-            <span className="font-semibold text-zinc-500 dark:text-zinc-400">
+            <span className="font-semibold text-text-muted">
               Prestataire indisponible
             </span>
           )}
           {quote.headline && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">{quote.headline}</p>
+            <p className="text-sm text-text-muted">{quote.headline}</p>
           )}
         </div>
-        <p className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <p className="text-2xl font-semibold tracking-tight text-text">
           {quote.amountLabel}
         </p>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
         {quote.statusLabel && (
-          <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="inline-flex items-center rounded-full bg-text/5 px-2.5 py-0.5 text-xs font-medium text-text-muted">
             {quote.statusLabel}
           </span>
         )}
         {quote.verificationLabel && (
-          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
             {quote.verificationLabel}
           </span>
         )}
         {quote.reputationLabel && (
-          <span className="text-zinc-600 dark:text-zinc-400">{quote.reputationLabel}</span>
+          <span className="text-text-muted">{quote.reputationLabel}</span>
         )}
         {quote.distanceLabel && (
-          <span className="text-zinc-500 dark:text-zinc-400">{quote.distanceLabel}</span>
+          <span className="text-text-muted">{quote.distanceLabel}</span>
         )}
       </div>
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <div>
-          <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          <dt className="text-xs uppercase tracking-wide text-text-muted">
             Durée estimée
           </dt>
-          <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">{quote.durationLabel}</dd>
+          <dd className="mt-0.5 text-text">{quote.durationLabel}</dd>
         </div>
         {quote.proposedStartLabel && (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+            <dt className="text-xs uppercase tracking-wide text-text-muted">
               Début proposé
             </dt>
-            <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">
+            <dd className="mt-0.5 text-text">
               {quote.proposedStartLabel}
             </dd>
           </div>
         )}
       </dl>
 
-      <p className="mt-3 whitespace-pre-line text-sm text-zinc-700 dark:text-zinc-300">
+      <p className="mt-3 whitespace-pre-line text-sm text-text-muted">
         {quote.description}
       </p>
 
       {quote.isLive && (
         <div className="mt-4">
           {quote.blocker === 'not-acceptable' && (
-            <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mb-2 text-sm text-text-muted">
               Ce devis ne peut pas être accepté pour le moment.
             </p>
           )}
           {quote.blocker === 'deposit-too-small' && (
-            <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mb-2 text-sm text-text-muted">
               Montant trop faible pour un acompte.
             </p>
           )}
@@ -291,7 +291,7 @@ function QuoteCard({
             type="button"
             onClick={onAccept}
             disabled={!acceptable || !canPay}
-            className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Accepter ce devis
           </button>

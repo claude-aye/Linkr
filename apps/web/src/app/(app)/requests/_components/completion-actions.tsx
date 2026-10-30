@@ -141,11 +141,11 @@ export function CompletionActions({ requestId }: CompletionActionsProps) {
   // Showing the buttons here would invite a second click the API answers 409.
   if (balanceReleased) {
     return (
-      <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+      <div className="mt-4 border-t border-edge pt-4">
+        <p className="text-sm font-medium text-emerald-700">
           Versement effectué
         </p>
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-xs text-text-muted">
           Le solde a été versé au prestataire. La demande passera à
           « Payée » d’ici quelques instants.
         </p>
@@ -154,11 +154,11 @@ export function CompletionActions({ requestId }: CompletionActionsProps) {
   }
 
   return (
-    <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-      <p className="text-sm text-zinc-700 dark:text-zinc-300">
+    <div className="mt-4 border-t border-edge pt-4">
+      <p className="text-sm text-text-muted">
         Le prestataire a marqué ces travaux comme terminés.
       </p>
-      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-xs text-text-muted">
         Sans action de votre part, le solde lui sera versé automatiquement après
         le délai prévu. Confirmez pour le verser tout de suite, ou signalez un
         problème pour suspendre le versement.
@@ -168,14 +168,14 @@ export function CompletionActions({ requestId }: CompletionActionsProps) {
         <button
           type="button"
           onClick={() => setOpenDialog('confirm')}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+          className="min-h-11 rounded-2xl bg-emerald-600 px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-emerald-700"
         >
           Confirmer la fin des travaux
         </button>
         <button
           type="button"
           onClick={() => setOpenDialog('contest')}
-          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="min-h-11 rounded-2xl border border-edge px-3 py-1.5 text-sm font-medium text-text-muted hover:bg-bg"
         >
           Signaler un problème
         </button>
@@ -226,11 +226,11 @@ export function CompletionActions({ requestId }: CompletionActionsProps) {
  */
 export function ContestedNotice() {
   return (
-    <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/40">
-      <p className="font-medium text-amber-900 dark:text-amber-200">
+    <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm">
+      <p className="font-medium text-amber-900">
         Demande contestée — versement suspendu
       </p>
-      <p className="mt-1 text-amber-800 dark:text-amber-300">
+      <p className="mt-1 text-amber-800">
         Le paiement au prestataire est gelé. Écrivez dès maintenant à{' '}
         <a
           href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Demande contestée')}`}

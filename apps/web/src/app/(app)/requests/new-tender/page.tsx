@@ -51,21 +51,21 @@ export default async function NewTenderPage() {
   }
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       {categories === null || categories.length === 0 ? (
         // Without a trade there is nothing to publish — say so rather than
         // render a form whose first field is an empty list.
-        <section className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <section className="w-full max-w-xl rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-text">
             Chargement impossible
           </h1>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-text-muted">
             La liste des métiers n’a pas pu être récupérée. Veuillez réessayer plus tard.
           </p>
           <p className="mt-4 text-sm">
             <Link
               href="/requests"
-              className="font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+              className="font-medium text-accent underline-offset-2 hover:underline"
             >
               ← Retour à mes demandes
             </Link>
