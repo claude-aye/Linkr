@@ -142,8 +142,8 @@ export function ConnectLinkAction({
 
   const className =
     variant === 'primary'
-      ? 'inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
-      : 'inline-flex items-center gap-2 text-sm font-medium text-blue-600 underline-offset-2 transition hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-400';
+      ? 'inline-flex items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60'
+      : 'inline-flex items-center gap-2 text-sm font-medium text-accent underline-offset-2 transition hover:underline disabled:cursor-not-allowed disabled:opacity-60';
 
   return (
     <div className="flex flex-col items-start gap-1.5">
@@ -161,7 +161,7 @@ export function ConnectLinkAction({
       {error && (
         <p
           role="alert"
-          className="max-w-sm rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          className="max-w-sm rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {error}
         </p>

@@ -94,14 +94,14 @@ export default async function ConnectReturnPage() {
   }
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       <section className="w-full max-w-3xl">
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">
             Retour de Stripe
           </h1>
           {/* Deliberately neutral: it reports what we DID, not what it achieved. */}
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-text-muted">
             Nous venons de vérifier votre compte auprès de Stripe. Voici votre
             situation actuelle.
           </p>
@@ -115,11 +115,11 @@ export default async function ConnectReturnPage() {
               context="paiements"
             />
           ) : (
-            <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            <div className="rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+              <h2 className="text-lg font-semibold text-text">
                 Vérification impossible
               </h2>
-              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="mt-2 text-sm text-text-muted">
                 L’état de votre compte de paiement n’a pas pu être récupéré.
                 Veuillez réessayer depuis la page de vos paiements.
               </p>
@@ -129,13 +129,13 @@ export default async function ConnectReturnPage() {
           <div className="flex flex-wrap gap-4">
             <Link
               href="/dashboard/paiements"
-              className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
             >
               Voir mes paiements →
             </Link>
             <Link
               href="/dashboard"
-              className="text-sm font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+              className="text-sm font-medium text-text-muted underline-offset-2 hover:underline"
             >
               Retour à mon espace pro
             </Link>

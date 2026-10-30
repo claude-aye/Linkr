@@ -209,19 +209,19 @@ export function ConnectStatusBand({
     return (
       <section
         aria-labelledby="connect-title"
-        className="rounded-2xl border border-zinc-200 bg-white px-5 py-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        className="rounded-2xl border border-edge bg-surface px-5 py-4 shadow-sm"
       >
         <h2 id="connect-title" className="sr-only">
           Paiements
         </h2>
         <div className="flex flex-wrap items-center justify-between gap-3">
           {due ? (
-            <p className="text-sm text-amber-800 dark:text-amber-300">
+            <p className="text-sm text-amber-800">
               Stripe a besoin d’informations complémentaires pour maintenir vos
               paiements actifs.
             </p>
           ) : (
-            <p className="text-sm text-emerald-800 dark:text-emerald-300">
+            <p className="text-sm text-emerald-800">
               Vos paiements sont actifs.
             </p>
           )}
@@ -237,7 +237,7 @@ export function ConnectStatusBand({
             context === 'dashboard' && (
               <Link
                 href="/dashboard/paiements"
-                className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                className="inline-flex min-h-11 items-center text-sm font-medium text-accent underline-offset-2 hover:underline"
               >
                 Voir mes paiements →
               </Link>
@@ -254,16 +254,16 @@ export function ConnectStatusBand({
   // tone the repo reserves for a refusal.
   const blocked = account?.onboardingStatus === 'DISABLED';
   const frame = blocked
-    ? 'border-red-300/70 dark:border-red-900'
-    : 'border-amber-300/70 dark:border-amber-900';
+    ? 'border-red-300/70'
+    : 'border-amber-300/70';
   const chip = blocked
-    ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
-    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300';
+    ? 'bg-red-100 text-red-800'
+    : 'bg-amber-100 text-amber-800';
 
   return (
     <section
       aria-labelledby="connect-title"
-      className={`rounded-2xl border bg-white p-5 shadow-sm dark:bg-zinc-900 ${frame}`}
+      className={`rounded-2xl border bg-surface p-5 shadow-sm ${frame}`}
     >
       <span
         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${chip}`}
@@ -273,11 +273,11 @@ export function ConnectStatusBand({
 
       <h2
         id="connect-title"
-        className="mt-2 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mt-2 text-lg font-semibold text-text"
       >
         {copy.title}
       </h2>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{copy.body}</p>
+      <p className="mt-1 text-sm text-text-muted">{copy.body}</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         {copy.action && (
@@ -313,7 +313,7 @@ export function ConnectStatusBand({
             )}&body=${encodeURIComponent(
               `Identifiant prestataire : ${providerId}`,
             )}`}
-            className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+            className="text-sm font-medium text-accent underline-offset-2 hover:underline"
           >
             Nous écrire
           </a>

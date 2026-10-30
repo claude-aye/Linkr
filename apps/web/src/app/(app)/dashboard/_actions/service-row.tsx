@@ -56,17 +56,17 @@ type Field = 'price' | 'duration';
 type FieldErrors = Partial<Record<Field, string>>;
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 aria-[invalid=true]:border-red-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800 dark:aria-[invalid=true]:border-red-700';
+  'w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent aria-[invalid=true]:border-red-400';
 const fieldClass = `mt-1 ${inputClass}`;
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-const hintClass = 'mt-1 text-xs text-zinc-500 dark:text-zinc-400';
-const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700 dark:text-red-400';
+const labelClass = 'block text-sm font-medium text-text-muted';
+const hintClass = 'mt-1 text-xs text-text-muted';
+const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700';
 const secondaryButtonClass =
-  'min-h-11 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800';
+  'min-h-11 rounded-2xl border border-edge px-4 text-sm font-medium text-text-muted transition hover:bg-text/5 disabled:cursor-not-allowed disabled:opacity-60';
 const dangerButtonClass =
-  'min-h-11 rounded-lg border border-red-300 px-4 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950';
+  'min-h-11 rounded-2xl border border-red-300 px-4 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60';
 const primaryButtonClass =
-  'min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+  'min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60';
 
 /** Price as a field value: 40 → « 40 », 40.5 → « 40,50 » (Québec comma). */
 function priceToField(amount: number | null): string {
@@ -216,7 +216,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
   }
 
   return (
-    <li className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+    <li className="rounded-2xl border border-edge p-3">
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -224,21 +224,21 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           {/* Catalogue UUID on hover, same affordance as the trade rows. */}
-          <p className="font-medium text-zinc-900 dark:text-zinc-50" title={service.serviceItemId}>
+          <p className="font-medium text-text" title={service.serviceItemId}>
             {label}
           </p>
-          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+          <p className="text-sm text-text-muted">
             {formatServicePrice(service.priceAmount, service.priceCurrency, service.pricingModel)}
-            {duration && <span className="text-zinc-500 dark:text-zinc-400"> · {duration}</span>}
+            {duration && <span className="text-text-muted"> · {duration}</span>}
           </p>
           {service.descriptionOverride && (
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mt-1 text-sm text-text-muted">
               {service.descriptionOverride}
             </p>
           )}
         </div>
         {!service.isActive && (
-          <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          <span className="inline-flex items-center rounded-full bg-text/5 px-2.5 py-0.5 text-xs font-medium text-text-muted">
             Désactivé
           </span>
         )}
@@ -281,7 +281,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
           method="post"
           onSubmit={save}
           noValidate
-          className="mt-3 space-y-4 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-950"
+          className="mt-3 space-y-4 rounded-2xl bg-bg p-4"
         >
           {hasPrice ? (
             <div>
@@ -303,7 +303,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                  className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-text-muted"
                 >
                   $ CA
                 </span>
@@ -341,7 +341,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                  className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-text-muted"
                 >
                   h
                 </span>
@@ -363,7 +363,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
                 />
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                  className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-text-muted"
                 >
                   min
                 </span>
@@ -400,7 +400,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
           {error && (
             <p
               role="alert"
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
             >
               {error}
             </p>
@@ -429,7 +429,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
       {!editing && error && (
         <p
           role="alert"
-          className="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          className="mt-3 rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {error}
         </p>
@@ -443,7 +443,7 @@ export function ServiceRow({ providerId, service, label }: ServiceRowProps) {
         onConfirm={confirmDelete}
       >
         <p>
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">{label}</span> ne sera
+          <span className="font-medium text-text">{label}</span> ne sera
           plus proposé sur votre profil public.
         </p>
         <p className="mt-2">
