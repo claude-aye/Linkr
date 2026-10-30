@@ -71,7 +71,7 @@ export function NavMenu({ brand, links }: { brand: ReactNode; links: NavLink[] }
   }
 
   return (
-    <nav aria-label="Navigation principale" className="mx-auto w-full max-w-5xl px-6">
+    <nav aria-label="Navigation principale" className="w-full px-4 sm:px-6">
       <div className="flex h-[var(--shell-header-h)] items-center gap-6">
         {brand}
 
