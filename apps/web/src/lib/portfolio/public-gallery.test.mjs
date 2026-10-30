@@ -9,8 +9,11 @@ import {
   galleryAlt,
   galleryTitle,
   galleryToShow,
+  MARQUEE_SECONDS_PER_PHOTO,
+  marqueeDurationSeconds,
   nextIndex,
   previousIndex,
+  shouldLoop,
   thumbnailLoading,
   viewerCounter,
   viewerKeyTarget,
@@ -108,9 +111,33 @@ test('the title carries the count: « Réalisations (5) »', () => {
   assert.equal(galleryTitle(12), 'Réalisations (12)');
 });
 
-test('only the first two thumbnails load eagerly', () => {
-  assert.equal(EAGER_THUMBNAILS, 2);
-  assert.deepEqual([0, 1, 2, 11].map(thumbnailLoading), ['eager', 'eager', 'lazy', 'lazy']);
+test('only the first four thumbnails load eagerly', () => {
+  assert.equal(EAGER_THUMBNAILS, 4);
+  assert.deepEqual(
+    [0, 3, 4, 11].map(thumbnailLoading),
+    ['eager', 'eager', 'lazy', 'lazy'],
+  );
+});
+
+// ── 3b. The strip that scrolls by itself (F2) ────────────────────────────────────────
+
+test('a lap lasts five seconds per photo: 12 photos make a 60 s lap', () => {
+  assert.equal(MARQUEE_SECONDS_PER_PHOTO, 5);
+  assert.equal(marqueeDurationSeconds(12), 60);
+  assert.equal(marqueeDurationSeconds(3), 15);
+  assert.equal(marqueeDurationSeconds(1), 5);
+});
+
+test('the strip loops only when the photos do not fit, and never under reduced motion', () => {
+  const fit = { contentWidth: 700, containerWidth: 760, reducedMotion: false };
+  assert.equal(shouldLoop(fit), false);
+  assert.equal(shouldLoop({ ...fit, contentWidth: 760 }), false);
+  assert.equal(shouldLoop({ ...fit, contentWidth: 761 }), true);
+  assert.equal(shouldLoop({ ...fit, contentWidth: 2000, reducedMotion: true }), false);
+});
+
+test('a strip that has not been measured yet stays still', () => {
+  assert.equal(shouldLoop({ contentWidth: 0, containerWidth: 0, reducedMotion: false }), false);
 });
 
 // ── 4. The source: inert captions, no API address, no external link ───────

@@ -1,27 +1,132 @@
 'use client';
 
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
+} from 'react';
 
 import {
   galleryAlt,
   galleryTitle,
+  MARQUEE_GAP_PX,
+  marqueeDurationSeconds,
   nextIndex,
   previousIndex,
+  shouldLoop,
   thumbnailLoading,
   viewerCounter,
   viewerKeyTarget,
   type PublicGalleryItem,
 } from '@/lib/portfolio/public-gallery';
 
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+function subscribeReducedMotion(onChange: () => void) {
+  const query = window.matchMedia(REDUCED_MOTION_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+function readReducedMotion() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+/**
+ * One copy of the photos. `copy` is the duplicate that closes the loop:
+ * `aria-hidden`, links out of the tab order, no ref (focus returns to the
+ * real thumbnail), always lazy. Both copies open the viewer on the REAL
+ * index, so a click in the second one shows the right photo.
+ * The gallery has ONE anchor in its source, here — a test counts on it.
+ * A component of its own (not a render helper) so the refs it receives are
+ * only read in callbacks, never during render.
+ */
+function PhotoGroup({
+  items,
+  providerName,
+  copy,
+  groupRef,
+  thumbnailRefs,
+  onOpen,
+}: {
+  items: PublicGalleryItem[];
+  providerName: string;
+  copy: boolean;
+  groupRef: RefObject<HTMLUListElement | null>;
+  thumbnailRefs: RefObject<(HTMLAnchorElement | null)[]>;
+  onOpen: (at: number, event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  return (
+    <ul
+      ref={copy ? undefined : groupRef}
+      aria-hidden={copy ? true : undefined}
+      className="flex shrink-0 gap-3 pr-3"
+    >
+      {items.map((item, i) => (
+        <li key={item.id} className="w-36 shrink-0 sm:w-44">
+          <a
+            href={item.imageUrl}
+            tabIndex={copy ? -1 : undefined}
+            ref={
+              copy
+                ? undefined
+                : (node) => {
+                    thumbnailRefs.current[i] = node;
+                  }
+            }
+            onClick={(event) => onOpen(i, event)}
+            aria-haspopup="dialog"
+            className="block overflow-hidden rounded-2xl border border-edge bg-text/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {/* A plain <img>, not next/image: the relay already serves a
+                re-encoded WebP ≤ 1600 px, and the RELATIVE `imageUrl` is used
+                exactly as the API returns it. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.imageUrl}
+              width={item.width}
+              height={item.height}
+              alt={galleryAlt(item.caption, providerName)}
+              loading={copy ? 'lazy' : thumbnailLoading(i)}
+              className="size-36 object-cover sm:size-44"
+            />
+          </a>
+          {item.caption && (
+            <p className="mt-1 truncate text-xs text-text-muted">{item.caption}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * « Réalisations » — the provider's photos on their profile, and a viewer to
  * enlarge them (P3).
  *
- * The grid is rendered on the server like the rest of the page, so it stays
- * visible WITHOUT JavaScript: each thumbnail is then a plain link to the photo
- * itself (`imageUrl`, an INTERNAL relay URL — the anti-bypass rule forbids any
- * outbound link, not this one). Once hydrated, the click opens the viewer
- * instead (`preventDefault`).
+ * The strip is rendered on the server like the rest of the page, so it stays
+ * visible WITHOUT JavaScript: one row of photos, scrolled by hand, each
+ * thumbnail a plain link to the photo itself (`imageUrl`, an INTERNAL relay
+ * URL — the anti-bypass rule forbids any outbound link, not this one). Once
+ * hydrated, the click opens the viewer instead (`preventDefault`).
+ *
+ * F2 — THE STRIP SCROLLS BY ITSELF, right to left, in a seamless loop. The
+ * motion is pure CSS (`@keyframes` + `translateX`, in `globals.css`); the list
+ * is rendered a second time, `aria-hidden`, and the track slides by exactly
+ * one copy (`-50%`). JavaScript is here for ONE thing CSS cannot do: know
+ * whether the photos fill the width. A strip that already fits (one or two
+ * photos, a wide screen) must sit still and must NOT be duplicated, and no
+ * media query can say how wide the photos are. So a `ResizeObserver` measures
+ * the first copy against the viewport, and the second copy exists only while
+ * the strip loops. Never under `prefers-reduced-motion: reduce`: the strip is
+ * then a single copy, scrolled by hand. Hover pauses it (CSS, `globals.css`),
+ * as does the open viewer; keyboard focus stops it altogether (see
+ * `keyboardFocus`). No blur on the strip.
  *
  * ⚠️ CAPTIONS ARE INERT TEXT. They are typed by the provider, so they go
  * through React's escaping as `{caption}`: no raw-HTML injection (a test
@@ -49,9 +154,31 @@ export function PortfolioGallery({
   const thumbnailRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   /** The thumbnail that opened the viewer — focus goes back to it on close. */
   const originRef = useRef<number | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const groupRef = useRef<HTMLUListElement>(null);
 
   // `null` = the viewer is closed. Single source of truth for the dialog.
   const [index, setIndex] = useState<number | null>(null);
+
+  // Server snapshot `true`: the HTML the server sends is the still strip.
+  const reducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    readReducedMotion,
+    () => true,
+  );
+  const [widths, setWidths] = useState({ content: 0, container: 0 });
+  // Keyboard focus inside the strip FREEZES it: a still, hand-scrollable row,
+  // so the browser can reveal the focused photo where it really is. Left to
+  // loop, the focus would scroll the clipped viewport and, once it left, the
+  // loop would resume from a shifted position, with a blank gap on the right.
+  const [keyboardFocus, setKeyboardFocus] = useState(false);
+  const looping =
+    !keyboardFocus &&
+    shouldLoop({
+      contentWidth: widths.content,
+      containerWidth: widths.container,
+      reducedMotion,
+    });
 
   const total = items.length;
   const isOpen = index !== null;
@@ -66,6 +193,30 @@ export function PortfolioGallery({
       dialog.close();
     }
   }, [isOpen]);
+
+  // A loop always starts from the strip's origin, whatever the focus did.
+  useEffect(() => {
+    if (looping && viewportRef.current) viewportRef.current.scrollLeft = 0;
+  }, [looping]);
+
+  // Measures the photos against the room they have. `setWidths` runs in the
+  // observer callback (it fires once on `observe`), never in the effect body.
+  // Once the strip loops, the first copy keeps its width, so this cannot flip.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const group = groupRef.current;
+    if (!viewport || !group) return;
+    const measure = () => {
+      const style = getComputedStyle(viewport);
+      const container =
+        viewport.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setWidths({ content: group.offsetWidth - MARQUEE_GAP_PX, container });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(group);
+    return () => observer.disconnect();
+  }, []);
 
   function open(at: number, event: MouseEvent<HTMLAnchorElement>) {
     // Without JS, the link opens the photo; with it, the viewer does.
@@ -83,7 +234,9 @@ export function PortfolioGallery({
     setIndex(null);
     const origin = originRef.current;
     originRef.current = null;
-    if (origin !== null) thumbnailRefs.current[origin]?.focus();
+    // `preventScroll`: in a looping strip the viewport is `overflow: hidden`,
+    // and a focus that scrolls it would make the track jump.
+    if (origin !== null) thumbnailRefs.current[origin]?.focus({ preventScroll: true });
   }
 
   /**
@@ -132,39 +285,42 @@ export function PortfolioGallery({
         {galleryTitle(total)}
       </h2>
 
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {items.map((item, i) => (
-          <li key={item.id} className="min-w-0">
-            <a
-              href={item.imageUrl}
-              ref={(node) => {
-                thumbnailRefs.current[i] = node;
-              }}
-              onClick={(event) => open(i, event)}
-              aria-haspopup="dialog"
-              className="block overflow-hidden rounded-2xl border border-edge bg-text/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              {/* A plain <img>, not next/image: the relay already serves a
-                  re-encoded WebP ≤ 1600 px, and the RELATIVE `imageUrl` is used
-                  exactly as the API returns it. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.imageUrl}
-                width={item.width}
-                height={item.height}
-                alt={galleryAlt(item.caption, providerName)}
-                loading={thumbnailLoading(i)}
-                className="aspect-square h-auto w-full object-cover"
-              />
-            </a>
-            {item.caption && (
-              <p className="mt-1 truncate text-xs text-text-muted">
-                {item.caption}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div
+        ref={viewportRef}
+        data-looping={looping}
+        data-paused={isOpen}
+        onFocus={(event) => {
+          if (event.target.matches(':focus-visible')) setKeyboardFocus(true);
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setKeyboardFocus(false);
+        }}
+        style={{ '--marquee-duration': `${marqueeDurationSeconds(total)}s` } as CSSProperties}
+        className={`portfolio-marquee px-1 py-1 ${looping ? 'overflow-hidden' : 'overflow-x-auto pb-3'}`}
+      >
+        <div className="portfolio-marquee__track flex w-max">
+          <PhotoGroup
+            items={items}
+            providerName={providerName}
+            copy={false}
+            groupRef={groupRef}
+            thumbnailRefs={thumbnailRefs}
+            onOpen={open}
+          />
+          {/* The copy that closes the loop: hidden from assistive tech, out of
+              the tab order, and present ONLY while the strip loops. */}
+          {looping && (
+            <PhotoGroup
+              items={items}
+              providerName={providerName}
+              copy
+              groupRef={groupRef}
+              thumbnailRefs={thumbnailRefs}
+              onOpen={open}
+            />
+          )}
+        </div>
+      </div>
 
       <dialog
         ref={dialogRef}

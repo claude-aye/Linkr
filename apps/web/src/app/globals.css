@@ -147,3 +147,39 @@ body {
     }
   }
 }
+
+/*
+ * Bande « Réalisations » qui défile (F2). La piste contient la liste, puis sa
+ * copie (rendue seulement quand la bande boucle : `data-looping`), et glisse
+ * d'exactement une copie (-50 %) : bouclage sans couture, tant que la copie
+ * garde sa marge de fin (`pr-3`, la même que l'écart entre deux photos).
+ * Ni animation ni masque hors du bloc « mouvement autorisé » : sinon la bande
+ * est une rangée défilable à la main. Pas de flou ici.
+ * La pause : survol, focus CLAVIER (`:focus-visible`, pas un clic souris), et
+ * visionneuse ouverte (`data-paused`).
+ */
+@keyframes portfolio-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .portfolio-marquee[data-looping='true'] {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+  }
+
+  .portfolio-marquee[data-looping='true'] .portfolio-marquee__track {
+    animation: portfolio-marquee var(--marquee-duration, 60s) linear infinite;
+  }
+
+  .portfolio-marquee[data-looping='true']:hover .portfolio-marquee__track,
+  .portfolio-marquee[data-looping='true']:has(a:focus-visible) .portfolio-marquee__track,
+  .portfolio-marquee[data-looping='true'][data-paused='true'] .portfolio-marquee__track {
+    animation-play-state: paused;
+  }
+}
