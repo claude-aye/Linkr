@@ -75,14 +75,46 @@ export function galleryAlt(caption: string | null, providerName: string): string
 }
 
 /**
- * How many thumbnails load eagerly. The first row on a phone is two photos:
- * they are in view at once, and `loading="lazy"` on them would only delay what
- * the visitor is already looking at.
+ * How many thumbnails load eagerly: the ones in view on first paint. The strip
+ * is 144 px (phone) / 176 px (from `sm`) per photo plus a 12 px gap, in a
+ * column at most 768 px wide, so four photos fill the widest first view; on a
+ * phone only two do, and the extra two are one swipe away. Everything after
+ * them, and the whole duplicated copy, is lazy.
  */
-export const EAGER_THUMBNAILS = 2;
+export const EAGER_THUMBNAILS = 4;
 
 export function thumbnailLoading(index: number): 'eager' | 'lazy' {
   return index < EAGER_THUMBNAILS ? 'eager' : 'lazy';
+}
+
+/**
+ * The strip scrolls by itself (F2). One lap shows every photo once, at a
+ * constant pace PER PHOTO — twelve photos make a 60 s lap, three make 15 s —
+ * so the speed stays the same however many there are.
+ */
+export const MARQUEE_SECONDS_PER_PHOTO = 5;
+
+/** Gap between two photos, in px (`gap-3`). The trailing gap of a copy is the
+    same width, which is what makes the loop seamless. */
+export const MARQUEE_GAP_PX = 12;
+
+export function marqueeDurationSeconds(count: number): number {
+  return count * MARQUEE_SECONDS_PER_PHOTO;
+}
+
+/**
+ * Whether the strip scrolls by itself: only when the photos DO NOT fit the
+ * width (a lone photo, or two, sit still, with no duplicate), and never when
+ * the visitor asked for reduced motion (the strip is then scrolled by hand).
+ * `contentWidth` is the photos alone, without the trailing gap.
+ */
+export function shouldLoop(input: {
+  contentWidth: number;
+  containerWidth: number;
+  reducedMotion: boolean;
+}): boolean {
+  if (input.reducedMotion) return false;
+  return input.contentWidth > input.containerWidth;
 }
 
 /** The previous photo, or `null` on the first. No wrap-around in V1. */
