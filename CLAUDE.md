@@ -2459,6 +2459,8 @@ ne le corrige pas.
     **(d) Les originaux ne sont pas dans le dépôt.** `CREDITS.md` donne pour chaque image l'auteur, la page source, la licence, l'URL de téléchargement et les modifications. `apps/web/scripts/landing-images.sh` régénère tout depuis un dossier d'originaux, avec un outil lancé à la demande (`pnpm dlx sharp-cli@<version exacte>`), **jamais une dépendance du projet**. Une image ajoutée ou changée passe par ce script et par `CREDITS.md`, dans la même PR.
 27. **`--trial-banner-h` s'ajoute à `--shell-header-h` dans tout calcul `100dvh`/`100svh`.** Le bandeau d'essai du layout racine occupe `--trial-banner-h` en haut de chaque page ; la nav occupe `--shell-header-h`. Un écran « plein cadre » qui ne retranche que l'un déborde d'une hauteur de bandeau (défilement parasite). Un écran sans nav (accueil) retranche seulement le bandeau. Retirer le bandeau à la fin de l'essai : supprimer le `<p>` du layout et mettre `--trial-banner-h: 0px`.
 
+28. **Profil prestataire et galerie (R7) : classes seulement, visionneuse laissée noire.** `/providers/[id]` et ses deux composants passent aux tokens (palette 82 → 9, `dark:` 0). Les 9 classes restantes sont `bg-black`/`text-white`/`bg-white/10` de la visionneuse plein écran de la galerie : un fond de photo reste noir quel que soit le thème, ce n'est pas une surface. Aucune couche `backdrop-filter` : cartes à plat. Titre du prestataire en Parisienne. Bouton « Demander » à 44 px. Logique, appels API et fil `lat`/`lng` intacts. Smoke Docker non joué (Docker arrêté pendant la session autonome).
+
 ---
 
 ## 14. Out-of-Scope (For Reference)

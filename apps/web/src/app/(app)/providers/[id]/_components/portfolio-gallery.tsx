@@ -127,7 +127,7 @@ export function PortfolioGallery({
     <section aria-labelledby="realisations-title" className="mb-8">
       <h2
         id="realisations-title"
-        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mb-3 text-lg font-semibold text-text"
       >
         {galleryTitle(total)}
       </h2>
@@ -142,7 +142,7 @@ export function PortfolioGallery({
               }}
               onClick={(event) => open(i, event)}
               aria-haspopup="dialog"
-              className="block overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-zinc-800 dark:bg-zinc-900"
+              className="block overflow-hidden rounded-2xl border border-edge bg-text/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {/* A plain <img>, not next/image: the relay already serves a
                   re-encoded WebP ≤ 1600 px, and the RELATIVE `imageUrl` is used
@@ -158,7 +158,7 @@ export function PortfolioGallery({
               />
             </a>
             {item.caption && (
-              <p className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="mt-1 truncate text-xs text-text-muted">
                 {item.caption}
               </p>
             )}
@@ -185,7 +185,7 @@ export function PortfolioGallery({
                 ref={closeRef}
                 type="button"
                 onClick={() => dialogRef.current?.close()}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-white/10 px-4 text-sm font-medium hover:bg-white/20"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl bg-white/10 px-4 text-sm font-medium hover:bg-white/20"
               >
                 Fermer
               </button>
@@ -203,7 +203,7 @@ export function PortfolioGallery({
             </div>
 
             {current.caption && (
-              <p className="text-center text-sm break-words text-zinc-200">{current.caption}</p>
+              <p className="text-center text-sm break-words text-text-muted">{current.caption}</p>
             )}
 
             <div data-backdrop className="flex items-center justify-between gap-3">
@@ -212,7 +212,7 @@ export function PortfolioGallery({
                 type="button"
                 disabled={previous === null}
                 onClick={() => previous !== null && go(previous)}
-                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-white/10 px-4 text-sm font-medium hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-2xl bg-white/10 px-4 text-sm font-medium hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <span aria-hidden="true">←</span> Précédente
               </button>
@@ -221,7 +221,7 @@ export function PortfolioGallery({
                 type="button"
                 disabled={next === null}
                 onClick={() => next !== null && go(next)}
-                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-white/10 px-4 text-sm font-medium hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-2xl bg-white/10 px-4 text-sm font-medium hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Suivante <span aria-hidden="true">→</span>
               </button>
