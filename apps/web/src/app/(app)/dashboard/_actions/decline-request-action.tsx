@@ -119,7 +119,7 @@ export function DeclineRequestAction({ requestId }: DeclineRequestActionProps) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        className="min-h-11 rounded-2xl border border-edge px-3 py-1.5 text-sm font-medium text-text-muted transition hover:bg-text/5 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Refuser
       </button>
@@ -138,10 +138,10 @@ export function DeclineRequestAction({ requestId }: DeclineRequestActionProps) {
 
         <label
           htmlFor={`decline-reason-${requestId}`}
-          className="mt-4 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+          className="mt-4 block text-sm font-medium text-text-muted"
         >
           Message au client{' '}
-          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+          <span className="font-normal text-text-muted">
             (facultatif)
           </span>
         </label>
@@ -152,9 +152,9 @@ export function DeclineRequestAction({ requestId }: DeclineRequestActionProps) {
           maxLength={REASON_MAX_CHARS}
           rows={2}
           placeholder="Ex. : je ne suis pas disponible à cette date."
-          className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          className="mt-1 w-full rounded-2xl border border-edge px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
         />
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-xs text-text-muted">
           Le client le recevra par courriel. Vous pouvez refuser sans rien
           écrire.
         </p>

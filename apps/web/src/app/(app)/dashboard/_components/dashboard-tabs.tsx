@@ -135,10 +135,10 @@ export function DashboardTabs({
                 // which throws the provider above the Connect band each time.
                 scroll={false}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex min-h-11 items-center justify-between gap-2 rounded-lg px-3 text-sm font-medium transition ${
+                className={`flex min-h-11 items-center justify-between gap-2 rounded-2xl px-3 text-sm font-medium transition ${
                   isActive
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900'
-                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                    ? 'bg-accent text-on-accent'
+                    : 'text-text-muted hover:bg-text/5'
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -158,8 +158,8 @@ export function DashboardTabs({
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
                       isActive
-                        ? 'bg-white/25 text-white dark:bg-zinc-900/15 dark:text-zinc-900'
-                        : 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                        ? 'bg-white/25 text-on-accent'
+                        : 'bg-text/10 text-text-muted'
                     }`}
                   >
                     {/* The bare digit is hidden and the sentence carries it, so

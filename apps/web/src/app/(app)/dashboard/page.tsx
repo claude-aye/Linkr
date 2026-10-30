@@ -154,39 +154,39 @@ function formatRelative(iso: string): string {
 const STATUS_BADGES: Record<ServiceRequestStatus, { label: string; className: string }> = {
   DRAFT: {
     label: 'Brouillon',
-    className: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    className: 'bg-text/5 text-text-muted',
   },
   OPEN: {
     label: 'Ouverte',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    className: 'bg-amber-100 text-amber-800',
   },
   ASSIGNED: {
     label: 'Assignée',
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+    className: 'bg-blue-100 text-blue-800',
   },
   IN_PROGRESS: {
     label: 'En cours',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    className: 'bg-amber-100 text-amber-800',
   },
   COMPLETED: {
     label: 'Terminée',
-    className: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+    className: 'bg-violet-100 text-violet-800',
   },
   PAID: {
     label: 'Payée',
-    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    className: 'bg-emerald-100 text-emerald-800',
   },
   EXPIRED: {
     label: 'Expirée',
-    className: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+    className: 'bg-text/5 text-text-muted',
   },
   CANCELLED: {
     label: 'Annulée',
-    className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+    className: 'bg-red-100 text-red-800',
   },
   REFUNDED: {
     label: 'Remboursée',
-    className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+    className: 'bg-rose-100 text-rose-800',
   },
 };
 
@@ -204,25 +204,25 @@ const STATUS_BADGES: Record<ServiceRequestStatus, { label: string; className: st
 const TRADE_BADGES: Record<PscVerificationStatus, { label: string; className: string }> = {
   NOT_REQUIRED: {
     label: 'Aucune vérification requise',
-    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    className: 'bg-emerald-100 text-emerald-800',
   },
   VERIFIED: {
     label: 'Licence vérifiée',
-    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    className: 'bg-emerald-100 text-emerald-800',
   },
   PENDING: {
     label: 'Vérification en attente',
-    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+    className: 'bg-amber-100 text-amber-800',
   },
   REJECTED: {
     label: 'Vérification refusée',
-    className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+    className: 'bg-red-100 text-red-800',
   },
 };
 
 const PAUSED_BADGE = {
   label: 'En pause',
-  className: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+  className: 'bg-text/5 text-text-muted',
 };
 
 /**
@@ -295,11 +295,11 @@ function TradeRow({
     : [];
 
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* UUID on hover, same affordance as the request cards above. */}
         <span
-          className="font-medium text-zinc-900 dark:text-zinc-50"
+          className="font-medium text-text"
           title={trade.serviceCategoryId}
         >
           {label}
@@ -323,11 +323,11 @@ function TradeRow({
       />
 
       {services !== null && (
-        <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Services</h3>
+        <div className="mt-4 border-t border-edge pt-4">
+          <h3 className="text-sm font-medium text-text-muted">Services</h3>
 
           {services.length === 0 ? (
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mt-1 text-sm text-text-muted">
               Aucun service pour ce métier.
               {/* Only true of an eligible trade: a paused or unverified one is
                   not discoverable at all, so « on vous trouve » would be false. */}
@@ -348,13 +348,13 @@ function TradeRow({
           )}
 
           {blockedReason !== null ? (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">{blockedReason}</p>
+            <p className="mt-3 text-sm text-text-muted">{blockedReason}</p>
           ) : items === null ? (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 text-sm text-text-muted">
               Le catalogue de ce métier n’a pas pu être chargé. Veuillez réessayer plus tard.
             </p>
           ) : options.length === 0 ? (
-            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-3 text-sm text-text-muted">
               Vous offrez déjà tous les services du catalogue pour ce métier.
             </p>
           ) : (
@@ -435,10 +435,10 @@ function Detail({
 }) {
   return (
     <div className={wide ? 'col-span-2 sm:col-span-3' : undefined}>
-      <dt className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+      <dt className="text-xs uppercase tracking-wide text-text-muted">
         {label}
       </dt>
-      <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">{children}</dd>
+      <dd className="mt-0.5 text-text">{children}</dd>
     </div>
   );
 }
@@ -451,9 +451,9 @@ function StateCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{children}</p>
+    <div className="rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+      <h2 className="text-lg font-semibold text-text">{title}</h2>
+      <p className="mt-2 text-sm text-text-muted">{children}</p>
     </div>
   );
 }
@@ -466,17 +466,17 @@ function StateCard({
  */
 function BecomeProviderCard() {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+    <div className="rounded-2xl border border-edge bg-surface p-8 text-center shadow-sm">
+      <h2 className="text-lg font-semibold text-text">
         Vous n’avez pas encore de profil prestataire
       </h2>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-2 text-sm text-text-muted">
         Créez-en un pour offrir vos services et recevoir des demandes.
       </p>
       <div className="mt-6">
         <Link
           href="/providers/new"
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500"
+          className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90"
         >
           Devenir prestataire
         </Link>
@@ -487,7 +487,7 @@ function BecomeProviderCard() {
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+    <div className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
       {children}
     </div>
   );
@@ -498,7 +498,7 @@ function DetailLink({ requestId }: { requestId: string }) {
     <div className="mt-4">
       <Link
         href={`/dashboard/requests/${requestId}`}
-        className="text-sm font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+        className="text-sm font-medium text-accent underline-offset-2 hover:underline"
       >
         Voir le détail →
       </Link>
@@ -520,21 +520,21 @@ function PendingRequestCard({ item }: { item: ProviderServiceRequestItem }) {
   const locationNotice = providerLocationPrecisionNotice(item.serviceLocationPrecision);
 
   return (
-    <li className="rounded-2xl border border-amber-300/70 bg-white p-5 shadow-sm dark:border-amber-900 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-amber-300/70 bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
           Nouvelle demande
         </span>
         {deadline && (
-          <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+          <span className="text-xs font-medium text-amber-700">
             {deadline}
           </span>
         )}
       </div>
 
-      <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</h3>
+      <h3 className="mt-2 font-semibold text-text">{item.title}</h3>
       <p
-        className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400"
+        className="mt-0.5 text-sm text-text-muted"
         title={item.serviceCategoryId}
       >
         {tradeLine(item)}
@@ -614,24 +614,24 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
   const depositUnsettled = isDepositUnsettled(item);
 
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}
         >
           {badge.label}
         </span>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-text-muted">
           Planifié le{' '}
-          <span className="font-medium text-zinc-700 dark:text-zinc-300">
+          <span className="font-medium text-text-muted">
             {formatDateTime(item.scheduledAtUtc)}
           </span>
         </span>
       </div>
 
-      <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</h3>
+      <h3 className="mt-2 font-semibold text-text">{item.title}</h3>
       <p
-        className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400"
+        className="mt-0.5 text-sm text-text-muted"
         title={item.serviceCategoryId}
       >
         {tradeLine(item)}
@@ -659,8 +659,8 @@ function JobCard({ item }: { item: ProviderServiceRequestItem }) {
           amount, never the deposit rate. See `isDepositUnsettled` above for
           which states qualify and why. */}
       {depositUnsettled && (
-        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950">
-          <p className="text-sm text-amber-800 dark:text-amber-300">
+        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2">
+          <p className="text-sm text-amber-800">
             Le dépôt n&rsquo;a pas été prélevé. Le mandat reste à vous ; vous
             pouvez relancer le prélèvement.
           </p>
@@ -704,25 +704,25 @@ function distanceLabel(km: number): string {
  */
 function TenderCard({ item }: { item: TenderItem }) {
   return (
-    <li className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="rounded-2xl border border-edge bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+        <span className="inline-flex items-center rounded-full bg-text/5 px-2.5 py-0.5 text-xs font-medium text-text-muted">
           Appel d’offres
         </span>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="text-xs text-text-muted">
           {distanceLabel(item.distanceKm)}
         </span>
       </div>
 
-      <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</h3>
+      <h3 className="mt-2 font-semibold text-text">{item.title}</h3>
       <p
-        className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400"
+        className="mt-0.5 text-sm text-text-muted"
         title={item.serviceCategoryId}
       >
         {pickTranslation(item.serviceCategoryNameTranslations)}
       </p>
 
-      <p className="mt-3 whitespace-pre-line text-sm text-zinc-700 dark:text-zinc-300">
+      <p className="mt-3 whitespace-pre-line text-sm text-text-muted">
         {item.description}
       </p>
 
@@ -1160,12 +1160,12 @@ export default async function DashboardPage({
       <div className="mb-3 flex items-center gap-2">
         <h2
           id="pending-title"
-          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+          className="text-lg font-semibold text-text"
         >
           En attente de réponse
         </h2>
         {pending.length > 0 && (
-          <span className="inline-flex items-center rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-medium text-white">
+          <span className="inline-flex items-center rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-medium text-on-accent">
             {pending.length}
           </span>
         )}
@@ -1211,15 +1211,15 @@ export default async function DashboardPage({
           that means something. */}
       <h2
         id="tenders-title"
-        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mb-3 text-lg font-semibold text-text"
       >
         Appels d’offres
       </h2>
 
       <div className="space-y-4">
         {tenderPaymentWarning && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950">
-            <p className="text-sm text-amber-800 dark:text-amber-300">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-800">
               Tant que vos paiements ne sont pas configurés, un client ne pourra pas
               accepter votre devis.{' '}
               <Link
@@ -1259,7 +1259,7 @@ export default async function DashboardPage({
             {/* Said out loud when the ceiling bites, rather than letting the
                 list pass for complete — no pagination (deferred debt). */}
             {tenders.total > tenders.items.length && (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-text-muted">
                 Les {tenders.items.length} appels d’offres les plus urgents sur {tenders.total}.
               </p>
             )}
@@ -1272,11 +1272,11 @@ export default async function DashboardPage({
   const jobsSection = (
     <section aria-labelledby="jobs-title">
       <div className="mb-3 flex items-center gap-2">
-        <h2 id="jobs-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <h2 id="jobs-title" className="text-lg font-semibold text-text">
           Mes jobs
         </h2>
         {jobs.length > 0 && (
-          <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
+          <span className="inline-flex items-center rounded-full bg-accent px-2.5 py-0.5 text-sm font-medium text-on-accent">
             {jobs.length}
           </span>
         )}
@@ -1301,12 +1301,12 @@ export default async function DashboardPage({
       <div className="mb-3 flex items-center gap-2">
         <h2
           id="trades-title"
-          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+          className="text-lg font-semibold text-text"
         >
           Mes métiers
         </h2>
         {trades && trades.length > 0 && (
-          <span className="inline-flex items-center rounded-full bg-zinc-900 px-2.5 py-0.5 text-sm font-medium text-white dark:bg-zinc-50 dark:text-zinc-900">
+          <span className="inline-flex items-center rounded-full bg-accent px-2.5 py-0.5 text-sm font-medium text-on-accent">
             {trades.length}
           </span>
         )}
@@ -1424,7 +1424,7 @@ export default async function DashboardPage({
     <section aria-labelledby="notifications-title">
       <h2
         id="notifications-title"
-        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mb-3 text-lg font-semibold text-text"
       >
         Notifications
       </h2>
@@ -1456,7 +1456,7 @@ export default async function DashboardPage({
     <section aria-labelledby="reviews-received-title">
       <h2
         id="reviews-received-title"
-        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mb-3 text-lg font-semibold text-text"
       >
         Avis reçus
       </h2>
@@ -1478,7 +1478,7 @@ export default async function DashboardPage({
     <section aria-labelledby="portfolio-title">
       <h2
         id="portfolio-title"
-        className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+        className="mb-3 text-lg font-semibold text-text"
       >
         Portfolio
       </h2>
@@ -1573,7 +1573,7 @@ export default async function DashboardPage({
   const activeTab = parseDashboardTab(onglet) ?? defaultTab;
 
   return (
-    <main className="flex flex-1 justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
+    <main className="flex flex-1 justify-center bg-bg p-6">
       {/* max-w-4xl (896 px), not the max-w-3xl of the other pages: the
           seven-tab bar needs ~820 px with real counters (measured at 817 for
           Dana — 16 jobs, 25 notifications, 12 photos). Capped at 768 px it
@@ -1581,10 +1581,10 @@ export default async function DashboardPage({
           (P3). Wider than ~870 px of window, the bar is one row. */}
       <section className="w-full max-w-4xl">
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">
             {provider ? `Bonjour, ${provider.businessName ?? userLabel}` : 'Tableau de bord'}
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-text-muted">
             {provider
               ? (provider.headline ?? 'Tableau de bord prestataire')
               : `Connecté·e en tant que ${user.email}`}

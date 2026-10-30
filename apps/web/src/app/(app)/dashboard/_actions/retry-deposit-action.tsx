@@ -83,7 +83,7 @@ export function RetryDepositAction({ requestId, title }: RetryDepositActionProps
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-lg border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950"
+        className="min-h-11 rounded-2xl border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
       >
         Relancer le prélèvement
       </button>
@@ -98,7 +98,7 @@ export function RetryDepositAction({ requestId, title }: RetryDepositActionProps
         <p>
           Nous tenterons de prélever à nouveau le dépôt sur le moyen de paiement
           du client pour&nbsp;:{' '}
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
+          <span className="font-medium text-text">
             {title}
           </span>
           .

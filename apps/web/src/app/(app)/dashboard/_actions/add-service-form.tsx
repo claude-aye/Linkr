@@ -48,17 +48,17 @@ type FieldErrors = Partial<Record<Field, string>>;
 const EMPTY_DRAFT = { itemId: '', price: '', hours: '', minutes: '', description: '' };
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 aria-[invalid=true]:border-red-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800 dark:aria-[invalid=true]:border-red-700';
+  'w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent aria-[invalid=true]:border-red-400';
 /** Same classes as `add-category-form.tsx`; the margin is split off so the
  *  two side-by-side duration inputs can drop it. */
 const fieldClass = `mt-1 ${inputClass}`;
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-const hintClass = 'mt-1 text-xs text-zinc-500 dark:text-zinc-400';
-const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700 dark:text-red-400';
+const labelClass = 'block text-sm font-medium text-text-muted';
+const hintClass = 'mt-1 text-xs text-text-muted';
+const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700';
 const secondaryButtonClass =
-  'min-h-11 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800';
+  'min-h-11 rounded-2xl border border-edge px-4 text-sm font-medium text-text-muted transition hover:bg-text/5 disabled:cursor-not-allowed disabled:opacity-60';
 const primaryButtonClass =
-  'min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+  'min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60';
 
 export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddServiceFormProps) {
   const router = useRouter();
@@ -180,7 +180,7 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
           OUTSIDE the folded form so the confirmation survives the fold. */}
       <div aria-live="polite">
         {succeeded && (
-          <p className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+          <p className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             Service ajouté. Il apparaît sur votre profil public avec le bouton
             « Demander ».
           </p>
@@ -204,7 +204,7 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
           method="post"
           onSubmit={handleSubmit}
           noValidate
-          className="mt-3 space-y-4 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-950"
+          className="mt-3 space-y-4 rounded-2xl bg-bg p-4"
         >
           <div>
             <label htmlFor={fieldId('item')} className={labelClass}>
@@ -256,7 +256,7 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
               />
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-text-muted"
               >
                 $ CA
               </span>
@@ -292,7 +292,7 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
                   />
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                    className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-text-muted"
                   >
                     h
                   </span>
@@ -316,7 +316,7 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
                   />
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                    className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-text-muted"
                   >
                     min
                   </span>
@@ -354,7 +354,7 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
           {error && (
             <p
               role="alert"
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
             >
               {error}
             </p>

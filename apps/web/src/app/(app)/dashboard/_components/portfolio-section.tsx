@@ -52,18 +52,18 @@ const LIMITS = PORTFOLIO_LIMITS;
 const BASE_URL = '/api/service-providers/me/portfolio';
 
 const inputClass =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800';
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-const hintClass = 'mt-1 text-xs text-zinc-500 dark:text-zinc-400';
+  'w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent';
+const labelClass = 'block text-sm font-medium text-text-muted';
+const hintClass = 'mt-1 text-xs text-text-muted';
 const errorClass =
-  'rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300';
+  'rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800';
 const primaryButtonClass =
-  'min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+  'min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60';
 /** Tile buttons: two per row in a 2-column phone grid, hence the tight padding. */
 const tileButtonClass =
-  'min-h-11 whitespace-nowrap rounded-lg border border-zinc-300 px-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800';
+  'min-h-11 whitespace-nowrap rounded-2xl border border-edge px-1 text-xs font-medium text-text-muted transition hover:bg-text/5 disabled:cursor-not-allowed disabled:opacity-50';
 const tileDangerClass =
-  'min-h-11 whitespace-nowrap rounded-lg border border-red-300 px-1 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950';
+  'min-h-11 whitespace-nowrap rounded-2xl border border-red-300 px-1 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50';
 
 /** The `code` of an error body, read ONLY for the upload's 409 (P1 contract). */
 async function readErrorCode(response: Response): Promise<string | null> {
@@ -217,12 +217,12 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
       <div>
         <h2
           id="portfolio-title"
-          className="text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+          className="text-lg font-semibold text-text"
         >
           Portfolio
         </h2>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          <span className="font-medium text-zinc-900 dark:text-zinc-50">
+        <p className="mt-1 text-sm text-text-muted">
+          <span className="font-medium text-text">
             {photoCountLabel(count, LIMITS)}
           </span>
           {!full && (
@@ -241,7 +241,7 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
         method="post"
         onSubmit={handleUpload}
         noValidate
-        className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+        className="space-y-4 rounded-2xl border border-edge bg-surface p-4"
       >
         <div>
           <label htmlFor={fileId} className={labelClass}>
@@ -259,7 +259,7 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
             onChange={onFileChange}
             aria-describedby={fileHintId}
             aria-invalid={uploadError ? true : undefined}
-            className="mt-1 block w-full min-h-11 text-sm text-zinc-700 file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-zinc-100 file:px-4 file:text-sm file:font-medium file:text-zinc-800 hover:file:bg-zinc-200 disabled:opacity-60 dark:text-zinc-300 dark:file:bg-zinc-800 dark:file:text-zinc-100"
+            className="mt-1 block w-full min-h-11 text-sm text-text-muted file:mr-3 file:min-h-11 file:rounded-2xl file:border-0 file:bg-text/5 file:px-4 file:text-sm file:font-medium file:text-text hover:file:bg-text/10 disabled:opacity-60"
           />
           <p id={fileHintId} className={hintClass}>
             JPEG, PNG ou WebP, {megabytesLabel(LIMITS.maxBytes)} au plus.
@@ -268,7 +268,7 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
 
         <div>
           <label htmlFor={captionId} className={labelClass}>
-            Légende <span className="font-normal text-zinc-500">(facultative)</span>
+            Légende <span className="font-normal text-text-muted">(facultative)</span>
           </label>
           <textarea
             id={captionId}
@@ -292,7 +292,7 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
           </p>
         )}
         {full && (
-          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <p className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {portfolioFullMessage(LIMITS)}
           </p>
         )}
@@ -306,7 +306,7 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
           {uploading ? 'Envoi en cours…' : 'Ajouter la photo'}
         </button>
 
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs text-text-muted">
           Les données de localisation de vos photos sont retirées automatiquement.
         </p>
       </form>
@@ -323,7 +323,7 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
       )}
 
       {shown.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+        <p className="rounded-2xl border border-dashed border-edge p-6 text-center text-sm text-text-muted">
           Votre portfolio est vide. Ajoutez des photos de vos réalisations : elles
           s’afficheront sur votre profil.
         </p>
@@ -444,7 +444,7 @@ function PortfolioTile({
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900">
+    <li className="flex flex-col gap-2 rounded-2xl border border-edge bg-surface p-2">
       {/* A plain <img>, not next/image: the relay already serves a re-encoded
           WebP ≤ 1600 px, and the RELATIVE `imageUrl` is used exactly as the API
           returned it. `width`/`height` reserve the space before the bytes
@@ -456,7 +456,7 @@ function PortfolioTile({
         height={item.height}
         loading="lazy"
         alt={alt}
-        className="aspect-square w-full rounded-lg bg-zinc-100 object-cover dark:bg-zinc-800"
+        className="aspect-square w-full rounded-2xl bg-text/5 object-cover"
       />
 
       {editing ? (
@@ -498,9 +498,9 @@ function PortfolioTile({
         </form>
       ) : (
         <>
-          <p className="min-h-4 break-words text-xs text-zinc-700 dark:text-zinc-300">
+          <p className="min-h-4 break-words text-xs text-text-muted">
             {item.caption ?? (
-              <span className="text-zinc-400 dark:text-zinc-500">Sans légende</span>
+              <span className="text-text-muted">Sans légende</span>
             )}
           </p>
           <div className="grid grid-cols-2 gap-1">

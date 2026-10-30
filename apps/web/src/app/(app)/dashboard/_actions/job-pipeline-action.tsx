@@ -74,13 +74,13 @@ const PIPELINE_STEPS: Record<string, PipelineStep> = {
     label: 'Démarrer',
     // Neutral primary (mirrors ConfirmDialog's confirm button tone).
     className:
-      'bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200',
+      'bg-accent text-on-accent hover:bg-accent/90',
   },
   IN_PROGRESS: {
     action: 'complete',
     label: 'Compléter',
     // Slightly more affirmed than « Démarrer » — completing is a milestone.
-    className: 'bg-blue-600 text-white hover:bg-blue-500',
+    className: 'bg-accent text-on-accent hover:bg-accent/90',
   },
 };
 
@@ -169,7 +169,7 @@ export function JobPipelineAction({ requestId, status }: JobPipelineActionProps)
         onClick={handleAction}
         disabled={pending}
         aria-busy={pending}
-        className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+        className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
         {pending && <Spinner />}
         {label}
@@ -178,7 +178,7 @@ export function JobPipelineAction({ requestId, status }: JobPipelineActionProps)
       {error && (
         <p
           role="alert"
-          className="max-w-sm rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          className="max-w-sm rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
           {error}
         </p>

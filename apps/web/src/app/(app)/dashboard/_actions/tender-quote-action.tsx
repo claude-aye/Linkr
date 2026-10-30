@@ -89,14 +89,14 @@ function todayDateValue(): string {
 }
 
 const fieldClass =
-  'mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 aria-[invalid=true]:border-red-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-800 dark:aria-[invalid=true]:border-red-700';
-const labelClass = 'block text-sm font-medium text-zinc-700 dark:text-zinc-300';
-const hintClass = 'mt-1 text-xs text-zinc-500 dark:text-zinc-400';
-const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700 dark:text-red-400';
+  'mt-1 w-full rounded-2xl border border-edge bg-surface min-h-11 px-3 py-2 text-base text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent aria-[invalid=true]:border-red-400';
+const labelClass = 'block text-sm font-medium text-text-muted';
+const hintClass = 'mt-1 text-xs text-text-muted';
+const fieldErrorClass = 'mt-1 text-xs font-medium text-red-700';
 const secondaryButtonClass =
-  'min-h-11 rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800';
+  'min-h-11 rounded-2xl border border-edge px-4 text-sm font-medium text-text-muted transition hover:bg-text/5 disabled:cursor-not-allowed disabled:opacity-60';
 const primaryButtonClass =
-  'min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60';
+  'min-h-11 rounded-2xl bg-accent px-4 text-sm font-medium text-on-accent shadow-sm transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60';
 
 const EMPTY_DRAFT = { amount: '', durationHours: '', description: '', proposedStartDate: '' };
 
@@ -232,7 +232,7 @@ export function TenderQuoteAction({
       <div className="mt-4">
         {live}
         <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
             Devis envoyé
           </span>
           <button
@@ -256,7 +256,7 @@ export function TenderQuoteAction({
         >
           <p>
             Votre devis pour{' '}
-            <span className="font-medium text-zinc-800 dark:text-zinc-200">{title}</span>{' '}
+            <span className="font-medium text-text">{title}</span>{' '}
             ne sera plus proposé au client.
           </p>
           <p className="mt-2">
@@ -278,7 +278,7 @@ export function TenderQuoteAction({
     <div className="mt-4">
       {live}
       {stateNotice && (
-        <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">{stateNotice}</p>
+        <p className="mb-2 text-sm text-text-muted">{stateNotice}</p>
       )}
 
       <button
@@ -297,7 +297,7 @@ export function TenderQuoteAction({
           method="post"
           onSubmit={submit}
           noValidate
-          className="mt-4 space-y-4 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-950"
+          className="mt-4 space-y-4 rounded-2xl bg-bg p-4"
         >
           {/* Montant */}
           <div>
@@ -318,7 +318,7 @@ export function TenderQuoteAction({
               />
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-zinc-500 dark:text-zinc-400"
+                className="pointer-events-none absolute inset-y-0 right-3 mt-1 flex items-center text-sm text-text-muted"
               >
                 $ CA
               </span>
@@ -420,7 +420,7 @@ export function TenderQuoteAction({
           {serverError && (
             <div
               role="alert"
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
             >
               <p>{serverError.message}</p>
               {serverError.refresh && (
