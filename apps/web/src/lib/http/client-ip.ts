@@ -21,13 +21,21 @@
  * that. Relaying such a chain would let the caller choose which entry the API
  * resolves. So we take one address, validate its shape, and send that alone.
  *
- * What remains, stated plainly: a caller who forges the header still picks their
- * own bucket. It is bounded — they cannot drain anyone else's without knowing
- * and forging that person's address, which is true of any per-IP scheme — and it
- * is closed in production by the reverse proxy in front of the web tier, whose
- * job is to overwrite this header with the address it actually saw. Even
- * unclosed it is strictly better than one shared bucket, where a single caller
- * denies the service to everybody.
+ * ⚠️ EXACTLY ONE ADDRESS IS ACCEPTED, AND THAT IS MEASURED, NOT REASONED (D2).
+ * Smoke with the production Caddyfile in front of the standalone build
+ * (`next start`): Caddy overwrites the header with the peer it saw
+ * (`header_up X-Forwarded-For {remote_host}`), and the route handler receives
+ * that ONE value — with or without a forged `X-Forwarded-For: 6.6.6.6, 7.7.7.7`
+ * from the client, Next appends nothing. So production never sends us a chain.
+ * A chain therefore means the request did not come through the deployed proxy
+ * (or the proxy is misconfigured), and we do not try to guess which entry is
+ * honest: we drop it and fail closed.
+ *
+ * What remains, stated plainly: without Caddy (local development), a caller who
+ * forges a SINGLE address still picks their own bucket. It is bounded — they
+ * cannot drain anyone else's without knowing and forging that person's address —
+ * and it is closed in production, where Caddy overwrites the header. Even
+ * unclosed it is strictly better than one shared bucket.
  */
 
 /** Reasonable IPv4 / IPv6 shapes. Deliberately not a parser — see below. */
@@ -51,9 +59,11 @@ export function resolveClientIp(request: Request): string | null {
     return null;
   }
 
-  // Leftmost = the original client by convention, and what a correctly
-  // configured reverse proxy puts there. Only this one entry travels onward.
-  const candidate = forwarded.split(',')[0]?.trim() ?? '';
+  // One address or nothing: a chain is not what the deployed proxy sends.
+  if (forwarded.includes(',')) {
+    return null;
+  }
+  const candidate = forwarded.trim();
   if (candidate.length === 0 || candidate.length > 45) {
     return null;
   }

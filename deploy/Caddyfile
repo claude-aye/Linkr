@@ -9,6 +9,21 @@
 	email {$ACME_EMAIL}
 }
 
+# En-têtes d'identité du client, posés vers le web ET vers l'API (PR D2).
+#
+# ⚠️ AUCUNE VALEUR FOURNIE PAR LE CLIENT NE PASSE. X-Forwarded-For est ÉCRASÉ
+# par l'adresse que Caddy voit réellement ({remote_host} : le pair TCP — aucun
+# proxy de confiance n'est déclaré devant Caddy). X-Real-IP est supprimé : rien
+# ne le lit, et le laisser passer offrirait un en-tête forgé à qui le lirait un
+# jour. Le web relaie ensuite CETTE adresse à l'API, qui ne croit le relais que
+# depuis le réseau Docker (TRUSTED_PROXY_IPS, deploy/compose.yaml).
+# Trace mesurée (smoke D2) : le web reçoit exactement une adresse, Next
+# n'ajoute rien.
+(client_ip_headers) {
+	header_up X-Forwarded-For {remote_host}
+	header_up -X-Real-IP
+}
+
 www.linkrapp.com {
 	redir https://linkrapp.com{uri} permanent
 }
@@ -34,10 +49,14 @@ linkrapp.com {
 		path /webhooks/stripe /webhooks/stripe/*
 	}
 	handle @stripe_webhook {
-		reverse_proxy api:5000
+		reverse_proxy api:5000 {
+			import client_ip_headers
+		}
 	}
 
 	handle {
-		reverse_proxy web:3001
+		reverse_proxy web:3001 {
+			import client_ip_headers
+		}
 	}
 }
