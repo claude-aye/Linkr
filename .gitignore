@@ -70,3 +70,6 @@ sonde-*.json
 /.claude/*
 # …sauf les skills du projet, versionnés (socle visuel, CLAUDE.md §13.1 nº 20)
 !/.claude/skills/
+
+# Production (deploy/) : fichiers réels sur le serveur seulement
+deploy/api.env

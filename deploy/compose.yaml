@@ -1,0 +1,149 @@
+# Production Linkr (PR D3) — VPS OVH, images tirées de GHCR (rien n'est construit ici).
+#
+#   cd deploy
+#   docker compose pull
+#   docker compose --profile tools run --rm migrate   # migrations, explicitement
+#   docker compose up -d
+#
+# ⚠️ SEUL `caddy` PUBLIE DES PORTS. Docker contourne UFW : un `ports:` ajouté à
+# un autre service l'exposerait à Internet malgré le pare-feu.
+#
+# Réseaux : `edge` (caddy, web, api — sortie Internet pour ACME, Stripe, SMTP,
+# Nominatim) ; `backend` (api, postgres, redis, migrate), `internal` : aucune
+# route vers Internet, aucun accès depuis caddy.
+
+name: linkr
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-api-image: &api-image ghcr.io/claude-aye/linkr-api:${IMAGE_TAG:?IMAGE_TAG manquant dans deploy/.env}
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443/tcp"
+      - "443:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL manquant dans deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    logging: *logging
+
+  web:
+    image: ghcr.io/claude-aye/linkr-web:${IMAGE_TAG:?IMAGE_TAG manquant dans deploy/.env}
+    restart: unless-stopped
+    networks:
+      - edge
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *logging
+
+  api:
+    image: *api-image
+    restart: unless-stopped
+    env_file:
+      - ./api.env
+    # Valeurs liées à la topologie du compose : posées ici, elles priment sur
+    # api.env et ne peuvent pas en diverger.
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_URL: redis://redis:6379
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /app/apps/api/storage/uploads
+    volumes:
+      - uploads:/app/apps/api/storage/uploads
+    networks:
+      - edge
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *logging
+
+  # Migrations TypeORM, jamais au démarrage de l'API : lancées par le
+  # déploiement (après sauvegarde), puis le conteneur s'arrête.
+  migrate:
+    image: *api-image
+    profiles: ["tools"]
+    restart: "no"
+    command: ["node", "node_modules/typeorm/cli.js", "migration:run", "-d", "dist/database/data-source.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans deploy/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans deploy/.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging: *logging
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # appendonly : les files BullMQ (webhooks Stripe, courriels) survivent à un
+    # redémarrage. Jamais de FLUSHDB (CLAUDE.md §13 nº 13).
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging: *logging
+
+networks:
+  edge: {}
+  backend:
+    internal: true
+
+volumes:
+  postgres_data: {}
+  redis_data: {}
+  # Photos du portfolio (STORAGE_DRIVER=local). À sauvegarder AVEC la base.
+  uploads: {}
+  caddy_data: {}
+  caddy_config: {}

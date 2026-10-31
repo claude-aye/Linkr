@@ -1,0 +1,43 @@
+# Proxy inverse de production (PR D3). HTTPS automatique (Let's Encrypt).
+#
+# ⚠️ L'API N'A QU'UNE ROUTE PUBLIQUE : le webhook Stripe. Le navigateur ne parle
+# jamais à l'API — le serveur web l'appelle sur http://api:5000, par le réseau
+# Docker. Tout le reste de linkrapp.com va au web, y compris /api/*, qui sont
+# les relais BFF de Next (les envoyer à NestJS casserait l'application).
+
+{
+	email {$ACME_EMAIL}
+}
+
+www.linkrapp.com {
+	redir https://linkrapp.com{uri} permanent
+}
+
+linkrapp.com {
+	encode zstd gzip
+
+	# En-têtes de base. Le préfixe `?` ne pose la valeur que si l'application ne
+	# l'a pas déjà fait : /reset-password garde son `no-referrer` (Next).
+	# strict-origin-when-cross-origin : MapTiler et Stripe.js ne reçoivent que
+	# l'origine, jamais l'URL de /recherche (qui porte le point cherché).
+	# Aucune Content-Security-Policy ici : elle demanderait d'énumérer Stripe.js,
+	# ses iframes 3D Secure et MapTiler — PR dédiée.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		?X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@stripe_webhook {
+		method POST
+		path /webhooks/stripe /webhooks/stripe/*
+	}
+	handle @stripe_webhook {
+		reverse_proxy api:5000
+	}
+
+	handle {
+		reverse_proxy web:3001
+	}
+}
