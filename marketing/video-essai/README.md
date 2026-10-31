@@ -1,6 +1,10 @@
 # Vidéo LinkedIn — version d'essai
 
 Motion design de 50 s (1440×1080, 30 fps) qui présente Linkr et renvoie vers `linkrapp.com`.
+
+Version 2 (montage dynamique) : ouverture du sombre vers le clair (0–3 s), logo (3–7 s),
+« LinkedIn × Uber, en version locale » (7–10 s), douze fonctionnalités de 2 à 3 s chacune
+(10–40 s), vision glocale sur le globe (40–44 s), appel à l'action `linkrapp.com` (44–50 s).
 Hors du workspace pnpm : aucun paquet, aucune dépendance du projet.
 
 - `index.html` + `anim.js` : la vidéo. Chaque image est une fonction pure du temps

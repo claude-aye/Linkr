@@ -189,38 +189,41 @@ def heartbeat(g):
     return np.tanh(x * 1.6) * g
 
 
-# ---------------- A · suspense 0–6.8 ----------------
-cut = TL["black"][0]
-t = tt(cut)
-drone = (np.sin(2 * np.pi * 41.2 * t) + 0.6 * np.sin(2 * np.pi * 61.7 * t + 0.4) + 0.25 * np.sin(2 * np.pi * 82.4 * t)) * (0.75 + 0.25 * np.sin(2 * np.pi * 0.21 * t))
-air = filt(rng.standard_normal(len(t)), "lp", 260) * 0.6
-ramp = 0.12 + 0.55 * (t / cut) ** 1.6
-dr = (drone * 0.45 + air) * ramp
-dr[-int(0.008 * SR):] *= np.linspace(1, 0, int(0.008 * SR))
-place(sfx, dr, 0, 0.55)
-hb = TL["heartbeats"]
-for i, b in enumerate(hb):
-    g = 0.55 + 0.65 * i / (len(hb) - 1)
+# ---------------- A · opening, dark to light (0–3 s) ----------------
+BLOOM = TL["bloom"]
+t = tt(BLOOM)
+drone = (np.sin(2 * np.pi * 41.2 * t) + 0.6 * np.sin(2 * np.pi * 61.7 * t + 0.4) + 0.3 * np.sin(2 * np.pi * 82.4 * t)) * (0.8 + 0.2 * np.sin(2 * np.pi * 0.5 * t))
+air = filt(rng.standard_normal(len(t)), "lp", 300) * 0.6
+place(sfx, (drone * 0.45 + air) * (0.15 + 0.6 * (t / BLOOM) ** 1.5), 0, 0.55)
+for i, b in enumerate(TL["heartbeats"]):
+    g = 0.6 + 0.6 * i / (len(TL["heartbeats"]) - 1)
     place(sfx, heartbeat(g), b, 0.9)
-    place(sfx, heartbeat(g * 0.68), b + 0.15, 0.9)
-r = riser(cut - 4.3, 160, 1900, 0.55)
-place(sfx, r, 4.3)
-place(send, r, 4.3, 0.25)
-# hard cut: nothing may ring past 6.8
-sfx[int(cut * SR) : int(TL["black"][1] * SR)] = 0
+    place(sfx, heartbeat(g * 0.65), b + 0.14, 0.9)
+# brightening: rising shimmer chord + riser + reverse swell into the bloom
+r = riser(2.3, 180, 2600, 0.7)
+place(sfx, r, BLOOM - 2.3); place(send, r, BLOOM - 2.3, 0.3)
+for k, m in enumerate((69, 76, 81, 84, 88)):
+    tb = tt(2.2)
+    sh = np.sin(2 * np.pi * hz(m) * tb) * (tb / 2.2) ** 3 * 0.08
+    place(sfx, sh, BLOOM - 2.2, 1.0, pan=-0.6 + 0.3 * k); place(send, sh, BLOOM - 2.2, 0.8)
+rev = filt(rng.standard_normal(int(0.9 * SR)), "hp", 3000) * np.linspace(0, 1, int(0.9 * SR)) ** 3 * 0.5
+place(sfx, rev, BLOOM - 0.9, 0.8)
 
-# ---------------- B · reveal impact ----------------
-place(sfx, impact(True), 7.0, 1.0)
+# ---------------- B · the bloom: impact + logo ----------------
+place(sfx, impact(True), BLOOM, 1.0)
 for k, m in enumerate((84, 88, 91, 96, 100)):
     b = bell(m, 2.8, 0.9)
-    place(sfx, b, 7.02 + k * 0.035, 0.7, pan=-0.5 + k * 0.25)
-    place(send, b, 7.02 + k * 0.035, 0.8)
+    place(sfx, b, BLOOM + 0.02 + k * 0.035, 0.7, pan=-0.5 + k * 0.25)
+    place(send, b, BLOOM + 0.02 + k * 0.035, 0.8)
 
-# ---------------- C · music ----------------
+# ---------------- C · music, 120 BPM, chord every 2 s from the bloom ----------------
 CH = {"Am": [57, 60, 64], "F": [53, 57, 60], "C": [55, 60, 64], "G": [55, 59, 62]}
 ROOTS = {"Am": 33, "F": 29, "C": 36, "G": 31}
-bars = [(7, "Am")] + [(8 + 2 * k, c) for k, c in enumerate(
-    ["F", "G", "Am", "F", "C", "G", "Am", "F", "C", "G", "Am", "F", "C", "G", "Am", "F", "G", "G", "Am", "F", "C"])]
+PROG = ["Am", "F", "C", "G"]
+bars = [(BLOOM + 2 * k, PROG[k % 4]) for k in range(19)]          # 3 … 39
+bars += [(40.0, "F"), (42.0, "G"), (44.0, "Am"), (46.0, "F"), (48.0, "C")]
+bars = [(s, c) for s, c in bars if s < 40 or s >= 40]
+bars.sort()
 BEAT = 0.5
 
 
@@ -233,95 +236,85 @@ def chord_at(x):
 
 
 def section(x):
-    if x < 12: return "intro"
-    if x < 36: return "groove"
-    if x < 38: return "build"
+    if x < 7: return "intro"
+    if x < 39: return "groove"
+    if x < 40: return "build"
     if x < 44: return "ambient"
     return "outro"
 
 
-# pads
 for (s, c), nxt in zip(bars, bars[1:] + [(50.0, None)]):
+    if s >= 39 and s < 40:
+        continue
     d = nxt[0] - s
     sec = section(s)
-    cutoff = {"intro": 900, "groove": 1500, "build": 1500, "ambient": 1100, "outro": 1800}[sec]
-    if s == 36:
-        x = pad_chord(CH[c], d + 0.3, 1500)
-        x = signal.sosfilt(sos("lp", 4000, 1), x, axis=0)
-    elif s >= 48:
+    if s >= 48:
         x = pad_chord(CH[c] + [CH[c][0] + 12], 2.0, 2200, 0.05)
     else:
-        x = pad_chord(CH[c], d + 0.35, cutoff, 0.6 if sec in ("intro", "ambient") else 0.25)
-    gain = {"intro": 1.7, "groove": 0.8, "build": 1.0, "ambient": 1.7, "outro": 1.0}[sec]
+        x = pad_chord(CH[c], d + 0.35, {"intro": 1200, "groove": 1700, "build": 1700, "ambient": 1100, "outro": 2000}[sec],
+                      0.5 if sec == "ambient" else 0.15)
+    gain = {"intro": 1.4, "groove": 0.85, "build": 1.0, "ambient": 1.7, "outro": 1.0}[sec]
     place(music, x, s, gain)
     place(send, x, s, 0.5)
 
-# drums, bass, arp on the beat grid
 kicks = []
-b = 8.0
+b = BLOOM
 while b < 50 - 1e-6:
     sec = section(b)
-    beat_in_bar = int(round((b - 8) / BEAT)) % 4
-    if sec in ("groove", "build") and b >= 12 or (sec == "outro" and b < 48):
-        place(music, kick(), b, 0.95); kicks.append(b)
-        if beat_in_bar in (1, 3):
-            place(music, clap(), b, 0.8, 0.05); place(send, clap(), b, 0.15)
-    if b >= 10 and sec in ("intro", "groove", "build") or (sec == "outro" and b < 48):
-        place(music, hat(), b + BEAT / 2, 0.55 if sec != "intro" else 0.3 * (b - 10) / 2, 0.3)
-        if sec != "intro":
-            place(music, hat(), b + BEAT / 4, 0.25, -0.3); place(music, hat(), b + 3 * BEAT / 4, 0.25, -0.3)
+    bi = int(round((b - BLOOM) / BEAT)) % 4
     c = chord_at(b)
-    if sec in ("groove", "build") and b >= 12 or (sec == "outro" and b < 48):
+    drums = sec in ("groove", "build") or (sec == "outro" and b < 48) or (sec == "intro" and b >= 4.0)
+    if drums:
+        place(music, kick(), b, 0.95); kicks.append(b)
+        if bi in (1, 3) and sec != "intro":
+            place(music, clap(), b, 0.85, 0.05); place(send, clap(), b, 0.15)
+        for k in range(4):  # 16th hats, accented off-beats
+            if sec == "intro" and k % 2 == 0:
+                continue
+            place(music, hat(open_=(k == 2 and bi == 3)), b + k * BEAT / 4, 0.5 if k == 2 else 0.22, 0.3 if k % 2 else -0.3)
         for h in (0, BEAT / 2):
-            place(music, bass_note(ROOTS[c] + 12, BEAT / 2 - 0.02), b + h, 0.9)
-    elif sec in ("intro", "ambient"):
-        if beat_in_bar == 0:
-            place(music, bass_note(ROOTS[c], 1.9), b, 0.75)
-    if sec in ("groove", "build", "intro", "outro") and b < 48:
+            note = ROOTS[c] + 12 + (12 if (h and bi == 3) else 0)
+            place(music, bass_note(note, BEAT / 2 - 0.02), b + h, 0.95)
+    elif sec == "ambient" and abs((b - 40) % 2) < 1e-6:
+        place(music, bass_note(ROOTS[c], 1.9), b, 0.8)
+    if sec != "ambient" and b < 48:
         notes = CH[c] + [CH[c][0] + 12]
         for k in range(2):
-            m = notes[(int(round((b - 8) / (BEAT / 2))) + k) % 4] + 12
+            m = notes[(int(round((b - BLOOM) / (BEAT / 2))) + k) % 4] + 12
             x = pluck(m)
-            g = 0.65 if sec == "intro" else 0.75
-            place(music, x, b + k * BEAT / 2, g, pan=-0.4 if k else 0.4)
-            place(music, x, b + k * BEAT / 2 + 0.375, g * 0.35, pan=0.6 if k else -0.6)  # dotted-eighth echo
+            place(music, x, b + k * BEAT / 2, 0.7, pan=-0.4 if k else 0.4)
+            place(music, x, b + k * BEAT / 2 + 0.375, 0.25, pan=0.6 if k else -0.6)
     b += BEAT
 
-# intro pulse (half-time kicks) + a swell into the 12 s drop
-for kb in (8.0, 9.0, 10.0, 10.75, 11.0, 11.5):
-    place(music, kick(0.75), kb); kicks.append(kb)
-place(sfx, riser(1.4, 200, 1800, 0.45), 10.6)
+# build into the globe (39–40) and into the CTA (42.5–44)
+t0 = 39.0
+while t0 < 40 - 1e-6:
+    place(music, snare(), t0, 0.15 + 0.5 * (t0 - 39))
+    t0 += 0.125 if t0 < 39.5 else 0.0625
+place(sfx, riser(1.0, 240, 2600, 0.6), 39.0)
+place(sfx, riser(1.5, 160, 2200, 0.6), 42.5)
+# intro snare run into the concept (6–7)
+t0 = 6.0
+while t0 < 7 - 1e-6:
+    place(music, snare(), t0, 0.12 + 0.35 * (t0 - 6)); t0 += 0.125
 
 
 def crash():
-    t = tt(1.6)
-    n = filt(rng.standard_normal(len(t)), "hp", 4500)
-    return n * np.exp(-t / 0.45) * 0.4
+    tc = tt(1.6)
+    return filt(rng.standard_normal(len(tc)), "hp", 4500) * np.exp(-tc / 0.45) * 0.4
 
 
-# fills + crash on every feature cut: each scene relaunches attention
-for c in (12.0, 18.0, 22.0, 26.0, 30.0, 34.0, 44.0):
-    place(music, crash(), c, 0.55, 0.2); place(send, crash(), c, 0.2)
-    if c in (22.0, 26.0, 30.0, 34.0):
-        for k, o in enumerate((0.5, 0.375, 0.25, 0.125)):
-            place(music, snare(), c - o, 0.22 + 0.1 * k)
+for c in TL["cuts"][1:]:
+    if c == 44.0:
+        continue
+    place(music, crash(), c, 0.5, 0.2); place(send, crash(), c, 0.15)
+    if 10 <= c < 39:
+        for k, o in enumerate((0.25, 0.1875, 0.125, 0.0625)):
+            place(music, snare(), c - o, 0.18 + 0.08 * k)
 
-# build 36–38: snare roll + riser
-t0 = 36.0
-k = 0
-while t0 < 38 - 1e-6:
-    step = 0.125 if t0 < 37 else 0.0625
-    place(music, snare(), t0, 0.15 + 0.5 * (t0 - 36) / 2)
-    t0 += step
-place(sfx, riser(2.0, 220, 2400, 0.7), 36.0)
-place(sfx, riser(1.5, 160, 2000, 0.55), 42.5)
-place(sfx, riser(0.9, 300, 3000, 0.35), 17.1)
-
-# final chord ring-out
 for m in (69, 72, 76, 81):
     place(send, bell(m, 2.5, 0.6), 48.0, 0.6)
 
-# sidechain duck on music from kicks
 duck = np.ones(N)
 tk = np.arange(int(0.25 * SR)) / SR
 for kb in kicks:
@@ -329,53 +322,70 @@ for kb in kicks:
     seg = duck[i : i + len(tk)]
     seg *= 1 - 0.45 * np.exp(-tk / 0.09)[: len(seg)]
 music *= duck[:, None]
+music[: int(BLOOM * SR)] = 0
 
 # ---------------- SFX on picture events ----------------
-for i, w in enumerate(TL["whooshes"]):
+for w in TL["whooshes"]:
     x = whoosh()
-    n = len(x)
-    pan = np.linspace(0.7, -0.7, n)
+    pan = np.linspace(0.7, -0.7, len(x))
     st = np.stack([x * np.cos((pan + 1) * np.pi / 4), x * np.sin((pan + 1) * np.pi / 4)], axis=1) * 1.4
-    place(sfx, st, w, 0.75)
-    place(send, st, w, 0.25)
+    place(sfx, st, w, 0.8); place(send, st, w, 0.2)
 for c in TL["impacts"]:
-    if c in (7.0, 44.0):
+    if c in (BLOOM, 44.0):
         continue
-    place(sfx, impact(False), c, 0.55)
+    place(sfx, impact(False), c, 0.5)
 place(sfx, impact(True), 44.0, 0.95)
 for k, m in enumerate((81, 84, 88, 93)):
     place(send, bell(m, 2.4, 0.8), 44.02 + k * 0.04, 0.9)
 for h in TL["hits"]:
-    place(sfx, impact(False)[: int(0.35 * SR)], h, 0.6)
+    place(sfx, impact(False)[: int(0.35 * SR)], h, 0.55)
+
+
+def blip(f0, f1, d=0.08, g=0.35):
+    tb = tt(d)
+    return np.sin(phase(f0 + (f1 - f0) * tb / d)) * np.exp(-tb / (d / 3)) * g
+
+
+def click():
+    tb = tt(0.06)
+    return (filt(rng.standard_normal(len(tb)), "bp", (1800, 6000)) * np.exp(-tb / 0.006) * 0.5
+            + np.sin(2 * np.pi * 180 * tb) * np.exp(-tb / 0.02) * 0.4)
+
+
 for i, x0 in enumerate(TL["ticks"]):
-    tb = tt(0.09)
-    f = 1100 + 900 * (tb / 0.09) + i * 40
-    blip = np.sin(phase(f)) * np.exp(-tb / 0.03) * 0.35
-    place(sfx, blip, x0, 0.8, pan=-0.3 + 0.08 * i)
-for x0, m in zip(TL["dings"], (88, 91, 96, 91, 96)):
+    place(sfx, blip(1100 + 60 * i, 2000 + 60 * i), x0, 0.8, pan=-0.3 + 0.07 * i)
+for x0 in TL["taps"]:
+    place(sfx, click(), x0, 0.9)
+for x0 in TL["typing"]:
+    tb = tt(0.03)
+    place(sfx, filt(rng.standard_normal(len(tb)), "bp", (2000, 7000)) * np.exp(-tb / 0.004) * 0.35, x0, 0.8, pan=float(rng.uniform(-0.2, 0.2)))
+for x0, m in zip(TL["dings"], (88, 91, 88, 93, 84, 88, 91)):
     bl = bell(m, 1.0, 1.4)
-    place(sfx, bl, x0, 0.9); place(send, bl, x0, 0.5)
-for x0 in TL["badge"]:
+    place(sfx, bl, x0, 0.85); place(send, bl, x0, 0.45)
+for x0 in TL["stamp"]:
+    place(sfx, impact(False), x0, 0.75)
     for k, m in enumerate((84, 88, 91, 96)):
-        place(sfx, bell(m, 0.9, 1.0), x0 + k * 0.05, 0.7, pan=-0.3 + 0.2 * k)
-        place(send, bell(m, 0.9, 1.0), x0 + k * 0.05, 0.4)
+        place(sfx, bell(m, 0.9, 1.0), x0 + 0.05 + k * 0.05, 0.6, pan=-0.3 + 0.2 * k); place(send, bell(m, 0.9, 1.0), x0 + k * 0.05, 0.4)
 for k, x0 in enumerate(TL["stars"]):
     place(sfx, bell((84, 86, 88, 91, 93)[k], 0.5, 1.0), x0, 0.6, pan=-0.4 + 0.2 * k)
-for x0 in TL["toggle"]:
-    tb = tt(0.12)
-    click = filt(rng.standard_normal(len(tb)), "bp", (1500, 5000)) * np.exp(-tb / 0.01) * 0.6
-    place(sfx, click, x0, 0.7)
-    place(sfx, whoosh(0.3, 0.15, 800, 4000), x0 - 0.12, 0.35)
+c0, c1 = TL["counter"]
+for k in range(14):
+    place(sfx, blip(2400, 2600, 0.03, 0.2), c0 + (c1 - c0) * (k / 13) ** 0.6, 0.6)
+for k, x0 in enumerate(TL["notifs"]):
+    place(sfx, bell(88, 0.6, 1.1), x0, 0.75, pan=0.3); place(sfx, bell(93, 0.7, 1.0), x0 + 0.09, 0.7, pan=0.3)
+    place(send, bell(93, 0.7, 1.0), x0 + 0.09, 0.4)
+for x0 in TL["flip"]:
+    place(sfx, whoosh(0.45, 0.22, 600, 5000), x0 - 0.05, 0.6)
 PENTA = [76, 79, 81, 84, 86, 88, 91, 93]
 for k, x0 in enumerate(TL["lights"]):
     bl = bell(PENTA[(k * 3) % len(PENTA)], 1.6, 0.8)
-    place(sfx, bl, x0, 0.55, pan=float(rng.uniform(-0.6, 0.6)))
-    place(send, bl, x0, 0.6)
+    place(sfx, bl, x0, 0.5, pan=float(rng.uniform(-0.6, 0.6))); place(send, bl, x0, 0.6)
+for k, x0 in enumerate(TL["logopins"]):
+    place(sfx, blip(1300 + 90 * k, 2100 + 90 * k), x0, 0.6, pan=-0.6 + 0.2 * k)
 u = TL["url"][0]
 for k in range(12):
     tb = tt(0.05)
-    tick = np.sin(2 * np.pi * (1800 + 60 * k) * tb) * np.exp(-tb / 0.012) * 0.3
-    place(sfx, tick, u + k * 0.032, 0.5, pan=-0.5 + k / 11)
+    place(sfx, np.sin(2 * np.pi * (1800 + 60 * k) * tb) * np.exp(-tb / 0.012) * 0.3, u + k * 0.035, 0.5, pan=-0.5 + k / 11)
 place(sfx, riser(0.55, 400, 2400, 0.3), u - 0.05)
 
 # ---------------- reverb + master ----------------
@@ -386,7 +396,6 @@ ir /= np.sqrt((ir ** 2).sum(axis=0))
 wet = np.stack([signal.fftconvolve(send[:, c], ir[:, c])[:N] for c in range(2)], axis=1)
 
 mix = music * 0.85 + sfx * 1.0 + wet * 0.45
-mix[int(6.8 * SR) : int(7.0 * SR)] *= 0.0  # true silence before the reveal
 fade = int(0.5 * SR)
 mix[-fade:] *= np.linspace(1, 0, fade)[:, None] ** 1.5
 mix = np.tanh(mix * 0.9) / 0.9
