@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<title>Linkr — vidéo version d'essai</title>
+<style>
+  @font-face { font-family: 'Geist'; src: url(fonts/Geist-Variable.woff2) format('woff2'); font-weight: 100 900; }
+  @font-face { font-family: 'Parisienne'; src: url(fonts/parisienne-latin-400-normal.woff2) format('woff2'); font-weight: 400;
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: 'Parisienne'; src: url(fonts/parisienne-latin-ext-400-normal.woff2) format('woff2'); font-weight: 400;
+    unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+  /* Linkr tokens (apps/web/src/app/globals.css), light theme. */
+  :root {
+    --bg: #f3ebdf; --surface: rgba(251, 247, 241, 0.66); --text: #2e211e; --muted: #55504d;
+    --accent: #6e1e2b; --on-accent: #f8f2ea; --edge: #d8c7b3;
+    --accent-dark: #d9828e; --bg-dark: #1a1315;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1440px; height: 1080px; background: #000; overflow: hidden; }
+  body { font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; color: var(--text);
+    -webkit-font-smoothing: antialiased; letter-spacing: -0.006em; }
+  #stage { position: relative; width: 1440px; height: 1080px; overflow: hidden; background: #000; }
+  .scene { position: absolute; inset: 0; overflow: hidden; display: none; will-change: transform, opacity; }
+  .abs { position: absolute; }
+  .script { font-family: 'Parisienne', cursive; font-weight: 400; letter-spacing: 0; }
+
+  /* Beige ground of direction A: gradient + two bordeaux halos (radial, no filter). */
+  .ground { position: absolute; inset: 0;
+    background: linear-gradient(135deg, var(--bg) 0%, var(--bg) 52%, rgba(110, 30, 43, 0.15) 100%), var(--bg); }
+  .halo { position: absolute; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(110, 30, 43, 0.20) 0%, rgba(110, 30, 43, 0.10) 38%, rgba(110, 30, 43, 0) 70%); }
+
+  .glass { background: var(--surface); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+    border: 1.5px solid rgba(248, 242, 234, 0.7); border-radius: 24px;
+    box-shadow: 0 30px 70px -20px rgba(110, 30, 43, 0.22); }
+  .card { background: var(--surface); border: 1.5px solid rgba(248, 242, 234, 0.75); border-radius: 22px; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; border-radius: 22px; padding: 8px 18px; font-weight: 500; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 22px; font-weight: 500; height: 66px; padding: 0 30px; font-size: 26px; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-outline { border: 2px solid var(--accent); color: var(--accent); background: var(--bg); }
+
+  /* Caption block of the feature scenes, inside the 8 % safe zone (x ≥ 115, y ≥ 86). */
+  .cap { position: absolute; left: 115px; top: 104px; width: 1210px; }
+  .eyebrow { font-size: 26px; font-weight: 600; letter-spacing: 0.04em; color: var(--accent); display: flex; align-items: center; gap: 16px; }
+  .eyebrow .num { display: inline-flex; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--on-accent);
+    align-items: center; justify-content: center; font-size: 22px; letter-spacing: 0; }
+  .title { margin-top: 14px; font-size: 74px; line-height: 1.04; font-weight: 650; letter-spacing: -0.03em; color: var(--text); }
+  .sub { margin-top: 16px; font-size: 34px; line-height: 1.25; font-weight: 450; color: var(--muted); max-width: 1180px; }
+  .soon { background: var(--bg); color: var(--text); border: 1.5px solid var(--edge); font-size: 22px; padding: 6px 16px; border-radius: 22px; font-weight: 600; letter-spacing: 0; }
+
+  /* S1 — suspense */
+  #s1 { background: #0b0708; }
+  #s1 .halo1, #s1 .halo2 { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+  #s1 .halo1 { width: 760px; height: 760px;
+    background: radial-gradient(circle, rgba(255, 238, 230, 0.95) 0%, rgba(217, 130, 142, 0.78) 14%, rgba(110, 30, 43, 0.55) 36%, rgba(110, 30, 43, 0) 68%); }
+  #s1 .halo2 { width: 1500px; height: 1500px;
+    background: radial-gradient(circle, rgba(110, 30, 43, 0.45) 0%, rgba(60, 16, 24, 0.25) 35%, rgba(0, 0, 0, 0) 70%); }
+  #s1text { position: absolute; left: 0; right: 0; top: 742px; text-align: center; font-size: 56px; font-weight: 300;
+    letter-spacing: 0.14em; color: #f3ebdf; }
+  #s1text span { display: inline-block; white-space: pre; }
+  #s10open span, #s10sub span { display: inline-block; white-space: pre; }
+  .vignette { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.75) 100%); }
+
+  /* S2 — reveal */
+  #s2 { background: radial-gradient(circle at 50% 44%, #8f2c3d 0%, #6e1e2b 42%, #2f0b12 100%); }
+  #s2cam { position: absolute; inset: 0; }
+  #s2logo { position: absolute; left: 0; right: 0; top: 250px; text-align: center; font-size: 300px; line-height: 1; color: #f3ebdf;
+    text-shadow: 0 0 60px rgba(255, 220, 210, 0.35); }
+  #s2tag { position: absolute; left: 115px; right: 115px; top: 690px; text-align: center; font-size: 56px; font-weight: 550;
+    letter-spacing: -0.02em; color: #f3ebdf; }
+  #s2tag span { display: inline-block; white-space: pre; }
+  #flash { position: absolute; inset: 0; background: #fff6ee; opacity: 0; pointer-events: none; z-index: 50; }
+
+  /* S3 — concept */
+  #s3row { position: absolute; left: 115px; right: 115px; top: 330px; display: flex; justify-content: center; align-items: flex-start; gap: 40px; }
+  #s3row .word { font-size: 128px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; color: var(--text); display: flex; flex-direction: column; align-items: center; }
+  #s3row .word small { margin-top: 26px; font-size: 32px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+  #s3x { font-size: 140px; font-weight: 300; color: var(--accent); line-height: 0.9; }
+  #s3b1 { position: absolute; left: 115px; right: 115px; top: 420px; text-align: center; font-size: 104px; font-weight: 700; letter-spacing: -0.04em; color: var(--text); }
+  #s3b1 span { display: inline-block; white-space: pre; }
+  #s3b2 { position: absolute; left: 115px; right: 115px; top: 512px; text-align: center; font-size: 240px; line-height: 1.1; color: var(--accent); }
+  #s3dot { position: absolute; left: 720px; top: 860px; width: 0; height: 0; }
+  #s3dot .core { position: absolute; width: 34px; height: 34px; left: -17px; top: -17px; border-radius: 50%; background: var(--text); border: 7px solid #fff; box-shadow: 0 6px 18px rgba(46, 33, 30, 0.35); }
+  #s3dot .ring { position: absolute; border-radius: 50%; border: 3px solid var(--accent); }
+
+  /* S4 — map */
+  #s4map { position: absolute; left: 0; top: 0; width: 2200px; height: 1700px; transform-origin: 1100px 850px; }
+  #s4capband { position: absolute; left: 0; right: 0; top: 0; height: 380px;
+    background: linear-gradient(to bottom, rgba(243, 235, 223, 0.97) 0%, rgba(243, 235, 223, 0.9) 60%, rgba(243, 235, 223, 0) 100%); }
+  #s4panel { position: absolute; left: 115px; top: 348px; width: 480px; padding: 26px; }
+  .field { height: 62px; border-radius: 18px; border: 1.5px solid var(--edge); background: var(--bg); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; font-size: 24px; }
+  .pcard { margin-top: 16px; padding: 20px 22px; }
+  .pcard h4 { font-size: 26px; font-weight: 650; color: var(--text); }
+  .pcard .hl { font-size: 20px; color: var(--muted); margin-top: 3px; }
+  .pcard .meta { margin-top: 12px; font-size: 21px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+  .pcard .meta b { color: var(--text); font-weight: 600; }
+  .star { color: var(--accent); }
+  .pin { position: absolute; width: 0; height: 0; }
+  .pin .dot { position: absolute; width: 38px; height: 38px; left: -19px; top: -19px; border-radius: 50%; background: var(--accent); border: 4px solid var(--on-accent);
+    box-shadow: 0 6px 14px rgba(110, 30, 43, 0.35); }
+  .pin.cluster .dot { width: 62px; height: 62px; left: -31px; top: -31px; display: flex; align-items: center; justify-content: center; color: var(--on-accent); font-weight: 650; font-size: 26px; }
+  .pin .hring { position: absolute; width: 70px; height: 70px; left: -35px; top: -35px; border-radius: 50%; border: 5px solid var(--accent); opacity: 0; }
+  #s4client { position: absolute; width: 0; height: 0; }
+  #s4client .core { position: absolute; width: 30px; height: 30px; left: -15px; top: -15px; border-radius: 50%; background: var(--text); border: 6px solid #fff; box-shadow: 0 4px 14px rgba(46, 33, 30, 0.4); }
+  #s4client .lbl { position: absolute; left: 26px; top: -18px; font-size: 22px; font-weight: 650; color: var(--text); background: rgba(255, 255, 255, 0.85); padding: 2px 12px; border-radius: 14px; white-space: nowrap; }
+
+  /* S5 — licences */
+  #s5card { position: absolute; left: 270px; top: 372px; width: 900px; padding: 34px 38px; }
+  .lic { display: flex; align-items: center; gap: 22px; padding: 18px 0; border-top: 1.5px solid rgba(216, 199, 179, 0.6); }
+  .lic .code { flex: none; width: 118px; height: 54px; border-radius: 16px; background: var(--text); color: var(--on-accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 24px; letter-spacing: 0.04em; }
+  .lic .name { flex: 1; font-size: 23px; color: var(--text); font-weight: 500; }
+  .lic .st { flex: none; width: 178px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; font-size: 22px; font-weight: 600; }
+  .spin { width: 30px; height: 30px; border-radius: 50%; border: 4px solid rgba(110, 30, 43, 0.2); border-top-color: var(--accent); }
+  .ok { width: 34px; height: 34px; border-radius: 50%; background: #1f7a4f; display: flex; align-items: center; justify-content: center; }
+  .badge { display: inline-flex; align-items: center; gap: 12px; border-radius: 22px; border: 2px solid rgba(110, 30, 43, 0.3); background: rgba(110, 30, 43, 0.06); color: var(--accent); font-size: 28px; font-weight: 600; padding: 10px 22px; }
+
+  /* S6 — informal trades */
+  .tcard { position: absolute; top: 418px; width: 250px; }
+  .tcard .ph { width: 250px; height: 300px; border-radius: 22px; overflow: hidden; background: #9f8771; }
+  .tcard .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tcard p { margin-top: 12px; font-size: 27px; font-weight: 550; color: var(--text); }
+  #s6review { position: absolute; left: 140px; top: 790px; width: 590px; padding: 24px 28px; }
+  #s6chips { position: absolute; left: 770px; top: 800px; width: 540px; display: flex; flex-direction: column; gap: 18px; }
+  #s6chips .chip { font-size: 24px; background: var(--bg); border: 1.5px solid var(--edge); padding: 14px 22px; }
+  .stars span { font-size: 34px; color: rgba(110, 30, 43, 0.18); }
+
+  /* S7 — roles */
+  #s7l, #s7r { position: absolute; top: 412px; width: 560px; height: 560px; padding: 34px; }
+  #s7l { left: 140px; }
+  #s7r { left: 740px; background: var(--accent); border-radius: 24px; color: var(--on-accent); box-shadow: 0 30px 70px -20px rgba(110, 30, 43, 0.45); }
+  .roletag { font-size: 22px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .tab { font-size: 20px; padding: 9px 14px; border-radius: 16px; background: rgba(248, 242, 234, 0.12); font-weight: 550; }
+  .tab.on { background: var(--on-accent); color: var(--accent); }
+  #s7toggle { position: absolute; left: 520px; top: 330px; width: 400px; height: 62px; border-radius: 31px; background: var(--bg); border: 1.5px solid var(--edge); }
+  #s7thumb { position: absolute; top: 5px; left: 5px; width: 194px; height: 50px; border-radius: 25px; background: var(--accent); }
+  #s7toggle span { position: absolute; top: 0; width: 200px; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; }
+
+  /* S8 — booking & payment */
+  #s8card { position: absolute; left: 230px; top: 366px; width: 980px; padding: 34px 40px; }
+  .status { font-size: 22px; font-weight: 600; padding: 6px 16px; border-radius: 999px; }
+  .bar { position: relative; height: 22px; border-radius: 11px; background: rgba(110, 30, 43, 0.1); overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); }
+  .step { display: flex; justify-content: space-between; align-items: center; font-size: 24px; margin-top: 14px; }
+  .step b { font-weight: 650; }
+  .visa { display: inline-flex; align-items: center; justify-content: center; width: 70px; height: 44px; border-radius: 9px; background: #1a1f71; color: #fff; font-weight: 800; font-style: italic; font-size: 20px; }
+
+  /* S9 — globe */
+  #s9 { background: radial-gradient(circle at 50% 62%, #3a131c 0%, #1d0b0f 45%, #0b0607 100%); }
+  #s9cap { position: absolute; left: 115px; right: 115px; top: 104px; text-align: center; color: #f3ebdf; }
+  #s9cap .eyebrow { justify-content: center; color: var(--accent-dark); }
+  #s9cap .t { font-size: 76px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.1; margin-top: 12px; }
+  #s9cap .t span { display: inline-block; white-space: pre; }
+  #s9cap .sub { color: #cdbfb8; margin: 14px auto 0; }
+
+  /* S10 — call to action */
+  #s10logo { position: absolute; left: 0; right: 0; top: 118px; text-align: center; font-size: 170px; line-height: 1; color: var(--accent); }
+  #s10open { position: absolute; left: 115px; right: 115px; top: 352px; text-align: center; font-size: 48px; font-weight: 650; letter-spacing: -0.02em; color: var(--text); }
+  #s10url { position: absolute; left: 115px; right: 115px; top: 468px; text-align: center; font-size: 168px; font-weight: 750; letter-spacing: -0.045em; color: var(--accent); line-height: 1.05; }
+  #s10url span { display: inline-block; }
+  #s10line { position: absolute; left: 360px; width: 720px; top: 684px; height: 7px; border-radius: 4px; background: var(--accent); transform-origin: left center; }
+  #s10glow { position: absolute; left: 220px; top: 400px; width: 1000px; height: 420px; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(110, 30, 43, 0.30) 0%, rgba(110, 30, 43, 0.12) 40%, rgba(110, 30, 43, 0) 70%); }
+  #s10sub { position: absolute; left: 160px; right: 160px; top: 742px; text-align: center; font-size: 42px; line-height: 1.28; font-weight: 500; color: var(--text); }
+  #s10note { position: absolute; left: 115px; right: 115px; top: 918px; text-align: center; font-size: 27px; color: var(--muted); }
+
+  /* Safe-zone guide (debug only) */
+  #safe { position: absolute; left: 115px; top: 86px; width: 1210px; height: 908px; border: 2px dashed #00e5ff; pointer-events: none; display: none; z-index: 99; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- S1 · Suspense -->
+  <section id="s1" class="scene">
+    <div class="halo2" id="s1h2"></div>
+    <div class="halo1" id="s1h1"></div>
+    <canvas id="s1dust" width="1440" height="1080" class="abs" style="left:0;top:0"></canvas>
+    <p id="s1text" class="txt"></p>
+    <div class="vignette"></div>
+  </section>
+
+  <!-- S2 · Reveal -->
+  <section id="s2" class="scene">
+    <div id="s2cam">
+      <canvas id="s2fx" width="1440" height="1080" class="abs" style="left:0;top:0"></canvas>
+      <h1 id="s2logo" class="script txt">Linkr</h1>
+      <p id="s2tag" class="txt"></p>
+    </div>
+    <div class="vignette" style="opacity:.55"></div>
+  </section>
+
+  <!-- S3 · Concept -->
+  <section id="s3" class="scene">
+    <div class="ground"></div>
+    <div class="halo" style="left:-220px;top:-260px;width:900px;height:900px"></div>
+    <div class="halo" style="left:820px;top:520px;width:1000px;height:1000px"></div>
+    <div id="s3cam" class="abs" style="inset:0">
+      <div id="s3row">
+        <div class="word txt" id="s3w1">LinkedIn<small>réseau · réputation</small></div>
+        <div id="s3x" class="txt">×</div>
+        <div class="word txt" id="s3w2">Uber<small>réservation · rapidité</small></div>
+      </div>
+      <p id="s3b1" class="txt"></p>
+      <p id="s3b2" class="script txt">locale</p>
+      <div id="s3dot"><div class="ring" id="s3r1"></div><div class="ring" id="s3r2"></div><div class="core"></div></div>
+    </div>
+  </section>
+
+  <!-- S4 · Proximity map (mock styled on lib/map/linkr-light.style.json) -->
+  <section id="s4" class="scene" style="background:#f3ebdf">
+    <div id="s4map"><svg id="s4svg" width="2200" height="1700" viewBox="0 0 2200 1700"></svg></div>
+    <div id="s4capband"></div>
+    <div class="cap" id="s4cap">
+      <div class="eyebrow txt"><span class="num">1</span>Proximité</div>
+      <div class="title txt">Les pros près de chez toi</div>
+      <div class="sub txt">La carte montre ceux qui se déplacent jusqu’à toi.</div>
+    </div>
+    <div id="s4panel" class="glass">
+      <div class="field txt"><span>Coiffure</span><span style="color:var(--muted)">▾</span></div>
+      <div class="btn btn-primary txt" style="width:100%;margin-top:14px;height:60px;font-size:24px">Près de moi</div>
+      <div class="pcard card" id="pc1"><h4 class="txt">Atelier Camille</h4><div class="hl txt">Coupe et coloration à domicile</div>
+        <div class="meta txt"><span>à 800 m</span><span style="opacity:.4">·</span><span><span class="star">★</span> <b>4,33</b> sur 5 · 3 avis</span></div></div>
+      <div class="pcard card" id="pc2"><h4 class="txt">Coiffure Nadia</h4>
+        <div class="meta txt"><span>à 1,5 km</span><span style="opacity:.4">·</span><span>2 avis</span></div></div>
+      <div class="pcard card" id="pc3"><h4 class="txt">Studio Mèche</h4>
+        <div class="meta txt"><span>à 2 km</span></div></div>
+      <p class="txt" id="s4note" style="margin-top:16px;font-size:19px;color:var(--muted)">Position des pros : zone approximative</p>
+    </div>
+  </section>
+
+  <!-- S5 · Regulated trades (coming soon in the trial) -->
+  <section id="s5" class="scene">
+    <div class="ground"></div>
+    <div class="halo" style="left:900px;top:-300px;width:900px;height:900px"></div>
+    <div class="halo" style="left:-300px;top:600px;width:900px;height:900px"></div>
+    <div class="cap" id="s5cap">
+      <div class="eyebrow txt"><span class="num">2</span>Métiers réglementés <span class="soon" id="s5soon">Bientôt</span></div>
+      <div class="title txt">Des licences vérifiées</div>
+      <div class="sub txt">Électricité, construction : badge affiché une fois la licence approuvée.</div>
+    </div>
+    <div id="s5card" class="glass">
+      <div style="display:flex;align-items:center;gap:20px;margin-bottom:18px">
+        <div style="width:72px;height:72px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:650" class="txt">MG</div>
+        <div><div class="txt" style="font-size:32px;font-weight:650">Gagnon Électrique</div><div class="txt" style="font-size:23px;color:var(--muted)">Électricité · Québec</div></div>
+      </div>
+      <div class="lic" id="lic0"><div class="code txt">RBQ</div><div class="name txt">Régie du bâtiment du Québec</div><div class="st txt"></div></div>
+      <div class="lic" id="lic1"><div class="code txt">CMEQ</div><div class="name txt">Corporation des maîtres électriciens</div><div class="st txt"></div></div>
+      <div class="lic" id="lic2"><div class="code txt">CCQ</div><div class="name txt">Commission de la construction du Québec</div><div class="st txt"></div></div>
+      <div style="display:flex;justify-content:center;margin-top:22px;height:60px"><span class="badge txt" id="s5badge">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 6v5c0 4.5-3 8.4-7 10-4-1.6-7-5.5-7-10V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+        Licence vérifiée</span></div>
+    </div>
+    <canvas id="s5fx" width="1440" height="1080" class="abs" style="left:0;top:0;pointer-events:none"></canvas>
+  </section>
+
+  <!-- S6 · Informal trades -->
+  <section id="s6" class="scene">
+    <div class="ground"></div>
+    <div class="halo" style="left:-200px;top:-200px;width:800px;height:800px"></div>
+    <div class="halo" style="left:850px;top:500px;width:1000px;height:1000px"></div>
+    <div class="cap" id="s6cap">
+      <div class="eyebrow txt"><span class="num">3</span>Métiers informels</div>
+      <div class="title txt">La confiance par la communauté</div>
+      <div class="sub txt">Avis de clients dont la prestation est terminée, réalisations en photos.</div>
+    </div>
+    <div class="tcard" id="tc0" style="left:187px"><div class="ph"><img src="../../apps/web/public/images/accueil/coiffure-480.webp"></div><p class="txt">Coiffure</p></div>
+    <div class="tcard" id="tc1" style="left:459px"><div class="ph"><img src="../../apps/web/public/images/accueil/esthetique-480.webp"></div><p class="txt">Esthétique</p></div>
+    <div class="tcard" id="tc2" style="left:731px"><div class="ph"><img src="../../apps/web/public/images/accueil/decoration-480.webp"></div><p class="txt">Décoration</p></div>
+    <div class="tcard" id="tc3" style="left:1003px"><div class="ph"><img src="../../apps/web/public/images/accueil/petits-travaux-480.webp"></div><p class="txt">Petits travaux</p></div>
+    <div id="s6review" class="glass">
+      <div class="stars" id="s6stars"><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span></div>
+      <p class="txt" style="font-size:28px;margin-top:6px;font-weight:500">« Ponctuelle et minutieuse. »</p>
+      <p class="txt" style="font-size:22px;margin-top:8px;color:var(--muted)">Carol R. · prestation terminée</p>
+    </div>
+    <div id="s6chips">
+      <span class="chip txt" id="s6c1"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#6e1e2b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg> Réalisations (12)</span>
+      <span class="chip txt" id="s6c2"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#6e1e2b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14.5 10h4M14.5 13.5h3"/></svg> Identité : Stripe Connect</span>
+    </div>
+  </section>
+
+  <!-- S7 · Two roles -->
+  <section id="s7" class="scene">
+    <div class="ground"></div>
+    <div class="halo" style="left:400px;top:300px;width:900px;height:900px"></div>
+    <div class="cap" id="s7cap">
+      <div class="eyebrow txt"><span class="num">4</span>Un seul compte</div>
+      <div class="title txt">Deux rôles, une plateforme</div>
+    </div>
+    <div id="s7toggle"><div id="s7thumb"></div><span class="txt" id="s7tc" style="left:0">Client</span><span class="txt" id="s7tp" style="left:200px">Pro</span></div>
+    <div id="s7l" class="glass">
+      <div class="roletag txt" style="color:var(--accent)">Client</div>
+      <div class="txt" style="font-size:44px;font-weight:650;margin-top:16px">Bonjour, Carol</div>
+      <div class="btn btn-primary txt" style="width:100%;margin-top:30px">Trouver un pro</div>
+      <div class="btn btn-outline txt" style="width:100%;margin-top:14px">Mes demandes</div>
+      <div class="card" style="margin-top:26px;padding:18px 22px;display:flex;justify-content:space-between;align-items:center">
+        <span class="txt" style="font-size:24px;font-weight:600">Coloration</span><span class="status txt" style="background:#dbeafe;color:#1e40af">Acceptée</span></div>
+      <p class="txt" style="font-size:24px;color:var(--muted);margin-top:22px">Tu réserves.</p>
+    </div>
+    <div id="s7r">
+      <div class="roletag txt" style="color:var(--on-accent);opacity:.8">Pro</div>
+      <div class="txt" style="font-size:44px;font-weight:650;margin-top:16px">Espace pro</div>
+      <div class="tabs"><span class="tab on txt">En attente 2</span><span class="tab txt">Appels d’offres 1</span><span class="tab txt">Mes jobs 3</span><span class="tab txt">Avis</span></div>
+      <div style="margin-top:22px;background:var(--bg);color:var(--text);border-radius:22px;padding:20px 22px">
+        <div style="display:flex;justify-content:space-between"><span class="txt" style="font-size:25px;font-weight:650">Coupe homme</span><span class="txt" style="font-size:25px;font-weight:650">40,00 $</span></div>
+        <div style="display:flex;gap:12px;margin-top:16px"><span class="btn btn-primary txt" style="height:54px;font-size:22px;flex:1">Accepter</span><span class="btn btn-outline txt" style="height:54px;font-size:22px;flex:1">Refuser</span></div>
+      </div>
+      <p class="txt" style="font-size:24px;margin-top:22px;opacity:.85">Tu travailles.</p>
+    </div>
+  </section>
+
+  <!-- S8 · Booking & payment -->
+  <section id="s8" class="scene">
+    <div class="ground"></div>
+    <div class="halo" style="left:-250px;top:-250px;width:900px;height:900px"></div>
+    <div class="halo" style="left:900px;top:560px;width:900px;height:900px"></div>
+    <div class="cap" id="s8cap">
+      <div class="eyebrow txt"><span class="num">5</span>Réservation et paiement</div>
+      <div class="title txt">Réserve et paie dans Linkr</div>
+      <div class="sub txt">Acompte de 20 %, solde de 80 %, par Stripe.</div>
+    </div>
+    <div id="s8card" class="glass">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div><div class="txt" style="font-size:38px;font-weight:650">Coupe homme</div><div class="txt" style="font-size:24px;color:var(--muted);margin-top:4px">Atelier Camille · à 800 m</div></div>
+        <div style="text-align:right"><div class="txt" style="font-size:40px;font-weight:700">40,00 $</div><span class="status txt" id="s8status" style="display:inline-block;margin-top:8px"></span></div>
+      </div>
+      <div style="margin-top:34px;display:flex;gap:12px">
+        <div class="bar" style="flex:20"><i id="s8b1"></i></div>
+        <div class="bar" style="flex:80"><i id="s8b2"></i></div>
+      </div>
+      <div class="step"><span class="txt" id="s8l1"><b>Acompte 20 %</b> · 8,00 $ <span style="color:var(--muted)">à l’acceptation</span></span><span class="txt" id="s8k1" style="color:#1f7a4f;font-weight:700">✓</span></div>
+      <div class="step"><span class="txt" id="s8l2"><b>Solde 80 %</b> · 32,00 $ <span style="color:var(--muted)">à la fin des travaux</span></span><span class="txt" id="s8k2" style="color:#1f7a4f;font-weight:700">✓</span></div>
+      <div style="margin-top:28px;padding-top:22px;border-top:1.5px solid rgba(216,199,179,.6);display:flex;align-items:center;gap:16px">
+        <span class="visa txt">VISA</span><span class="txt" style="font-size:25px;font-weight:600">•••• 4242</span><span class="txt" style="font-size:22px;color:var(--muted)">par Stripe</span>
+        <span class="soon txt" style="margin-left:auto">Mode test</span>
+      </div>
+      <p class="txt" style="margin-top:16px;font-size:21px;color:var(--muted)">Linkr ne voit jamais le numéro de ta carte.</p>
+    </div>
+  </section>
+
+  <!-- S9 · Glocal vision -->
+  <section id="s9" class="scene">
+    <canvas id="s9globe" width="1440" height="1080" class="abs" style="left:0;top:0"></canvas>
+    <div class="abs" style="left:0;right:0;top:0;height:470px;background:linear-gradient(to bottom, rgba(11,6,7,.94), rgba(11,6,7,.78) 55%, rgba(11,6,7,0))"></div>
+    <div class="abs" style="left:0;right:0;bottom:0;height:260px;background:linear-gradient(to top, rgba(11,6,7,.9), rgba(11,6,7,0))"></div>
+    <div id="s9cap">
+      <div class="eyebrow txt">Vision</div>
+      <div class="t txt" id="s9t"></div>
+      </div>
+    <div class="sub txt" id="s9sub" style="position:absolute;left:115px;right:115px;top:912px;text-align:center;color:#cdbfb8;font-size:34px">Une plateforme pensée pour s’adapter aux règles de chaque région.</div>
+  </section>
+
+  <!-- S10 · Call to action -->
+  <section id="s10" class="scene">
+    <div class="ground"></div>
+    <div class="halo" id="s10h1" style="left:-260px;top:-300px;width:1000px;height:1000px"></div>
+    <div class="halo" id="s10h2" style="left:760px;top:440px;width:1100px;height:1100px"></div>
+    <div id="s10glow"></div>
+    <h2 id="s10logo" class="script txt">Linkr</h2>
+    <p id="s10open" class="txt">La version d’essai est ouverte à tous</p>
+    <p id="s10url" class="txt"></p>
+    <div id="s10line"></div>
+    <div id="s10sub"><p class="txt" id="s10sub1"></p><p class="txt" id="s10sub2"></p></div>
+    <p id="s10note" class="txt">Version d’essai : paiements en mode test, aucun argent réel.</p>
+  </section>
+
+  <div id="flash"></div>
+  <div id="safe"></div>
+</div>
+<script src="anim.js"></script>
+</body>
+</html>
