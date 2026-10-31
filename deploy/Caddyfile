@@ -13,15 +13,16 @@
 #
 # ⚠️ AUCUNE VALEUR FOURNIE PAR LE CLIENT NE PASSE. X-Forwarded-For est ÉCRASÉ
 # par l'adresse que Caddy voit réellement ({remote_host} : le pair TCP — aucun
-# proxy de confiance n'est déclaré devant Caddy). X-Real-IP est supprimé : rien
-# ne le lit, et le laisser passer offrirait un en-tête forgé à qui le lirait un
-# jour. Le web relaie ensuite CETTE adresse à l'API, qui ne croit le relais que
-# depuis le réseau Docker (TRUSTED_PROXY_IPS, deploy/compose.yaml).
+# proxy de confiance n'est déclaré devant Caddy). X-Real-IP et X-Client-IP
+# sont supprimés : rien ne les lit, et les laisser passer offrirait un en-tête
+# forgé à qui les lirait un jour. Le web relaie ensuite CETTE adresse à l'API,
+# qui ne croit le relais que depuis le réseau Docker (TRUSTED_PROXY_IPS, deploy/compose.yaml).
 # Trace mesurée (smoke D2) : le web reçoit exactement une adresse, Next
 # n'ajoute rien.
 (client_ip_headers) {
 	header_up X-Forwarded-For {remote_host}
 	header_up -X-Real-IP
+	header_up -X-Client-IP
 }
 
 www.linkrapp.com {

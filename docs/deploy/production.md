@@ -26,7 +26,7 @@ volumes        : postgres_data, redis_data, uploads, caddy_data, caddy_config
 
 Chaîne : `Internet → caddy → web → api`. Les limiteurs par IP de l'API (`login`, `signup`, `forgot-password`, `reset-password`) doivent compter le **visiteur**, pas le conteneur web.
 
-1. **Caddy écrase** `X-Forwarded-For` avec l'adresse qu'il voit (`header_up X-Forwarded-For {remote_host}`) et supprime `X-Real-IP`, vers le web **et** vers l'API (snippet `client_ip_headers`). Aucune valeur fournie par le client ne passe.
+1. **Caddy écrase** `X-Forwarded-For` avec l'adresse qu'il voit (`header_up X-Forwarded-For {remote_host}`) et supprime `X-Real-IP` et `X-Client-IP`, vers le web **et** vers l'API (snippet `client_ip_headers`). Aucune valeur fournie par le client ne passe.
 2. **Le web** (`apps/web/src/lib/http/client-ip.ts`) relaie **une seule** adresse à l'API dans `X-Forwarded-For`. Une chaîne (`a, b`) est refusée : derrière Caddy elle n'arrive jamais.
 3. **L'API** croit cet en-tête seulement si le pair est dans `TRUSTED_PROXY_IPS` = `172.30.10.0/24`, le sous-réseau fixé du réseau `edge` (posé dans le compose, pas dans `api.env`). Tout autre pair est ignoré : l'API retombe sur l'adresse TCP (échec fermé).
 
