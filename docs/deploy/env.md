@@ -30,9 +30,9 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | `STRIPE_WEBHOOK_SECRET` | oui | exéc. | oui | `whsec_…` | Celui du point de terminaison du **déploiement**, pas celui de `stripe listen`. Lu une fois au démarrage : redémarrer après changement. |
 | `STRIPE_PUBLISHABLE_KEY` | oui | exéc. | non | `pk_test_…` | Validée, inutilisée par l'API. Même compte Stripe que la clé du web. |
 | `STRIPE_CONNECT_CLIENT_ID` | non | — | non | — | Dormante. |
-| `CONNECT_ONBOARDING_RETURN_URL` | **oui en prod** | exéc. | non | `https://app.exemple.ca/dashboard/paiements/retour` | Lue au constructeur : redémarrage requis. |
-| `CONNECT_ONBOARDING_REFRESH_URL` | **oui en prod** | exéc. | non | `https://app.exemple.ca/dashboard/paiements/reprise` | Idem. |
-| `WEB_APP_BASE_URL` | **oui en prod** | exéc. | non | `https://app.exemple.ca` | Base des liens absolus des courriels (réinitialisation, notifications). |
+| `CONNECT_ONBOARDING_RETURN_URL` | **oui en prod** | exéc. | non | `https://linkrapp.com/dashboard/paiements/retour` | Lue au constructeur : redémarrage requis. |
+| `CONNECT_ONBOARDING_REFRESH_URL` | **oui en prod** | exéc. | non | `https://linkrapp.com/dashboard/paiements/reprise` | Idem. |
+| `WEB_APP_BASE_URL` | **oui en prod** | exéc. | non | `https://linkrapp.com` | Base des liens absolus des courriels (réinitialisation, notifications). |
 | `PLATFORM_COMMISSION_RATE_PERCENT` | oui | exéc. | non | `10` | |
 | `PLATFORM_DEPOSIT_RATE_PERCENT` | oui | exéc. | non | `20` | |
 | `PLATFORM_AUTO_RELEASE_HOURS` | oui | exéc. | non | `72` | Lue au démarrage. |
@@ -55,9 +55,16 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | Variable | Obligatoire en prod | Quand | Secret | Exemple | Notes |
 |---|---|---|---|---|---|
 | `NODE_ENV` | oui | build + exéc. | non | `production` | Posé par `next build` / `next start`. |
-| `NEXT_PUBLIC_API_URL` | **oui** | **build** | non | `https://api.exemple.ca` | Absente en production : `next build` échoue. Utilisée côté serveur seulement ; si le serveur web atteint l'API par une adresse interne, voir la dette « URL interne » (§6). |
+| `NEXT_PUBLIC_API_URL` | **oui** | **build** | non | `http://api:5000` | Absente en production : `next build` échoue. Utilisée côté serveur seulement : en production (D3) c'est l'adresse **interne** de l'API sur le réseau Docker, l'API n'ayant aucune route publique hors du webhook Stripe. Seule exception : le lien « Voir le fichier » de la console admin, déjà cassé (dette §6). |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | oui (sinon l'ajout de carte est éteint) | **build** | non | `pk_test_…` | Clé de TEST pendant l'essai, du même compte que `STRIPE_SECRET_KEY`. |
 | `NEXT_PUBLIC_MAPTILER_KEY` | oui (sinon « Carte indisponible ») | **build** | non (publique) | — | Clé de **production distincte** de celle du développement, restreinte au domaine de production, **sans `localhost`**. |
+
+## Production (PR D3)
+
+- Les trois `NEXT_PUBLIC_*` sont des **Variables du dépôt GitHub** (Actions → Variables), passées en arguments de build par `.github/workflows/images.yml`. Le workflow **et** le Dockerfile web échouent si l'une est absente ou vide. Les changer = reconstruire l'image web.
+- Les variables de l'API vivent sur le serveur dans `deploy/api.env` (modèle : `deploy/api.env.example`). `NODE_ENV`, `PORT`, `DATABASE_URL`, `REDIS_URL`, `STORAGE_DRIVER` et `STORAGE_LOCAL_DIR` sont posées par `deploy/compose.yaml`, pas par ce fichier.
+- Brevo passe par **SMTP** (aucune clé API) : `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, `SMTP_USER`/`SMTP_PASSWORD` = identifiant et clé SMTP Brevo, `EMAIL_FROM_ADDRESS=no-reply@linkrapp.com`.
+- Voir `docs/deploy/production.md`.
 
 ## Hors variables
 
