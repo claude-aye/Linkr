@@ -43,11 +43,11 @@ interface RateLimitedRequest {
  * by the sweep as soon as the window closes.
  *
  * The IP fallback exists because the mechanism is built for the anonymous
- * `discover` route that will need it (ETAT ⛔④). Note for that day: `main.ts`
- * sets no `trust proxy`, so `request.ip` is the socket peer — behind a load
- * balancer that is the balancer, and every anonymous caller would share one
- * budget. Enabling trust proxy is part of exposing a public route, not of this
- * change.
+ * `discover` route that will need it (ETAT ⛔④). `request.ip` is the visitor
+ * only because `main.ts` sets `trust proxy` from `TRUSTED_PROXY_IPS` (chantier
+ * B) and production pins that list to the Docker `edge` subnet, behind a Caddy
+ * that overwrites `X-Forwarded-For` (PR D2). Off that list, it is the socket
+ * peer and every anonymous caller shares one budget.
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {

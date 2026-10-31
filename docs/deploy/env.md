@@ -20,7 +20,7 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | `NODE_ENV` | oui | exéc. | non | `production` | ⚠️ Sans `production`, TypeORM journalise chaque requête SQL avec ses paramètres (courriels, point cherché). Désactive aussi Swagger. |
 | `PORT` | non (défaut 3000) | exéc. | non | `5000` | |
 | `LOG_LEVEL` | non (défaut `log`) | exéc. | non | `log` | ⚠️ Jamais `debug` : le cache de géocodage journalise les adresses saisies. Refusé au boot en production. |
-| `TRUSTED_PROXY_IPS` | oui en pratique | exéc. | non | `10.0.0.5` | Hors périmètre D1 (PR D2). Défaut `loopback` : à renseigner dès que le web est sur un autre hôte. |
+| `TRUSTED_PROXY_IPS` | oui en pratique | exéc. | non | `172.30.10.0/24` | **Posée par `deploy/compose.yaml`** (sous-réseau fixé du réseau `edge`, PR D2), pas dans `api.env`. Défaut `loopback` pour le poste de développement. Doit rester égal au sous-réseau d'`edge`. |
 | `DATABASE_URL` | oui | exéc. | oui | `postgresql://user:pass@host:5432/linkr` | |
 | `REDIS_URL` | oui | exéc. | oui | `redis://host:6379` | Ne jamais `FLUSHDB` (files BullMQ). |
 | `JWT_ACCESS_SECRET` | oui | exéc. | oui | 32+ caractères aléatoires | Doit différer du secret de rafraîchissement. |
