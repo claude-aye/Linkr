@@ -1,0 +1,99 @@
+# Images de production (PR D3) : construites ici, publiées dans GHCR (privé),
+# tirées par le VPS. Le serveur ne construit rien.
+#
+# - push sur main, ou lancement manuel : build amd64 + push, tags `<sha>` et `latest`.
+# - pull_request touchant le conteneur : build seul, sans push (vérifie les Dockerfiles).
+#
+# ⚠️ Les trois NEXT_PUBLIC_* viennent des Variables du dépôt (Settings → Secrets
+# and variables → Actions → Variables) et sont INLINÉES dans l'image web. Une
+# variable absente ou vide fait échouer le workflow avant tout build.
+
+name: Production images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/api/Dockerfile"
+      - "apps/web/Dockerfile"
+      - ".dockerignore"
+      - "apps/web/next.config.ts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/images.yml"
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  check-vars:
+    name: Check build variables
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require NEXT_PUBLIC_* repository variables
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_MAPTILER_KEY: ${{ vars.NEXT_PUBLIC_MAPTILER_KEY }}
+        run: |
+          missing=0
+          for v in NEXT_PUBLIC_API_URL NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY NEXT_PUBLIC_MAPTILER_KEY; do
+            if [ -z "$(printf '%s' "${!v}" | tr -d '[:space:]')" ]; then
+              echo "::error::Repository variable $v is missing or empty"
+              missing=1
+            fi
+          done
+          exit $missing
+
+  build:
+    name: Build ${{ matrix.image }}
+    needs: check-vars
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/claude-aye/linkr-${{ matrix.image }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_MAPTILER_KEY=${{ vars.NEXT_PUBLIC_MAPTILER_KEY }}

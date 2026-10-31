@@ -1,0 +1,33 @@
+# Contexte de build = racine du monorepo (apps/api/Dockerfile, apps/web/Dockerfile).
+# Les dépendances sont installées DANS le conteneur : aucun node_modules du poste.
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+
+# Secrets et environnements locaux (les .example restent).
+**/.env
+**/.env.*
+!**/.env.example
+
+# Données locales et fichiers envoyés en développement.
+data
+docker/data
+apps/api/storage
+
+# Dépôt, outillage et notes de travail.
+.git
+.github
+.claude
+deploy
+docs
+HANDOFF_*.md
+MANDAT_*.md
+*.ps1
+*.sql
+*.exe
+/*.json
+!/package.json
+/*.txt

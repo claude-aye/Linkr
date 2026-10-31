@@ -1,6 +1,12 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Image de production (PR D3) : `.next/standalone` contient server.js et les
+  // seuls fichiers de node_modules nécessaires. Le traçage part de la racine du
+  // monorepo, sinon @linkr/api-client (hors de apps/web) serait oublié.
+  output: "standalone",
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   // Consume the workspace API client as raw TypeScript (no separate build step).
   transpilePackages: ["@linkr/api-client"],
   // Smoke mobile via tunnel HTTPS : Next bloque les requêtes cross-origin vers
