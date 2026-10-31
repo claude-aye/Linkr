@@ -69,6 +69,11 @@ services:
       REDIS_URL: redis://redis:6379
       STORAGE_DRIVER: local
       STORAGE_LOCAL_DIR: /app/apps/api/storage/uploads
+      # PR D2 : seul le réseau edge peut dire qui est le vrai client. Le web
+      # (pair de l'API) y relaie l'adresse que Caddy a écrite ; tout autre pair
+      # est ignoré et l'API retombe sur l'adresse TCP (échec fermé). Doit
+      # rester égal au sous-réseau d'edge ci-dessous.
+      TRUSTED_PROXY_IPS: 172.30.10.0/24
     volumes:
       - uploads:/app/apps/api/storage/uploads
     networks:
@@ -140,7 +145,14 @@ services:
     logging: *logging
 
 networks:
-  edge: {}
+  # Sous-réseau FIXÉ (PR D2) : TRUSTED_PROXY_IPS de l'API le désigne. Sans
+  # `ipam`, Docker en choisit un à la création et la confiance pointerait à côté.
+  # Vérifier l'absence de collision sur le VPS avant le premier `up` :
+  # docs/deploy/production.md, « Sous-réseau Docker ».
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
   backend:
     internal: true
 

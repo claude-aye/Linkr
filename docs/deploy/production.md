@@ -22,6 +22,43 @@ volumes        : postgres_data, redis_data, uploads, caddy_data, caddy_config
 - **Seul `caddy` a une section `ports`.** Docker écrit ses propres règles iptables et **contourne UFW** : un `ports:` sur un autre service l'exposerait à Internet malgré le pare-feu. Postgres, Redis, l'API et le web n'ont aucun port publié.
 - En-têtes ajoutés par Caddy : HSTS (1 an, sans `includeSubDomains`), `X-Content-Type-Options: nosniff` et `Referrer-Policy: strict-origin-when-cross-origin` (posés seulement si l'application ne l'a pas fait : `/reset-password` garde `no-referrer`). Aucune CSP : elle demande d'énumérer Stripe.js, ses iframes 3D Secure et MapTiler, PR dédiée.
 
+## Adresse du client (PR D2)
+
+Chaîne : `Internet → caddy → web → api`. Les limiteurs par IP de l'API (`login`, `signup`, `forgot-password`, `reset-password`) doivent compter le **visiteur**, pas le conteneur web.
+
+1. **Caddy écrase** `X-Forwarded-For` avec l'adresse qu'il voit (`header_up X-Forwarded-For {remote_host}`) et supprime `X-Real-IP` et `X-Client-IP`, vers le web **et** vers l'API (snippet `client_ip_headers`). Aucune valeur fournie par le client ne passe.
+2. **Le web** (`apps/web/src/lib/http/client-ip.ts`) relaie **une seule** adresse à l'API dans `X-Forwarded-For`. Une chaîne (`a, b`) est refusée : derrière Caddy elle n'arrive jamais.
+3. **L'API** croit cet en-tête seulement si le pair est dans `TRUSTED_PROXY_IPS` = `172.30.10.0/24`, le sous-réseau fixé du réseau `edge` (posé dans le compose, pas dans `api.env`). Tout autre pair est ignoré : l'API retombe sur l'adresse TCP (échec fermé).
+
+**Trace mesurée (smoke local, Caddyfile de production, image web `standalone`)** : client sans en-tête et client avec `X-Forwarded-For: 6.6.6.6, 7.7.7.7` + `X-Real-IP: 8.8.8.8` forgés → le web reçoit `x-forwarded-for: 172.30.10.1` (une valeur, Next n'ajoute rien), `x-real-ip` absent ; l'API reçoit `x-forwarded-for: 172.30.10.1` depuis le pair web `172.30.10.x`. Sous Docker Desktop, `172.30.10.1` est la passerelle Docker : **seul le VPS montre la vraie adresse du visiteur.**
+
+### Sous-réseau Docker
+
+À lancer sur le VPS **avant** le premier `docker compose up` (un sous-réseau qui chevauche une route existante fait échouer la création du réseau ou casse le routage) :
+
+```bash
+docker network ls
+docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}'
+ip route
+```
+
+Aucune ligne ne doit contenir `172.30.10.`. Si le sous-réseau est pris, en changer **aux deux endroits** de `deploy/compose.yaml` (`networks.edge.ipam` et `TRUSTED_PROXY_IPS` du service `api`). Un réseau `linkr_edge` déjà créé sans `ipam` doit être supprimé (`docker compose down`) pour prendre le nouveau sous-réseau.
+
+### IPv6
+
+Aucun enregistrement `AAAA` n'existe. **Ajouter un `AAAA` exige de revoir l'adresse source vue par Caddy** : selon la configuration de Docker (`ip6tables`, `userland-proxy`), le trafic IPv6 vers un port publié peut passer par `docker-proxy`, qui remplace l'adresse du client par celle de la passerelle. Tous les visiteurs IPv6 partageraient alors un seul compteur. Vérifier `remote_ip` dans le journal d'accès de Caddy avant de publier l'`AAAA`.
+
+### Vérifications sur le VPS (non faisables en local)
+
+- **Adresse réelle** : activer temporairement le journal d'accès de Caddy (`log` dans le site) ou `docker compose logs caddy`, faire une requête depuis un poste dont on connaît l'IP publique, et vérifier que `remote_ip` vaut cette IP (pas `172.30.10.1`).
+- **En-tête forgé ignoré** : 31 tentatives de connexion ratées depuis un même poste, chacune avec un `X-Forwarded-For` différent :
+  ```bash
+  for i in $(seq 1 31); do curl -s -o /dev/null -w '%{http_code}
+' -H "X-Forwarded-For: 198.51.100.$i" -H 'content-type: application/json' -d '{"email":"inconnu@linkr.test","password":"x"}' https://linkrapp.com/api/auth/login; done
+  ```
+  Les 30 premières répondent `401`, la 31ᵉ `429`. Si toutes répondent `401`, l'en-tête forgé est cru : **ne pas ouvrir aux testeurs**.
+- **Compteurs séparés** : juste après, la même requête depuis une **autre** IP publique (partage de connexion du téléphone) répond `401`, pas `429`. Si elle répond `429`, tous les visiteurs partagent un compteur (confiance mal configurée).
+
 ## Fichiers
 
 | Fichier | Rôle |
@@ -48,8 +85,8 @@ docker compose --profile tools run --rm migrate
 ## Premier déploiement (le futur `deploy.sh` automatisera les étapes 4 à 7)
 
 1. **GitHub** : Variables du dépôt `NEXT_PUBLIC_API_URL=http://api:5000`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (clé de test), `NEXT_PUBLIC_MAPTILER_KEY` (clé de production restreinte à `linkrapp.com`, sans `localhost`). Merger sur `main` → le workflow publie les images. Vérifier dans *Packages* que les deux paquets sont **privés**.
-2. **DNS** : `A` (et `AAAA` si IPv6) de `linkrapp.com` et `www.linkrapp.com` vers le VPS, **avant** le premier démarrage de Caddy (sinon le défi ACME échoue et Let's Encrypt limite les essais).
-3. **Serveur** : Docker Engine + plugin Compose ; UFW autorise 22, 80, 443/tcp, 443/udp. Copier `deploy/` (compose, Caddyfile, exemples) dans `/opt/linkr`.
+2. **DNS** : `A` de `linkrapp.com` et `www.linkrapp.com` vers le VPS (**aucun `AAAA`** : voir « Adresse du client »), **avant** le premier démarrage de Caddy (sinon le défi ACME échoue et Let's Encrypt limite les essais).
+3. **Serveur** : Docker Engine + plugin Compose ; UFW autorise 22, 80, 443/tcp, 443/udp. Copier `deploy/` (compose, Caddyfile, exemples) dans `/opt/linkr`. Vérifier que le sous-réseau `172.30.10.0/24` est libre (« Sous-réseau Docker » ci-dessous).
 4. **Accès GHCR** : jeton GitHub *classic* limité à `read:packages`, puis `echo "$JETON" | docker login ghcr.io -u claude-aye --password-stdin`.
 5. **Secrets** : `cp .env.example .env` et `cp api.env.example api.env`, remplir, `chmod 600 .env api.env`. `IMAGE_TAG` = SHA complet du commit publié. Mot de passe Postgres en hexadécimal (`openssl rand -hex 32`) : il est inséré tel quel dans `DATABASE_URL`.
 6. `docker compose pull && docker compose up -d postgres redis && docker compose --profile tools run --rm migrate`
@@ -60,5 +97,5 @@ docker compose --profile tools run --rm migrate
 
 ## ⚠️ Avant d'ouvrir aux testeurs
 
-- **PR D2 — `TRUSTED_PROXY_IPS` est un PRÉREQUIS.** Le web appelle l'API depuis son conteneur : tant que la liste ne couvre pas le réseau Docker (et que l'adresse du visiteur n'est pas transmise de Caddy au web puis à l'API), **tous les visiteurs partagent un seul compteur** de limitation sur `login`, `signup`, `forgot-password` et `reset-password`. Le premier qui l'épuise bloque tout le monde.
+- **PR D2 — à vérifier sur le VPS.** La configuration est en place (« Adresse du client ») ; les deux vérifications « En-tête forgé ignoré » et « Compteurs séparés » doivent passer avant d'ouvrir. Sinon tous les visiteurs partagent un seul compteur sur `login`, `signup`, `forgot-password` et `reset-password`, et le premier qui l'épuise bloque tout le monde.
 - **Sauvegardes (PR séparée)** : le volume `uploads` (photos du portfolio, `STORAGE_DRIVER=local`) doit être sauvegardé **avec** la base, au même moment : une base restaurée sans ses fichiers référence des photos absentes, et l'inverse laisse des fichiers orphelins. `redis_data` porte les files BullMQ en cours, pas des données durables.

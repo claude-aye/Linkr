@@ -138,4 +138,29 @@ describe('AuthController — login rate limiting', () => {
     }
     expect((await failedLogin(CALLER_B)).status).toBe(429);
   });
+
+  it('ignores a forwarded address when the trusted list is the production Docker subnet (D2)', async () => {
+    const { limit } = AUTH_RATE_LIMITS.LOGIN;
+    // The value `deploy/compose.yaml` sets. The test peer is 127.0.0.1, outside
+    // it — exactly a caller that is not the web container. A forged header
+    // must change nothing: one shared budget, never a fresh one per header.
+    (app as NestExpressApplication).set('trust proxy', '172.30.10.0/24');
+
+    for (let i = 0; i < limit; i += 1) {
+      await failedLogin(`198.51.100.${i + 1}`);
+    }
+    expect((await failedLogin(CALLER_B)).status).toBe(429);
+  });
+
+  it('cannot be steered by a forged LEFTMOST entry from a trusted peer (D2)', async () => {
+    const { limit } = AUTH_RATE_LIMITS.LOGIN;
+    // A trusted peer relays a chain whose left side the caller wrote. Express
+    // walks from the right and stops at the first untrusted address, so the
+    // rightmost entry is the one metered: rotating the left side buys nothing.
+    for (let i = 0; i < limit; i += 1) {
+      await failedLogin(`198.51.100.${i + 1}, ${CALLER_A}`);
+    }
+    expect((await failedLogin(`198.51.100.250, ${CALLER_A}`)).status).toBe(429);
+    expect((await failedLogin(CALLER_B)).status).toBe(401);
+  });
 });
