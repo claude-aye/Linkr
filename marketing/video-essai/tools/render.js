@@ -6,7 +6,8 @@ const root = path.resolve(__dirname, '..');
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i < 0 ? d : process.argv[i + 1] ?? true; };
 const has = (k) => process.argv.includes('--' + k);
 const TL = JSON.parse(fs.readFileSync(path.join(root, 'timeline.json'), 'utf8'));
-const GLOBE = fs.readFileSync(path.join(root, 'assets/globe-dots.json'), 'utf8');
+const globeFile = path.join(root, 'assets/globe-dots.json');
+const GLOBE = fs.existsSync(globeFile) ? fs.readFileSync(globeFile, 'utf8') : 'null'; // v2 only
 const scale = Number(arg('scale', 1)), fps = TL.fps;
 const from = Number(arg('from', 0)), to = Number(arg('to', TL.duration));
 const workers = Number(arg('workers', 4));
