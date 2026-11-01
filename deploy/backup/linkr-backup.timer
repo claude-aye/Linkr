@@ -1,0 +1,9 @@
+[Unit]
+Description=Sauvegarde quotidienne de Linkr (3 h, heure de Québec)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 America/Toronto
+Persistent=true
+
+[Install]
+WantedBy=timers.target
