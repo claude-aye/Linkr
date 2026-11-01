@@ -58,7 +58,7 @@ Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite 
 
 | Service | Rôle | Localisation des serveurs |
 | --- | --- | --- |
-| **OVHcloud** | Hébergement de l'application et de la base de données | Beauharnois (Québec, Canada) |
+| **OVHcloud** | Hébergement de l'application, de la base de données et des sauvegardes | Beauharnois (Québec, Canada) |
 | **Stripe** | Traitement des paiements et vérification d'identité des prestataires | États-Unis |
 | **Brevo** | Envoi des courriels transactionnels, des notifications et des réponses de soutien (relais SMTP) | Union européenne |
 | **Cloudflare** | Réacheminement, en transit, des courriels envoyés à support@linkrapp.com (entreprise américaine, réseau mondial) | États-Unis et autres pays |

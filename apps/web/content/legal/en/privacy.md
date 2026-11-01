@@ -58,7 +58,7 @@ We rely on the following services to operate Linkr. Each one processes only the 
 
 | Service | Role | Server location |
 | --- | --- | --- |
-| **OVHcloud** | Hosting of the application and database | Beauharnois (Québec, Canada) |
+| **OVHcloud** | Hosting of the application, the database and backups | Beauharnois (Québec, Canada) |
 | **Stripe** | Payment processing and provider identity verification | United States |
 | **Brevo** | Sending transactional emails, notifications and support replies (SMTP relay) | European Union |
 | **Cloudflare** | Forwarding, in transit, of emails sent to support@linkrapp.com (US company, global network) | United States and other countries |
