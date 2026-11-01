@@ -54,14 +54,15 @@ The page for adding a payment method loads Stripe's script, which may set its ow
 
 ## 5. Who we share it with
 
-We rely on the following services to operate Linkr. Each one processes only the information strictly necessary for its service. The first four are contractually bound to protect your information; Nominatim is a public service governed by the [OpenStreetMap Foundation's usage policy](https://operations.osmfoundation.org/policies/nominatim/); MapTiler provides the base maps under its [terms and privacy policy](https://www.maptiler.com/privacy-policy/).
+We rely on the following services to operate Linkr. Each one processes only the information strictly necessary for its service. OVHcloud, Stripe and Brevo are contractually bound to protect your information; Cloudflare and Google provide their services under their standard terms; Nominatim is a public service governed by the [OpenStreetMap Foundation's usage policy](https://operations.osmfoundation.org/policies/nominatim/); MapTiler provides the base maps under its [terms and privacy policy](https://www.maptiler.com/privacy-policy/).
 
 | Service | Role | Server location |
 | --- | --- | --- |
 | **OVHcloud** | Hosting of the application and database | Beauharnois (Québec, Canada) |
 | **Stripe** | Payment processing and provider identity verification | United States |
-| **Brevo** | Sending transactional emails and notifications | European Union |
-| **Zoho** | Support mailbox | Canada |
+| **Brevo** | Sending transactional emails, notifications and support replies (SMTP relay) | European Union |
+| **Cloudflare** | Forwarding, in transit, of emails sent to support@linkrapp.com (US company, global network) | United States and other countries |
+| **Google (Gmail)** | Support mailbox: storage of messages received and replies sent | United States and other countries |
 | **OpenStreetMap (Nominatim)** | Converting an entered address into geographic coordinates (geocoding), queried by our server | United Kingdom and European Union |
 | **MapTiler** | Base maps shown on the search results page, loaded by your browser | Switzerland |
 
@@ -70,7 +71,7 @@ We rely on the following services to operate Linkr. Each one processes only the 
 1. **Geocoding (Nominatim).** When you enter an address, **our server** queries Nominatim. Your browser never contacts Nominatim: the OpenStreetMap Foundation receives only the text of the address, without your IP address or your identity.
 2. **Map (MapTiler).** When a search returns results, **your browser** downloads the base maps directly from MapTiler. MapTiler therefore receives your **IP address**, your **browser header** (type and version) and the **map tiles of the area displayed**, which reveals the **approximate search area**. It receives neither your name, your email, the address you entered, nor the exact search point. According to its policy, MapTiler may keep the IP address for up to two months for security purposes. The map is loaded only when there are results to show.
 
-**Information communicated outside Québec.** Stripe, Brevo, OpenStreetMap and MapTiler process information outside Québec. As required by Law 25, a privacy impact assessment is carried out before any such communication, to ensure the information receives adequate protection.
+**Information communicated outside Québec.** Stripe, Brevo, Cloudflare, Google, OpenStreetMap and MapTiler process information outside Québec. As required by Law 25, a privacy impact assessment is carried out before any such communication, to ensure the information receives adequate protection.
 
 We may also disclose information where required by law (for example, at the request of a judicial authority).
 
@@ -92,9 +93,11 @@ We may also disclose information where required by law (for example, at the requ
 
 Stripe retains certain payment data under its own legal obligations, even after your Linkr account is deleted.
 
+**Backups.** An encrypted backup of the database and of uploaded files (portfolio photos) is made every night. It is hosted in Beauharnois (Québec) with OVHcloud and kept for 14 days. A deleted account disappears from the active database, but its information may remain in these backups for up to 14 more days, until they are automatically deleted. At the end of the trial, the database and the uploaded files are deleted no later than 16 days after the end, so that everything, backups included, is erased within 30 days. Messages sent to [support@linkrapp.com](mailto:support@linkrapp.com) are deleted within the same period.
+
 ## 8. Security and incidents
 
-We protect your information with reasonable measures: encrypted connection (HTTPS), irreversibly hashed passwords, cookies inaccessible to scripts, server access limited to the operator, and regular backups.
+We protect your information with reasonable measures: encrypted connection (HTTPS), irreversibly hashed passwords, cookies inaccessible to scripts, server access limited to the operator, and encrypted daily backups, hosted in Québec.
 
 If a confidentiality incident presents a risk of serious injury, we will notify the Commission d'accès à l'information and the affected individuals, and we will keep a register of incidents, as required by law.
 

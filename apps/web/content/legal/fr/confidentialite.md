@@ -54,14 +54,15 @@ La page d'ajout d'un moyen de paiement charge le script de Stripe, qui peut dép
 
 ## 5. Avec qui nous les partageons
 
-Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite que les renseignements strictement nécessaires à son service. Les quatre premiers sont tenus par contrat de protéger vos renseignements ; Nominatim est un service public régi par la [politique d'utilisation de la Fondation OpenStreetMap](https://operations.osmfoundation.org/policies/nominatim/) ; MapTiler fournit les fonds de carte selon ses [conditions et sa politique de confidentialité](https://www.maptiler.com/privacy-policy/).
+Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite que les renseignements strictement nécessaires à son service. OVHcloud, Stripe et Brevo sont tenus par contrat de protéger vos renseignements ; Cloudflare et Google fournissent leurs services selon leurs conditions standard ; Nominatim est un service public régi par la [politique d'utilisation de la Fondation OpenStreetMap](https://operations.osmfoundation.org/policies/nominatim/) ; MapTiler fournit les fonds de carte selon ses [conditions et sa politique de confidentialité](https://www.maptiler.com/privacy-policy/).
 
 | Service | Rôle | Localisation des serveurs |
 | --- | --- | --- |
 | **OVHcloud** | Hébergement de l'application et de la base de données | Beauharnois (Québec, Canada) |
 | **Stripe** | Traitement des paiements et vérification d'identité des prestataires | États-Unis |
-| **Brevo** | Envoi des courriels transactionnels et des notifications | Union européenne |
-| **Zoho** | Messagerie de soutien | Canada |
+| **Brevo** | Envoi des courriels transactionnels, des notifications et des réponses de soutien (relais SMTP) | Union européenne |
+| **Cloudflare** | Réacheminement, en transit, des courriels envoyés à support@linkrapp.com (entreprise américaine, réseau mondial) | États-Unis et autres pays |
+| **Google (Gmail)** | Boîte de soutien : stockage des messages reçus et des réponses | États-Unis et autres pays |
 | **OpenStreetMap (Nominatim)** | Conversion de l'adresse saisie en coordonnées géographiques (géocodage), interrogé par notre serveur | Royaume-Uni et Union européenne |
 | **MapTiler** | Fonds de carte affichés sur la page de résultats de recherche, chargés par votre navigateur | Suisse |
 
@@ -70,7 +71,7 @@ Nous faisons appel aux services suivants pour exploiter Linkr. Chacun ne traite 
 1. **Géocodage (Nominatim).** Quand vous saisissez une adresse, c'est **notre serveur** qui interroge Nominatim. Votre navigateur ne contacte jamais Nominatim : la Fondation OpenStreetMap ne reçoit que le texte de l'adresse, sans votre adresse IP ni votre identité.
 2. **Carte (MapTiler).** Quand une recherche donne des résultats, **votre navigateur** télécharge les fonds de carte directement chez MapTiler. MapTiler reçoit donc votre **adresse IP**, l'**en-tête de votre navigateur** (type et version) et les **fonds de carte de la zone affichée**, ce qui révèle la **zone de recherche approximative**. Il ne reçoit ni votre nom, ni votre courriel, ni l'adresse saisie, ni le point exact de la recherche. Selon sa politique, MapTiler peut conserver l'adresse IP jusqu'à deux mois à des fins de sécurité. La carte n'est chargée que lorsqu'il y a des résultats à afficher.
 
-**Renseignements communiqués hors du Québec.** Stripe, Brevo, OpenStreetMap et MapTiler traitent des renseignements à l'extérieur du Québec. Conformément à la Loi 25, une évaluation des facteurs relatifs à la vie privée (ÉFVP) est réalisée avant toute communication, afin de s'assurer que ces renseignements bénéficient d'une protection adéquate.
+**Renseignements communiqués hors du Québec.** Stripe, Brevo, Cloudflare, Google, OpenStreetMap et MapTiler traitent des renseignements à l'extérieur du Québec. Conformément à la Loi 25, une évaluation des facteurs relatifs à la vie privée (ÉFVP) est réalisée avant toute communication, afin de s'assurer que ces renseignements bénéficient d'une protection adéquate.
 
 Nous pouvons aussi communiquer des renseignements si la loi l'exige (par exemple, à la demande d'une autorité judiciaire).
 
@@ -92,9 +93,11 @@ Nous pouvons aussi communiquer des renseignements si la loi l'exige (par exemple
 
 Stripe conserve certaines données de paiement selon ses propres obligations légales, même après la suppression de votre compte Linkr.
 
+**Sauvegardes.** Une sauvegarde chiffrée de la base de données et des fichiers téléversés (photos de portfolio) est faite chaque nuit. Elle est hébergée à Beauharnois (Québec) chez OVHcloud et conservée 14 jours. Un compte supprimé disparaît de la base active, mais ses renseignements peuvent subsister jusqu'à 14 jours de plus dans ces sauvegardes, avant leur suppression automatique. À la fin de l'essai, la base de données et les fichiers téléversés sont supprimés au plus tard 16 jours après la fin, pour que tout soit effacé, sauvegardes comprises, dans les 30 jours. Les messages envoyés à [support@linkrapp.com](mailto:support@linkrapp.com) sont supprimés dans le même délai.
+
 ## 8. Sécurité et incidents
 
-Nous protégeons vos renseignements par des mesures raisonnables : connexion chiffrée (HTTPS), mots de passe hachés de façon irréversible, témoins inaccessibles aux scripts, accès aux serveurs limité à l'exploitant, et sauvegardes régulières.
+Nous protégeons vos renseignements par des mesures raisonnables : connexion chiffrée (HTTPS), mots de passe hachés de façon irréversible, témoins inaccessibles aux scripts, accès aux serveurs limité à l'exploitant, et sauvegardes chiffrées quotidiennes, hébergées au Québec.
 
 Si un incident de confidentialité présente un risque de préjudice sérieux, nous en aviserons la Commission d'accès à l'information et les personnes concernées, et nous tiendrons un registre des incidents, comme l'exige la loi.
 
