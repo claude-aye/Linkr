@@ -2,7 +2,7 @@
 <html lang="fr-CA">
 <head>
 <meta charset="utf-8">
-<title>Linkr — vidéo version d'essai (v3)</title>
+<title>Linkr — vidéo version d'essai (v4)</title>
 <style>
   @font-face { font-family: 'Geist'; src: url(fonts/Geist-Variable.woff2) format('woff2'); font-weight: 100 900; }
   @font-face { font-family: 'Geist Mono'; src: url(fonts/GeistMono-Variable.woff2) format('woff2'); font-weight: 100 900; }
@@ -11,178 +11,205 @@
   @font-face { font-family: 'Parisienne'; src: url(fonts/parisienne-latin-ext-400-normal.woff2) format('woff2'); font-weight: 400;
     unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
-  /* Colours: Linkr tokens (apps/web/src/app/globals.css) + pure white ground (v3). */
-  :root {
-    --white: #ffffff; --beige: #f3ebdf; --on-accent: #f8f2ea; --accent: #6e1e2b; --text: #2e211e; --muted: #55504d; --edge: #d8c7b3;
-    --amber-bg: #fef3c7; --amber-tx: #92400e; --blue-bg: #dbeafe; --blue-tx: #1e40af; --green-bg: #d1fae5; --green-tx: #065f46;
-  }
+  /* Linkr tokens (apps/web/src/app/globals.css) on a pure white ground. */
+  :root { --white: #ffffff; --beige: #f3ebdf; --on-accent: #f8f2ea; --accent: #6e1e2b; --text: #2e211e; --muted: #55504d; --edge: #d8c7b3; --dark: #1a1315; --rose: #d9828e; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 1440px; height: 1080px; overflow: hidden; background: var(--white); }
   body { font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; letter-spacing: -0.006em; }
   #stage { position: relative; width: 1440px; height: 1080px; overflow: hidden; background: var(--white); }
-  .layer { position: absolute; inset: 0; display: none; }
+  .layer { position: absolute; inset: 0; display: none; background: var(--white); }
   .abs { position: absolute; }
   .logo { font-family: 'Parisienne', cursive; font-weight: 400; letter-spacing: 0; color: var(--accent); line-height: 1; }
   span.w { display: inline-block; white-space: pre; transform-origin: 0 80%; }
-  .card { background: var(--white); border: 1.5px solid var(--edge); border-radius: 24px; box-shadow: 0 30px 60px -34px rgba(46, 33, 30, 0.35); }
-  .sand { background: var(--beige); border-radius: 24px; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; height: 60px; padding: 0 28px; border-radius: 20px; font-size: 24px; font-weight: 600; white-space: nowrap; background: var(--accent); color: var(--on-accent); }
+  .card { background: var(--white); border: 1.5px solid var(--edge); border-radius: 24px; box-shadow: 0 34px 70px -38px rgba(46, 33, 30, 0.4); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; height: 60px; padding: 0 28px; border-radius: 20px; font-size: 24px; font-weight: 650; white-space: nowrap; background: var(--accent); color: var(--on-accent); }
   .btn.ghost { background: var(--white); color: var(--accent); border: 2px solid var(--accent); }
   .pill { display: inline-flex; align-items: center; padding: 6px 16px; border-radius: 999px; font-size: 21px; font-weight: 650; white-space: nowrap; }
   .star { color: var(--accent); }
+  .okc { display: inline-flex; border-radius: 50%; background: var(--accent); align-items: center; justify-content: center; }
 
-  /* Captions (one message per scene), inside the 8 % safe zone */
   .cap { position: absolute; left: 115px; top: 100px; width: 1210px; }
-  .eyebrow { font-size: 24px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
-  .title { margin-top: 10px; font-size: 68px; line-height: 1.04; font-weight: 750; letter-spacing: -0.035em; color: var(--text); }
+  .eyebrow { font-size: 24px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  .title { margin-top: 10px; font-size: 66px; line-height: 1.03; font-weight: 780; letter-spacing: -0.04em; color: var(--text); }
   .sub { margin-top: 16px; font-size: 30px; line-height: 1.28; font-weight: 450; color: var(--muted); }
-  .sub b { color: var(--accent); font-weight: 750; }
+  .sub b { color: var(--accent); font-weight: 780; }
+  .tap { position: absolute; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; background: rgba(46, 33, 30, 0.16); border: 3px solid rgba(255, 255, 255, 0.95); box-shadow: 0 0 0 1.5px rgba(46, 33, 30, 0.2); opacity: 0; z-index: 35; }
 
-  /* 1 · opening */
-  #o-halo { position: absolute; left: 270px; top: -40px; width: 900px; height: 700px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(110, 30, 43, 0.13) 0%, rgba(110, 30, 43, 0.05) 42%, rgba(110, 30, 43, 0) 70%); }
-  #o-logo { position: absolute; left: 0; right: 0; top: 150px; text-align: center; font-size: 230px; }
-  #o-hook { position: absolute; left: 115px; right: 115px; top: 470px; text-align: center; font-size: 76px; line-height: 1.12; font-weight: 750; letter-spacing: -0.04em; }
-  #tagline { position: absolute; left: 115px; right: 115px; top: 760px; text-align: center; font-size: 54px; font-weight: 700; letter-spacing: -0.03em; color: var(--accent); transform-origin: 50% 0; }
-  #tagline .ul { position: absolute; height: 6px; border-radius: 3px; background: var(--accent); transform-origin: left center; }
+  /* 1 · opening: dark → light */
+  #o-bg { position: absolute; inset: 0; }
+  #o-h2, #o-h1 { position: absolute; left: 50%; top: 300px; border-radius: 50%; }
+  #o-h1 { width: 760px; height: 760px; margin: -380px 0 0 -380px; background: radial-gradient(circle, rgba(255, 240, 232, 0.95) 0%, rgba(217, 130, 142, 0.6) 22%, rgba(110, 30, 43, 0.35) 42%, rgba(110, 30, 43, 0) 68%); }
+  #o-h2 { width: 1700px; height: 1700px; margin: -850px 0 0 -850px; background: radial-gradient(circle, rgba(110, 30, 43, 0.55) 0%, rgba(60, 16, 24, 0.3) 35%, rgba(0, 0, 0, 0) 70%); }
+  #o-rays { position: absolute; left: 50%; top: 300px; width: 2400px; height: 2400px; margin: -1200px 0 0 -1200px; border-radius: 50%;
+    background: repeating-conic-gradient(from 0deg, rgba(255, 236, 228, 0.13) 0deg 4deg, rgba(255, 236, 228, 0) 4deg 15deg);
+    -webkit-mask-image: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.5) 25%, transparent 58%); mask-image: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.5) 25%, transparent 58%); }
+  #o-logo { position: absolute; left: 0; right: 0; top: 160px; text-align: center; font-size: 240px; }
+  #o-hook { position: absolute; left: 115px; right: 115px; top: 500px; text-align: center; font-size: 76px; line-height: 1.12; font-weight: 780; letter-spacing: -0.04em; }
+  #bloom { position: absolute; inset: 0; background: #fffaf6; opacity: 0; pointer-events: none; }
+  #tagline { position: absolute; left: 115px; right: 115px; top: 780px; text-align: center; font-size: 56px; font-weight: 780; letter-spacing: -0.03em; color: var(--accent); z-index: 20; }
+  #tagline .ul { position: absolute; height: 7px; border-radius: 4px; background: var(--accent); transform-origin: left center; }
 
   /* 3 · needs */
-  #n-card { position: absolute; left: 340px; top: 250px; width: 760px; height: 450px; border-radius: 28px; overflow: hidden; background: #9f8771; box-shadow: 0 40px 70px -40px rgba(46, 33, 30, 0.6); }
-  #n-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  #n-card .veil { position: absolute; inset: 0; z-index: 10; background: linear-gradient(to top, rgba(46, 33, 30, 0.72), rgba(46, 33, 30, 0) 52%); }
-  #n-card .name { position: absolute; z-index: 11; left: 36px; bottom: 28px; font-size: 64px; font-weight: 750; letter-spacing: -0.03em; color: var(--white); white-space: nowrap; }
-  #n-chips { position: absolute; left: 0; right: 0; top: 742px; display: flex; justify-content: center; gap: 14px; }
-  #n-chips .pill { font-size: 24px; padding: 10px 22px; background: var(--beige); color: var(--text); }
-  #n-chips .pill.on { background: var(--accent); color: var(--on-accent); }
-  #n-open { position: absolute; left: 115px; right: 115px; top: 826px; text-align: center; font-size: 28px; color: var(--muted); }
+  .tc { position: absolute; top: 250px; width: 250px; height: 320px; border-radius: 24px; overflow: hidden; background: #9f8771; box-shadow: 0 24px 50px -24px rgba(46, 33, 30, 0.55); }
+  .tc img { width: 100%; height: 100%; object-fit: cover; }
+  .tc .veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(46, 33, 30, 0.7), rgba(46, 33, 30, 0) 50%); }
+  .tc span { position: absolute; left: 18px; bottom: 16px; font-size: 26px; font-weight: 750; color: var(--white); white-space: nowrap; }
+  #n-word { position: absolute; left: 115px; right: 115px; top: 618px; text-align: center; font-size: 104px; font-weight: 800; letter-spacing: -0.045em; color: var(--accent); }
+  #n-open { position: absolute; left: 115px; right: 115px; top: 800px; text-align: center; font-size: 32px; font-weight: 600; color: var(--muted); }
 
   /* 4-6 · one card that evolves */
-  #stagecard { position: absolute; left: 175px; top: 330px; width: 1090px; height: 600px; overflow: hidden; }
+  #stagecard { position: absolute; left: 175px; top: 336px; width: 1090px; height: 590px; overflow: hidden; }
   #map { position: absolute; left: 0; top: 0; width: 2200px; height: 1700px; }
   .zone { position: absolute; width: 0; height: 0; }
-  .zone i { position: absolute; left: -72px; top: -72px; width: 144px; height: 144px; border-radius: 50%; background: radial-gradient(circle, rgba(110, 30, 43, 0.26) 0%, rgba(110, 30, 43, 0.16) 55%, rgba(110, 30, 43, 0.06) 100%); border: 2px solid rgba(110, 30, 43, 0.32); }
+  .zone i { position: absolute; left: -72px; top: -72px; width: 144px; height: 144px; border-radius: 50%; background: radial-gradient(circle, rgba(110, 30, 43, 0.28) 0%, rgba(110, 30, 43, 0.16) 55%, rgba(110, 30, 43, 0.06) 100%); border: 2px solid rgba(110, 30, 43, 0.35); }
   #me { position: absolute; width: 0; height: 0; }
   #me .dot { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%; background: var(--text); border: 6px solid var(--white); box-shadow: 0 4px 14px rgba(46, 33, 30, 0.4); }
-  #me .lb { position: absolute; left: 26px; top: -19px; font-size: 24px; font-weight: 700; background: var(--white); padding: 3px 14px; border-radius: 14px; white-space: nowrap; box-shadow: 0 4px 12px -4px rgba(46, 33, 30, 0.3); }
-  #scale { position: absolute; left: 32px; bottom: 30px; font-size: 20px; font-weight: 650; color: var(--text); }
+  #me .lb { position: absolute; left: 26px; top: -19px; font-size: 24px; font-weight: 750; background: var(--white); padding: 3px 14px; border-radius: 14px; white-space: nowrap; box-shadow: 0 4px 12px -4px rgba(46, 33, 30, 0.3); }
+  #me .sonar { position: absolute; border-radius: 50%; border: 3px solid rgba(110, 30, 43, 0.5); }
+  #scale { position: absolute; left: 32px; bottom: 28px; font-size: 20px; font-weight: 650; }
   #scale i { display: block; width: 130px; height: 6px; margin-top: 6px; border: 2px solid var(--text); border-top: 0; }
-  #zlabel { position: absolute; padding: 14px 20px; border-radius: 18px; background: var(--white); border: 1.5px solid var(--edge); box-shadow: 0 16px 34px -16px rgba(46, 33, 30, 0.45); white-space: nowrap; }
-  #zlabel b { display: block; font-size: 26px; font-weight: 750; }
+  #zlabel { position: absolute; padding: 14px 20px; border-radius: 18px; background: var(--white); border: 1.5px solid var(--edge); box-shadow: 0 16px 34px -16px rgba(46, 33, 30, 0.45); white-space: nowrap; z-index: 5; }
+  #zlabel b { display: block; font-size: 26px; font-weight: 780; }
   #zlabel span { font-size: 21px; color: var(--muted); }
-  #prof { position: absolute; inset: 0; padding: 34px 40px; }
+  #prof { position: absolute; inset: 0; padding: 32px 40px; }
   #prof .hdr { display: flex; align-items: center; gap: 26px; }
   .avatar { width: 112px; height: 112px; border-radius: 50%; overflow: hidden; flex: none; }
   .avatar img { width: 100%; height: 100%; object-fit: cover; }
   #prof .nm { font-family: 'Parisienne', cursive; font-size: 80px; line-height: 1; color: var(--accent); }
   #prof .hl { font-size: 23px; color: var(--muted); margin-top: 6px; }
-  #prof .rt { margin-left: auto; text-align: right; font-size: 28px; font-weight: 700; white-space: nowrap; }
+  #prof .rt { margin-left: auto; text-align: right; font-size: 34px; font-weight: 800; white-space: nowrap; }
   #prof .rt small { display: block; font-size: 21px; color: var(--muted); font-weight: 500; margin-top: 4px; }
-  #photos { position: absolute; left: 40px; top: 186px; display: flex; gap: 24px; }
-  #photos div { width: 320px; height: 190px; border-radius: 18px; overflow: hidden; }
-  #photos img { width: 100%; height: 100%; object-fit: cover; }
-  #review { position: absolute; left: 40px; right: 40px; top: 404px; padding: 22px 28px; }
+  #strip { position: absolute; left: 0; top: 182px; height: 200px; display: flex; gap: 20px; }
+  #strip div { flex: none; width: 260px; height: 200px; border-radius: 18px; overflow: hidden; }
+  #strip img { width: 100%; height: 100%; object-fit: cover; }
+  #review { position: absolute; left: 40px; right: 40px; top: 408px; padding: 20px 26px; border: 1.5px solid var(--edge); border-radius: 20px; background: var(--white); }
   #review .stars span { display: inline-block; font-size: 30px; color: rgba(110, 30, 43, 0.18); margin-right: 3px; }
-  #svcs { position: absolute; left: 40px; right: 40px; top: 176px; }
-  .svc { display: flex; align-items: center; gap: 22px; height: 104px; border-top: 1.5px solid var(--edge); }
-  .svc .n { flex: 1; font-size: 30px; font-weight: 700; }
+  #svcs { position: absolute; left: 40px; right: 40px; top: 172px; }
+  .svc { display: flex; align-items: center; gap: 22px; height: 100px; border-top: 1.5px solid var(--edge); }
+  .svc .n { flex: 1; font-size: 30px; font-weight: 750; }
   .svc .n small { font-size: 23px; color: var(--muted); font-weight: 500; margin-left: 12px; }
-  .svc .p { font-size: 34px; font-weight: 750; width: 170px; text-align: right; }
-  #slot { position: absolute; left: 40px; top: 508px; padding: 14px 22px; font-size: 24px; font-weight: 600; }
+  .svc .p { font-size: 34px; font-weight: 800; width: 170px; text-align: right; }
+  #sent { position: absolute; left: 0; right: 0; top: 160px; bottom: 0; background: var(--white); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+  #sent p { font-size: 34px; font-weight: 750; text-align: center; }
 
   /* 7 · quotes */
-  #q-proj { position: absolute; left: 115px; top: 330px; width: 470px; padding: 30px; }
+  #q-proj { position: absolute; left: 115px; top: 340px; width: 470px; padding: 30px; }
   .quote { position: absolute; left: 640px; width: 685px; height: 108px; padding: 0 28px; display: flex; align-items: center; gap: 18px; }
-  .quote .ini { width: 60px; height: 60px; border-radius: 50%; background: var(--beige); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 750; font-size: 22px; flex: none; }
-  .quote .px { margin-left: auto; font-size: 36px; font-weight: 750; white-space: nowrap; }
-  .quote .who { font-size: 26px; font-weight: 700; }
+  .quote .ini { width: 60px; height: 60px; border-radius: 50%; background: var(--beige); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 780; font-size: 22px; flex: none; }
+  .quote .px { margin-left: auto; font-size: 38px; font-weight: 800; white-space: nowrap; }
+  .quote .who { font-size: 26px; font-weight: 750; }
   .quote .meta { font-size: 20px; color: var(--muted); }
-  #q-seg { position: absolute; left: 640px; top: 330px; display: inline-flex; padding: 5px; border-radius: 20px; background: var(--beige); }
-  #q-seg span { position: relative; z-index: 2; padding: 9px 20px; font-size: 22px; font-weight: 650; white-space: nowrap; }
+  #q-seg { position: absolute; left: 640px; top: 340px; display: inline-flex; padding: 5px; border-radius: 20px; background: var(--white); border: 1.5px solid var(--edge); }
+  #q-seg span { position: relative; z-index: 2; padding: 9px 20px; font-size: 22px; font-weight: 700; white-space: nowrap; }
   #q-seg i { position: absolute; top: 5px; bottom: 5px; border-radius: 15px; background: var(--accent); z-index: 1; }
-  #q-bar { position: absolute; left: 640px; top: 800px; width: 685px; height: 100px; padding: 0 22px 0 28px; display: flex; align-items: center; gap: 16px; }
+  #q-bar { position: absolute; left: 640px; top: 806px; width: 685px; height: 100px; padding: 0 22px 0 28px; display: flex; align-items: center; gap: 16px; }
 
   /* 8 · payment */
-  #p-head { position: absolute; left: 0; right: 0; top: 392px; display: flex; justify-content: center; }
-  #p-head .pill { font-size: 28px; padding: 12px 26px; background: var(--beige); color: var(--text); }
-  #p-line { position: absolute; left: 300px; top: 606px; width: 840px; height: 8px; border-radius: 4px; background: var(--beige); overflow: hidden; }
+  #p-head { position: absolute; left: 0; right: 0; top: 398px; display: flex; justify-content: center; gap: 16px; align-items: center; }
+  #p-head .pill { font-size: 28px; padding: 12px 26px; background: var(--white); border: 1.5px solid var(--edge); color: var(--text); }
+  #p-line { position: absolute; left: 300px; top: 616px; width: 840px; height: 10px; border-radius: 5px; background: var(--beige); overflow: hidden; }
   #p-line i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
-  .node { position: absolute; top: 578px; width: 0; height: 0; }
+  .node { position: absolute; top: 589px; width: 0; height: 0; }
   .node .c { position: absolute; left: -32px; top: 0; width: 64px; height: 64px; border-radius: 50%; background: var(--white); border: 4px solid var(--edge); display: flex; align-items: center; justify-content: center; }
   .node .c svg { opacity: 0; }
-  .node .t { position: absolute; left: -200px; width: 400px; top: -64px; text-align: center; font-size: 30px; font-weight: 750; white-space: nowrap; }
+  .node .t { position: absolute; left: -200px; width: 400px; top: -66px; text-align: center; font-size: 30px; font-weight: 780; white-space: nowrap; }
   .node .v { position: absolute; left: -200px; width: 400px; top: 88px; text-align: center; font-size: 27px; color: var(--muted); white-space: nowrap; }
-  .node .v b { color: var(--accent); }
-  #p-note { position: absolute; left: 115px; right: 115px; top: 810px; text-align: center; font-size: 26px; color: var(--muted); }
+  .node .v b { color: var(--accent); font-size: 32px; }
+  #p-note { position: absolute; left: 115px; right: 115px; top: 818px; text-align: center; font-size: 26px; color: var(--muted); }
 
   /* 9 · pros */
-  #pro { position: absolute; left: 175px; top: 430px; width: 1090px; height: 470px; padding: 30px 34px; }
+  #pro { position: absolute; left: 175px; top: 440px; width: 1090px; height: 440px; padding: 30px 34px; }
   .tabs { display: flex; gap: 10px; }
   .tab { font-size: 22px; padding: 10px 16px; border-radius: 16px; font-weight: 650; color: var(--muted); white-space: nowrap; }
   .tab b { display: inline-flex; margin-left: 8px; min-width: 28px; height: 28px; padding: 0 7px; border-radius: 14px; background: var(--beige); color: var(--accent); font-size: 17px; align-items: center; justify-content: center; }
   .tab.on { background: var(--accent); color: var(--on-accent); }
   .tab.on b { background: var(--on-accent); }
-  #job { position: absolute; left: 34px; right: 34px; top: 120px; height: 120px; padding: 0 26px; display: flex; align-items: center; gap: 20px; background: var(--white); border: 1.5px solid var(--edge); border-radius: 20px; }
-  #job2 { position: absolute; left: 34px; right: 34px; top: 262px; height: 120px; padding: 0 26px; display: flex; align-items: center; gap: 20px; border: 1.5px solid var(--edge); border-radius: 20px; opacity: 0.55; }
-  #toast { position: absolute; right: 115px; top: 318px; width: 470px; padding: 18px 22px; border-radius: 20px; background: var(--text); color: var(--on-accent); display: flex; flex-direction: column; gap: 4px; z-index: 5; box-shadow: 0 20px 40px -18px rgba(46, 33, 30, 0.6); }
+  .job { position: absolute; left: 34px; right: 34px; height: 116px; padding: 0 26px; display: flex; align-items: center; gap: 20px; background: var(--white); border: 1.5px solid var(--edge); border-radius: 20px; }
+  #toast { position: absolute; right: 115px; top: 330px; width: 470px; padding: 18px 22px; border-radius: 20px; background: var(--text); color: var(--on-accent); display: flex; flex-direction: column; gap: 4px; z-index: 5; box-shadow: 0 20px 40px -18px rgba(46, 33, 30, 0.6); }
 
-  /* 10 · soon */
-  #s-title { position: absolute; left: 115px; right: 115px; top: 250px; text-align: center; }
-  #s-title .eyebrow { margin-bottom: 14px; }
-  #s-title .title { margin-top: 0; }
-  #s-trades { position: absolute; left: 0; right: 0; top: 432px; text-align: center; font-size: 34px; color: var(--muted); }
-  #s-lic { position: absolute; left: 0; right: 0; top: 520px; display: flex; justify-content: center; align-items: center; gap: 14px; font-size: 30px; font-weight: 700; }
-  #s-lic .code { padding: 10px 22px; border-radius: 16px; background: var(--text); color: var(--on-accent); font-size: 30px; font-weight: 750; letter-spacing: 0.03em; }
-  #s-pics { position: absolute; left: 0; right: 0; top: 640px; display: flex; justify-content: center; gap: 28px; }
+  /* 10 · notifications */
+  .phone { position: absolute; width: 420px; height: 846px; border-radius: 60px; background: var(--dark); padding: 13px; box-shadow: 0 50px 100px -40px rgba(46, 33, 30, 0.55); }
+  .phone .scr { position: relative; width: 100%; height: 100%; border-radius: 48px; background: var(--white); overflow: hidden; }
+  .phone .notch { position: absolute; left: 50%; top: 12px; width: 118px; height: 32px; margin-left: -59px; border-radius: 16px; background: var(--dark); z-index: 3; }
+  .phone .bar { height: 100px; padding-top: 56px; text-align: center; font-size: 20px; font-weight: 700; color: var(--muted); border-bottom: 1.5px solid var(--edge); }
+  .mail { position: absolute; left: 14px; right: 14px; top: 116px; padding: 16px 16px; border-radius: 20px; background: var(--white); border: 1.5px solid var(--edge); box-shadow: 0 14px 30px -16px rgba(46, 33, 30, 0.45); display: flex; gap: 12px; align-items: flex-start; }
+  .mail .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--accent); color: var(--on-accent); flex: none; display: flex; align-items: center; justify-content: center; font-family: 'Parisienne'; font-size: 30px; }
+  .mail .s { font-size: 22px; font-weight: 750; line-height: 1.22; }
+  .mail .p { font-size: 18px; color: var(--muted); margin-top: 4px; }
+
+  /* 11 · roles (flip) */
+  #r-wrap { position: absolute; left: 640px; top: 330px; width: 685px; height: 580px; perspective: 1800px; }
+  #r-card { position: absolute; inset: 0; transform-style: preserve-3d; }
+  .face { position: absolute; inset: 0; border-radius: 28px; padding: 36px 40px; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+  .face.front { background: var(--white); border: 1.5px solid var(--edge); box-shadow: 0 40px 90px -40px rgba(110, 30, 43, 0.4); }
+  .face.back { background: var(--accent); color: var(--on-accent); transform: rotateY(180deg); box-shadow: 0 40px 90px -40px rgba(46, 33, 30, 0.6); }
+  .roletag { font-size: 22px; font-weight: 780; letter-spacing: 0.1em; text-transform: uppercase; }
+  #r-seg { position: absolute; left: 832px; top: 248px; display: inline-flex; padding: 5px; border-radius: 20px; background: var(--white); border: 1.5px solid var(--edge); }
+  #r-seg span { position: relative; z-index: 2; width: 150px; padding: 9px 0; text-align: center; font-size: 22px; font-weight: 700; }
+  #r-seg i { position: absolute; top: 5px; bottom: 5px; width: 150px; border-radius: 15px; background: var(--accent); z-index: 1; }
+
+  /* 12 · soon */
+  #s-title { position: absolute; left: 115px; right: 115px; top: 230px; text-align: center; }
+  #s-trades { position: absolute; left: 0; right: 0; top: 420px; text-align: center; font-size: 36px; color: var(--muted); font-weight: 600; }
+  #s-lic { position: absolute; left: 0; right: 0; top: 510px; display: flex; justify-content: center; align-items: center; gap: 14px; font-size: 32px; font-weight: 750; }
+  #s-lic .code { padding: 10px 24px; border-radius: 16px; background: var(--text); color: var(--on-accent); font-size: 32px; font-weight: 800; letter-spacing: 0.03em; }
+  #s-pics { position: absolute; left: 0; right: 0; top: 630px; display: flex; justify-content: center; gap: 28px; }
   #s-pics div { position: relative; width: 340px; height: 220px; border-radius: 22px; overflow: hidden; }
   #s-pics img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(0.55); }
-  #s-pics span { position: absolute; left: 14px; top: 14px; background: var(--white); color: var(--text); font-size: 20px; font-weight: 700; padding: 5px 14px; border-radius: 14px; }
+  #s-pics span { position: absolute; left: 14px; top: 14px; background: var(--white); color: var(--text); font-size: 20px; font-weight: 750; padding: 5px 14px; border-radius: 14px; }
 
-  /* 11 · call to action */
+  /* 13 · call to action */
+  #c-glow { position: absolute; left: 160px; top: 330px; width: 1120px; height: 420px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(110, 30, 43, 0.22) 0%, rgba(110, 30, 43, 0.08) 42%, rgba(110, 30, 43, 0) 70%); }
   #c-logo { position: absolute; left: 0; right: 0; top: 118px; text-align: center; font-size: 150px; }
-  #c-open { position: absolute; left: 115px; right: 115px; top: 296px; text-align: center; font-size: 48px; font-weight: 750; letter-spacing: -0.03em; }
-  #c-url { position: absolute; left: 115px; right: 115px; top: 380px; text-align: center; font-size: 170px; line-height: 1.05; font-weight: 780; letter-spacing: -0.05em; color: var(--accent); }
+  #c-open { position: absolute; left: 115px; right: 115px; top: 296px; text-align: center; font-size: 50px; font-weight: 780; letter-spacing: -0.03em; }
+  #c-url { position: absolute; left: 115px; right: 115px; top: 378px; text-align: center; font-size: 172px; line-height: 1.05; font-weight: 800; letter-spacing: -0.05em; color: var(--accent); }
   #c-url span { display: inline-block; }
   #c-ul { position: absolute; top: 578px; height: 9px; border-radius: 5px; background: var(--accent); transform-origin: left center; }
-  #c-sub { position: absolute; left: 140px; right: 140px; top: 626px; text-align: center; font-size: 40px; line-height: 1.25; font-weight: 600; }
+  #c-sub { position: absolute; left: 140px; right: 140px; top: 626px; text-align: center; font-size: 40px; line-height: 1.25; font-weight: 650; }
   #c-test { position: absolute; left: 0; right: 0; top: 768px; display: flex; justify-content: center; }
-  #c-test div { padding: 18px 30px; font-size: 28px; font-weight: 500; text-align: center; }
-  #c-test code { font-family: 'Geist Mono', ui-monospace, monospace; font-weight: 650; color: var(--accent); }
-  #c-qc { position: absolute; left: 0; right: 0; top: 905px; text-align: center; font-size: 26px; font-weight: 600; color: var(--muted); }
+  #c-test div { padding: 18px 30px; font-size: 28px; font-weight: 500; text-align: center; background: var(--white); border: 1.5px solid var(--edge); border-radius: 22px; }
+  #c-test code { font-family: 'Geist Mono', ui-monospace, monospace; font-weight: 700; color: var(--accent); }
+  #c-qc { position: absolute; left: 0; right: 0; top: 905px; text-align: center; font-size: 26px; font-weight: 650; color: var(--muted); }
   #cursor { position: absolute; left: 0; top: 0; width: 48px; height: 48px; z-index: 30; }
   #c-ring { position: absolute; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%; border: 3px solid var(--accent); opacity: 0; }
 
-  /* persistent link chip (scenes 3-10) */
-  #chip { position: absolute; right: 115px; bottom: 86px; z-index: 40; padding: 10px 20px; border-radius: 18px; font-size: 24px; font-weight: 700; color: var(--accent); background: var(--white); border: 1.5px solid var(--edge); }
-  .tap { position: absolute; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; background: rgba(46, 33, 30, 0.16); border: 3px solid rgba(255, 255, 255, 0.95); box-shadow: 0 0 0 1.5px rgba(46, 33, 30, 0.2); opacity: 0; z-index: 35; }
+  #chip { position: absolute; right: 115px; bottom: 86px; z-index: 40; padding: 10px 20px; border-radius: 18px; font-size: 24px; font-weight: 750; color: var(--accent); background: var(--white); border: 1.5px solid var(--edge); }
+  #wipe { position: absolute; left: -400px; top: -260px; width: 2240px; height: 1600px; background: var(--accent); z-index: 60; display: none; }
+  #wipe i { position: absolute; top: 0; bottom: 0; left: -90px; width: 90px; background: var(--rose); }
   #safe { position: absolute; left: 115px; top: 86px; width: 1210px; height: 908px; border: 2px dashed #00b7d4; display: none; z-index: 99; }
 </style>
 </head>
 <body>
 <div id="stage">
 
-<!-- 1 · Opening (logo + official hook from frame 0) -->
+<!-- 1 · Opening: dark to light, logo + hook legible from frame 0 -->
 <div class="layer" id="L1">
-  <div id="o-halo"></div>
+  <div id="o-bg"></div>
+  <div id="o-rays"></div>
+  <div id="o-h2"></div>
+  <div id="o-h1"></div>
+  <canvas id="o-fx" width="1440" height="1080" class="abs" style="left:0;top:0"></canvas>
   <h1 id="o-logo" class="logo">Linkr</h1>
-  <p id="o-hook"><span id="o-h1"></span><br><span id="o-h2"></span></p>
+  <p id="o-hook"><span id="o-k1"></span><br><span id="o-k2"></span></p>
+  <div id="bloom"></div>
 </div>
-<!-- shared: the tagline travels from scene 1 to the header of scene 3 -->
 <p id="tagline"><span id="tg"></span><span class="ul" id="tg-ul"></span></p>
 
 <!-- 3 · Needs -->
 <div class="layer" id="L3">
-  <div id="n-card">
-    <img src="../../apps/web/public/images/accueil/coiffure-480.webp" style="object-position:50% 30%"><img src="../../apps/web/public/images/accueil/esthetique-480.webp"><img src="../../apps/web/public/images/accueil/decoration-480.webp"><img src="../../apps/web/public/images/accueil/petits-travaux-480.webp">
-    <div class="veil"></div><div class="name" id="n-name"></div>
-  </div>
-  <div id="n-chips"><span class="pill">Coiffure</span><span class="pill">Esthétique</span><span class="pill">Décoration</span><span class="pill">Petits travaux</span></div>
+  <div class="tc" style="left:187px"><img src="../../apps/web/public/images/accueil/coiffure-480.webp" style="object-position:50% 30%"><div class="veil"></div><span>Coiffure</span></div>
+  <div class="tc" style="left:459px"><img src="../../apps/web/public/images/accueil/esthetique-480.webp"><div class="veil"></div><span>Esthétique</span></div>
+  <div class="tc" style="left:731px"><img src="../../apps/web/public/images/accueil/decoration-480.webp"><div class="veil"></div><span>Décoration</span></div>
+  <div class="tc" style="left:1003px"><img src="../../apps/web/public/images/accueil/petits-travaux-480.webp"><div class="veil"></div><span>Petits travaux</span></div>
+  <p id="n-word"></p>
   <p id="n-open">Ouverts dès maintenant dans la version d’essai.</p>
 </div>
 
-<!-- 4-6 · Proximity -> Trust -> Price: fixed white ground, one card that evolves -->
+<!-- 4-6 · Proximity -> Trust -> Price: one card that evolves -->
 <div class="layer" id="L4">
   <div class="cap" id="cap4"><div class="eyebrow">Proximité</div><div class="title">Les pros qui se déplacent jusqu’à vous</div><div class="sub">Zones approximatives : la position exacte des pros n’est jamais affichée.</div></div>
-  <div class="cap" id="cap5"><div class="eyebrow">Confiance</div><div class="title">Des avis laissés après le travail</div><div class="sub">Seuls les clients dont la prestation est terminée peuvent laisser un avis.</div></div>
-  <div class="cap" id="cap6"><div class="eyebrow">Prix</div><div class="title">Le prix est affiché avant de réserver</div><div class="sub">Vous choisissez le service et le moment qui vous conviennent.</div></div>
+  <div class="cap" id="cap5"><div class="eyebrow">Confiance</div><div class="title">Des avis laissés après le travail</div><div class="sub">Réalisations en photos, avis de clients dont la prestation est terminée.</div></div>
+  <div class="cap" id="cap6"><div class="eyebrow">Prix</div><div class="title">Le prix est affiché avant de réserver</div><div class="sub">Choisissez le service et le moment qui vous conviennent.</div></div>
   <div id="stagecard" class="card">
     <div id="mapwrap" class="abs" style="inset:0">
       <div id="map"><svg id="mapsvg" width="2200" height="1700" viewBox="0 0 2200 1700"></svg></div>
@@ -192,12 +219,12 @@
       <div class="hdr" id="phdr">
         <div class="avatar"><img src="../../apps/web/public/images/accueil/coiffure-480.webp" style="object-position:50% 25%"></div>
         <div><div class="nm">Atelier Camille</div><div class="hl">Coupe et coloration à domicile · à 800 m</div></div>
-        <div class="rt" id="prt"><span class="star">★</span> 4,33<small>sur 5 · 3 avis</small></div>
+        <div class="rt" id="prt"><span class="star">★</span> <span id="rtnum">4,33</span><small>sur 5 · 3 avis</small></div>
       </div>
-      <div id="photos"><div><img src="../../apps/web/public/images/accueil/coiffure-480.webp" style="object-position:50% 60%"></div><div><img src="../../apps/web/public/images/accueil/esthetique-480.webp"></div><div><img src="../../apps/web/public/images/accueil/pro-640.webp"></div></div>
-      <div id="review" class="sand">
+      <div id="strip"></div>
+      <div id="review">
         <div class="stars" id="rstars"><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span></div>
-        <div style="font-size:32px;font-weight:650;margin-top:6px">« Ponctuelle et minutieuse. Je recommande. »</div>
+        <div style="font-size:32px;font-weight:700;margin-top:6px">« Ponctuelle et minutieuse. Je recommande. »</div>
         <div style="font-size:22px;color:var(--muted);margin-top:8px">Carol R. · prestation terminée</div>
       </div>
       <div id="svcs">
@@ -205,7 +232,7 @@
         <div class="svc"><div class="n">Coloration<small>1 h 30</small></div><div class="p">85,00 $</div><div class="btn ghost">Demander</div></div>
         <div class="svc"><div class="n">Mise en plis<small>1 h</small></div><div class="p">55,00 $</div><div class="btn ghost">Demander</div></div>
       </div>
-      <div id="slot" class="sand">Début souhaité : samedi 8 novembre, 14 h 00</div>
+      <div id="sent"><span class="okc" id="sent-ok" style="width:110px;height:110px"><svg viewBox="0 0 24 24" width="62" height="62" fill="none" stroke="#f8f2ea" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><p>Votre demande a été envoyée<br>à Atelier Camille.</p></div>
     </div>
   </div>
   <div id="zlabel"><b>Atelier Camille</b><span>à 800 m · <span class="star">★</span> 4,33 · 3 avis</span></div>
@@ -215,19 +242,19 @@
 <!-- 7 · Quotes -->
 <div class="layer" id="L7">
   <div class="cap" id="cap7"><div class="eyebrow">Appel d’offres</div><div class="title">Un projet ? Recevez des devis et comparez</div></div>
-  <div id="q-proj" class="sand">
-    <div style="font-size:22px;font-weight:650;color:var(--muted)">Votre appel d’offres</div>
-    <div style="font-size:38px;font-weight:750;margin-top:10px;line-height:1.1">Repeindre le salon</div>
+  <div id="q-proj" class="card">
+    <div style="font-size:22px;font-weight:700;color:var(--muted)">Votre appel d’offres</div>
+    <div style="font-size:40px;font-weight:800;margin-top:10px;line-height:1.1">Repeindre le salon</div>
     <div style="font-size:23px;color:var(--muted);margin-top:10px">Décoration · Budget indicatif 600,00 $</div>
     <div style="font-size:23px;margin-top:22px;line-height:1.35">Reçoit des devis jusqu’au<br><b>14 novembre, 18 h 00</b></div>
-    <div style="font-size:46px;font-weight:780;margin-top:24px;color:var(--accent)" id="q-count">0 devis</div>
+    <div style="font-size:56px;font-weight:800;margin-top:22px;color:var(--accent)" id="q-count">0 devis</div>
   </div>
   <div id="q-seg"><i id="q-segi"></i><span id="q-sa">Ordre d’arrivée</span><span id="q-sp">Prix croissant</span></div>
   <div class="quote card" id="q0"><div class="ini">DL</div><div><div class="who">Déco Lemieux</div><div class="meta"><span class="star">★</span> 4,67 sur 5 · 6 avis</div></div><div class="px">650,00 $</div></div>
   <div class="quote card" id="q1"><div class="ini">PF</div><div><div class="who">Pinceau &amp; Fils</div><div class="meta">2 avis</div></div><div class="px">540,00 $</div></div>
   <div class="quote card" id="q2"><div class="ini">SO</div><div><div class="who">Studio Ocre</div><div class="meta"><span class="star">★</span> 4,33 sur 5 · 3 avis</div></div><div class="px">590,00 $</div></div>
   <div id="q-bar" class="card">
-    <div style="flex:1"><div style="font-size:21px;color:var(--muted)">Acompte prélevé à l’acceptation</div><div style="font-size:32px;font-weight:780">108,00 $</div></div>
+    <div style="flex:1"><div style="font-size:21px;color:var(--muted)">Acompte prélevé à l’acceptation</div><div style="font-size:32px;font-weight:800">108,00 $</div></div>
     <div class="btn" id="q-acc">Accepter ce devis</div>
   </div>
   <div class="tap" id="tap7"></div>
@@ -236,51 +263,85 @@
 <!-- 8 · Payment -->
 <div class="layer" id="L8">
   <div class="cap" id="cap8"><div class="eyebrow">Paiement</div><div class="title">Le solde n’est payé qu’une fois le travail terminé</div><div class="sub">Par Stripe : Linkr ne voit jamais le numéro de votre carte.</div></div>
-  <div id="p-head"><span class="pill">Repeindre le salon · devis de 540,00 $</span></div>
+  <div id="p-head"><span class="pill">Repeindre le salon · devis de 540,00 $</span><span class="pill" id="p-paid" style="background:#d1fae5;color:#065f46;border-color:#d1fae5">Payée</span></div>
   <div id="p-line"><i id="p-fill"></i></div>
-  <div class="node" id="n0" style="left:300px"><div class="t">Le pro accepte</div><div class="c"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#f8f2ea" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div><div class="v">Acompte 20 % · <b>108,00 $</b></div></div>
+  <div class="node" id="n0" style="left:300px"><div class="t">Le pro accepte</div><div class="c"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#f8f2ea" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div><div class="v">Acompte 20 % · <b id="v0">108,00 $</b></div></div>
   <div class="node" id="n1" style="left:720px"><div class="t">Travaux terminés</div><div class="c"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#f8f2ea" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div><div class="v">Le pro marque le travail fait</div></div>
-  <div class="node" id="n2" style="left:1140px"><div class="t">Vous confirmez *</div><div class="c"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#f8f2ea" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div><div class="v">Solde 80 % · <b>432,00 $</b></div></div>
+  <div class="node" id="n2" style="left:1140px"><div class="t">Vous confirmez *</div><div class="c"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#f8f2ea" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div><div class="v">Solde 80 % · <b id="v2">432,00 $</b></div></div>
   <p id="p-note">* ou automatiquement après 72 heures, sauf si vous signalez un problème.</p>
 </div>
 
 <!-- 9 · Pros -->
 <div class="layer" id="L9">
-  <div class="cap" id="cap9"><div class="eyebrow">Pour les pros</div><div class="title">Des clients près de chez vous</div><div class="sub"><b>10 %</b> de frais de service, seulement sur ce que vous encaissez.</div></div>
+  <div class="cap" id="cap9"><div class="eyebrow">Pour les pros</div><div class="title">Des clients près de chez vous</div><div class="sub"><b id="fee">10 %</b> de frais de service, seulement sur ce que vous encaissez.</div></div>
   <div id="pro" class="card">
     <div class="tabs" id="ptabs"><span class="tab on">En attente<b>1</b></span><span class="tab">Appels d’offres<b>2</b></span><span class="tab">Mes jobs<b>3</b></span><span class="tab">Mes métiers</span><span class="tab">Avis</span><span class="tab">Portfolio</span></div>
-    <div id="job">
-      <div style="flex:1"><div style="font-size:28px;font-weight:750">Coupe homme <span style="font-size:22px;color:var(--muted);font-weight:500">· Carol R.</span></div><div style="font-size:21px;color:var(--muted);margin-top:4px">samedi 8 novembre, 14 h 00 – 16 h 00 · 40,00 $</div></div>
+    <div class="job" id="job" style="top:114px">
+      <div style="flex:1"><div style="font-size:28px;font-weight:780">Coupe homme <span style="font-size:22px;color:var(--muted);font-weight:500">· Carol R.</span></div><div style="font-size:21px;color:var(--muted);margin-top:4px">samedi 8 novembre, 14 h 00 – 16 h 00 · 40,00 $</div></div>
       <span class="pill" id="jst"></span><div class="btn" id="jbtn">Accepter</div>
     </div>
-    <div id="job2"><div style="flex:1"><div style="font-size:26px;font-weight:700">Coloration <span style="font-size:21px;color:var(--muted);font-weight:500">· Julie M.</span></div><div style="font-size:20px;color:var(--muted);margin-top:4px">mardi 11 novembre, 10 h 00 · 85,00 $</div></div><span class="pill" style="background:var(--green-bg);color:var(--green-tx)">Payée</span></div>
+    <div class="job" style="top:250px;opacity:.55"><div style="flex:1"><div style="font-size:26px;font-weight:750">Coloration <span style="font-size:21px;color:var(--muted);font-weight:500">· Julie M.</span></div><div style="font-size:20px;color:var(--muted);margin-top:4px">mardi 11 novembre, 10 h 00 · 85,00 $</div></div><span class="pill" style="background:#d1fae5;color:#065f46">Payée</span></div>
   </div>
   <div id="toast"><b style="font-size:22px">Nouvelle demande</b><span style="font-size:19px;opacity:.85">Coupe homme · 40,00 $ · samedi 8 novembre</span></div>
   <div class="tap" id="tap9"></div>
 </div>
 
-<!-- 10 · Soon -->
+<!-- 10 · Email notifications -->
 <div class="layer" id="L10">
+  <div class="phone" id="m-ph" style="left:150px;top:110px"><div class="scr"><div class="notch"></div><div class="bar">Courriels</div><div id="m-list"></div></div></div>
+  <div class="cap" id="cap10" style="left:660px;top:330px;width:665px"><div class="eyebrow">Notifications</div><div class="title">Un courriel à chaque étape</div><div class="sub">Devis reçu, demande acceptée, travail terminé : vous savez toujours où en est votre demande.</div></div>
+</div>
+
+<!-- 11 · Two roles -->
+<div class="layer" id="L11">
+  <div class="cap" id="cap11" style="left:115px;top:360px;width:480px"><div class="eyebrow">Un seul compte</div><div class="title">Deux rôles</div><div class="sub">Vous réservez comme client. Vous travaillez comme pro.</div></div>
+  <div id="r-seg"><i id="r-segi"></i><span id="r-a">Client</span><span id="r-b">Pro</span></div>
+  <div id="r-wrap"><div id="r-card">
+    <div class="face front">
+      <div class="roletag" style="color:var(--accent)">Client</div>
+      <div style="font-size:52px;font-weight:800;margin-top:14px;letter-spacing:-0.035em">Bonjour, Carol</div>
+      <div class="btn" style="width:100%;margin-top:30px;height:70px;font-size:27px">Trouver un pro</div>
+      <div class="btn ghost" style="width:100%;margin-top:16px;height:70px;font-size:27px">Mes demandes</div>
+      <div class="btn ghost" style="width:100%;margin-top:16px;height:70px;font-size:27px">Devenir prestataire</div>
+    </div>
+    <div class="face back">
+      <div class="roletag" style="opacity:.85">Pro</div>
+      <div style="font-size:52px;font-weight:800;margin-top:14px;letter-spacing:-0.035em">Espace pro</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:28px"><span class="tab" style="background:var(--on-accent);color:var(--accent)">En attente</span><span class="tab" style="background:rgba(248,242,234,.16);color:var(--on-accent)">Mes jobs</span><span class="tab" style="background:rgba(248,242,234,.16);color:var(--on-accent)">Mes métiers</span><span class="tab" style="background:rgba(248,242,234,.16);color:var(--on-accent)">Portfolio</span></div>
+      <div style="margin-top:26px;background:var(--white);color:var(--text);border-radius:22px;padding:22px 24px">
+        <div style="display:flex;justify-content:space-between"><span style="font-size:26px;font-weight:780">Coupe homme</span><span style="font-size:26px;font-weight:780">40,00 $</span></div>
+        <div style="display:flex;gap:12px;margin-top:16px"><span class="btn" style="flex:1;height:56px;font-size:22px">Accepter</span><span class="btn ghost" style="flex:1;height:56px;font-size:22px">Refuser</span></div>
+      </div>
+    </div>
+  </div></div>
+  <div class="tap" id="tap11"></div>
+</div>
+
+<!-- 12 · Soon -->
+<div class="layer" id="L12">
   <div id="s-title"><div class="title" id="s-tt">Bientôt : les métiers réglementés</div></div>
   <p id="s-trades">Électricité · Construction</p>
   <div id="s-lic"><span id="s-l0">Licences</span><span class="code" id="s-l1">RBQ</span><span class="code" id="s-l2">CMEQ</span><span class="code" id="s-l3">CCQ</span></div>
   <div id="s-pics"><div><img src="../../apps/web/public/images/accueil/electricite-480.webp"><span>Bientôt</span></div><div><img src="../../apps/web/public/images/accueil/construction-480.webp"><span>Bientôt</span></div></div>
 </div>
 
-<!-- 11 · Call to action -->
-<div class="layer" id="L11">
+<!-- 13 · Call to action -->
+<div class="layer" id="L13">
+  <div id="c-glow"></div>
+  <canvas id="c-fx" width="1440" height="1080" class="abs" style="left:0;top:0"></canvas>
   <h2 id="c-logo" class="logo">Linkr</h2>
   <p id="c-open"></p>
   <p id="c-url"></p>
   <div id="c-ul"></div>
   <div id="c-ring"></div>
   <div id="c-sub"><p id="c-s1"></p><p id="c-s2"></p></div>
-  <div id="c-test"><div class="sand" id="c-tbox">Mode test Stripe : utilisez la carte <code>4242 4242 4242 4242</code><br>(aucun paiement réel)</div></div>
+  <div id="c-test"><div id="c-tbox">Mode test Stripe : utilisez la carte <code>4242 4242 4242 4242</code><br>(aucun paiement réel)</div></div>
   <p id="c-qc">Conçu au Québec</p>
   <svg id="cursor" viewBox="0 0 24 24"><path d="M5 3 L5 19 L9.4 15 L12.3 21.2 L15 20 L12.2 13.9 L18 13.6 Z" fill="#2e211e" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg>
 </div>
 
 <div id="chip">linkrapp.com</div>
+<div id="wipe"><i></i></div>
 <div id="safe"></div>
 </div>
 <script src="anim.js"></script>

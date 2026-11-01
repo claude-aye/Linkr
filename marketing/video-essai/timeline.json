@@ -1,160 +1,230 @@
 {
  "fps": 30,
  "duration": 45,
- "bpm": 100,
+ "bpm": 120,
  "total": 45,
+ "loop": 2,
  "scenes": {
   "opening": [
    0,
-   4.8
+   4.5
   ],
   "needs": [
-   4.8,
-   8.4
+   4.5,
+   7.5
   ],
   "proximity": [
-   8.4,
-   12.6
+   7.5,
+   11
   ],
   "trust": [
-   12.6,
-   16.8
+   11,
+   14
   ],
   "price": [
-   16.8,
-   20.4
+   14,
+   17
   ],
   "quotes": [
-   20.4,
-   25.8
+   17,
+   21.5
   ],
   "payment": [
-   25.8,
-   31.2
+   21.5,
+   25.5
   ],
   "pros": [
-   31.2,
-   36
+   25.5,
+   29.5
+  ],
+  "notify": [
+   29.5,
+   32.5
+  ],
+  "roles": [
+   32.5,
+   35.5
   ],
   "soon": [
-   36,
-   39
+   35.5,
+   38
   ],
   "cta": [
-   39,
+   38,
    45
   ]
+ },
+ "cuts": {
+  "17": "zoom",
+  "38": "zoom",
+  "7.5": "whipL",
+  "21.5": "whipL",
+  "25.5": "wipe",
+  "29.5": "whipU",
+  "32.5": "whipL",
+  "35.5": "zoom"
  },
  "dur": {
   "enter": 0.5,
   "exit": 0.45,
+  "slam": 0.4,
   "micro": 0.3,
   "press": 0.2,
   "morph": 0.5,
-  "stagger": 0.08,
-  "letters": 0.06,
-  "groupStagger": 0.1
+  "trans": 0.47,
+  "stagger": 0.07,
+  "letters": 0.05,
+  "group": 0.1
  },
- "push": 0.35,
- "loop": 2.4,
  "ease": {
   "enter": "outCubic",
   "exit": "inCubic",
   "move": "inOutCubic",
-  "pop": "outBack"
+  "pop": "outBack",
+  "slam": "outExpo"
  },
  "at": {
-  "hookSettle": 0,
-  "hookDim": 3,
-  "tagline": 3,
-  "taglineUnderline": 3.4,
-  "openingExit": 4.05,
-  "taglineToHeader": 4.5,
-  "needsIn": 4.75,
-  "tradeChanges": [
-   5.8,
-   6.6,
-   7.4
+  "heartbeats": [
+   0.25,
+   0.8,
+   1.25,
+   1.6
   ],
-  "chipsIn": 5,
-  "openIn": 5.3,
-  "cap4": 8.5,
-  "meLabel": 8.9,
-  "zones": 9,
-  "zoneHighlight": 10.6,
-  "labelIn": 10.75,
-  "cap5": 12.6,
-  "morph": 12.4,
-  "photos": 13,
-  "review": 13.5,
-  "stars": 13.8,
-  "cap6": 16.8,
-  "services": 16.85,
-  "priceFocus": 17.8,
-  "request": 18.6,
-  "slot": 18.9,
-  "cap7": 20.45,
-  "project": 20.5,
-  "seg": 20.7,
+  "bloom": 2,
+  "tagline": 2.9,
+  "taglineUnderline": 3.3,
+  "hookDim": 2.9,
+  "logoZones": [
+   3.2,
+   3.3,
+   3.4,
+   3.5,
+   3.6,
+   3.7
+  ],
+  "openingExit": 3.75,
+  "taglineToHeader": 4.1,
+  "cards": 4.45,
+  "beats": [
+   5,
+   5.5,
+   6,
+   6.5
+  ],
+  "openLine": 6.9,
+  "wave": 7,
+  "cap4": 7.55,
+  "dive": [
+   7.5,
+   8.3
+  ],
+  "meLabel": 7.9,
+  "zones": 8.2,
+  "sonar": 8.4,
+  "zoneHighlight": 9.8,
+  "labelIn": 9.95,
+  "morph": 10.65,
+  "cap5": 11,
+  "strip": 11.25,
+  "counter": [
+   11.5,
+   12.2
+  ],
+  "stars": 11.6,
+  "review": 12.3,
+  "cap6": 14,
+  "services": 14,
+  "priceFocus": 14.8,
+  "request": 15.5,
+  "sent": 15.75,
+  "cap7": 16.85,
+  "project": 16.95,
+  "seg": 17.2,
   "quotes": [
-   21.1,
-   21.2,
-   21.3
+   17.6,
+   17.75,
+   17.9
   ],
-  "sortTap": 22.6,
-  "reorder": 22.7,
-  "best": 23.3,
-  "bar": 23.5,
-  "acceptTap": 24.4,
-  "cap8": 25.85,
-  "head": 26,
-  "nodes": 26.1,
+  "sortTap": 18.9,
+  "reorder": 19,
+  "best": 19.6,
+  "bar": 19.8,
+  "acceptTap": 20.6,
+  "cap8": 21.55,
+  "head": 21.65,
+  "nodes": 21.75,
   "checks": [
-   26.7,
-   28,
-   29.3
+   22.3,
+   23.3,
+   24.3
   ],
   "fills": [
    [
-    27,
-    27.8
+    22.45,
+    23.15
    ],
    [
-    28.3,
-    29.1
+    23.45,
+    24.15
    ]
   ],
-  "note": 29.5,
-  "cap9": 31.25,
-  "panel": 31.4,
-  "toast": 32,
-  "toastOut": 33.6,
-  "acceptPro": 33,
-  "toJobs": 33.5,
-  "feeFocus": 33.9,
-  "soonTitle": 36.1,
-  "soonTrades": 36.5,
-  "licences": 36.8,
-  "pics": 37.1,
-  "ctaLogo": 39,
-  "ctaOpen": 39.2,
-  "url": 39.45,
-  "urlUnderline": 40.4,
-  "ctaSub": 40.5,
-  "testBox": 40.9,
-  "quebec": 41.2,
-  "cursorIn": 41.2,
+  "paid": 24.6,
+  "note": 24.65,
+  "cap9": 25.55,
+  "fee": [
+   25.95,
+   26.35
+  ],
+  "panel": 25.6,
+  "toast": 25.9,
+  "toastOut": 27.2,
+  "proTaps": [
+   26.5,
+   27.4,
+   27.9
+  ],
+  "toJobs": 26.9,
+  "feePulse": 28.4,
+  "phone": 29.55,
+  "cap10": 29.6,
+  "mails": [
+   29.95,
+   30.4,
+   30.85
+  ],
+  "cap11": 32.55,
+  "roleCard": 32.6,
+  "roleTap": 33.45,
+  "flip": 33.55,
+  "soonTitle": 35.38,
+  "soonTrades": 35.8,
+  "licences": 36.05,
+  "stamps": [
+   36.15,
+   36.3,
+   36.45
+  ],
+  "pics": 36.6,
+  "ctaLogo": 37.82,
+  "ctaOpen": 38.1,
+  "url": 38.45,
+  "urlUnderline": 39.2,
+  "sparks": 39.3,
+  "ctaSub": 39.4,
+  "testBox": 39.8,
+  "quebec": 40.1,
+  "cursorIn": 40.1,
   "clicks": [
-   42,
-   44.4
+   40.8,
+   42.8
   ],
   "chip": [
-   5,
-   38.6
+   4.8,
+   37.6
   ]
  },
  "motif": [
-  0,
-  39.6
+  2,
+  38.5
  ]
 }
