@@ -21,7 +21,7 @@
  * `content/legal/` — a change that leaves it untouched means nobody can tell
  * who accepted which text.
  */
-export const LEGAL_VERSION = '2026-10-11';
+export const LEGAL_VERSION = '2026-11-01';
 
 export type LegalLocale = 'fr' | 'en';
 
