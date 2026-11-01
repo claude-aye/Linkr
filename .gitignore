@@ -73,3 +73,8 @@ sonde-*.json
 
 # Production (deploy/) : fichiers réels sur le serveur seulement
 deploy/api.env
+# Sauvegardes (PR D4) : ces fichiers ne vivent que sur le serveur
+deploy/backup/rclone.conf
+deploy/backup/age-recipient.txt
+deploy/backup/healthcheck.url
+deploy/backup/tmp.*

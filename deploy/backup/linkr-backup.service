@@ -1,0 +1,10 @@
+[Unit]
+Description=Sauvegarde Linkr (base + uploads, chiffrée, vers OVH Object Storage)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/linkr
+ExecStart=/opt/linkr/backup/backup.sh

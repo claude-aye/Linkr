@@ -82,7 +82,7 @@ docker compose --profile tools run --rm migrate
 
 À lancer **après la sauvegarde** et **avant** `docker compose up -d` de la nouvelle version. La première migration crée les extensions `postgis` et `pgcrypto` (l'utilisateur `POSTGRES_USER` de l'image est superutilisateur).
 
-## Premier déploiement (le futur `deploy.sh` automatisera les étapes 4 à 7)
+## Premier déploiement (`deploy.sh` automatise ensuite les mises à jour : voir « Mise à jour »)
 
 1. **GitHub** : Variables du dépôt `NEXT_PUBLIC_API_URL=http://api:5000`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (clé de test), `NEXT_PUBLIC_MAPTILER_KEY` (clé de production restreinte à `linkrapp.com`, sans `localhost`). Merger sur `main` → le workflow publie les images. Vérifier dans *Packages* que les deux paquets sont **privés**.
 2. **DNS** : `A` de `linkrapp.com` et `www.linkrapp.com` vers le VPS (**aucun `AAAA`** : voir « Adresse du client »), **avant** le premier démarrage de Caddy (sinon le défi ACME échoue et Let's Encrypt limite les essais).
@@ -95,7 +95,73 @@ docker compose --profile tools run --rm migrate
 
 **Retour arrière** : remettre l'ancien `IMAGE_TAG` puis `docker compose up -d`. Une migration déjà appliquée ne se défait pas ainsi (`migration:revert` explicite, après lecture de son `down()`).
 
+## Mise à jour (`deploy/deploy.sh`)
+
+Sur le VPS, depuis `/opt/linkr` (le script y est copié : `scp deploy/deploy.sh deploy/backup/* …`) :
+
+```bash
+./deploy.sh <SHA complet du commit publié>
+```
+
+Le SHA est toujours explicite : 40 caractères hexadécimaux minuscules, `latest` et les SHA courts sont refusés. Ordre des étapes :
+
+1. Verrou (`flock`) : deux déploiements simultanés sont refusés.
+2. `docker compose pull api web` avec le nouveau tag, **avant** de toucher quoi que ce soit : si le tag n'existe pas dans GHCR, rien n'a changé.
+3. `backup/backup.sh`. Si la sauvegarde échoue : **arrêt**, rien n'est modifié.
+4. Nouveau `IMAGE_TAG` dans `.env` (l'ancien `.env` est gardé en `.env.bak`, `chmod 600`, écrasé à chaque déploiement), puis `docker compose --profile tools run --rm migrate`. Si `migrate` échoue : l'ancien tag est remis, rien n'est redémarré.
+5. `docker compose up -d`, puis attente (180 s au plus, variable `WAIT_TIMEOUT`) que `api` et `web` soient `healthy`.
+6. Si un service n'est pas sain : l'ancien tag est remis, `up -d` relancé, l'état de `docker compose ps` est affiché, et le script se termine en erreur.
+
+Le script n'affiche jamais le contenu de `.env`.
+
+> **⚠️ Le retour arrière ne défait QUE l'image, jamais la base.** Une migration appliquée reste appliquée, et si `migrate` échoue la base peut être partiellement migrée. Revenir en arrière côté base : `migration:revert` explicite après lecture du `down()`, ou restauration de la sauvegarde (« Sauvegardes »). Écrire des migrations compatibles avec l'image précédente reste la seule vraie protection.
+
+> **Si `deploy/compose.yaml` ou `deploy/Caddyfile` changent dans une PR, les recopier sur le VPS (`scp`) AVANT de lancer `deploy.sh`.** Le script ne tire que les images : il ne met pas ces fichiers à jour.
+
+## Sauvegardes
+
+Une sauvegarde chiffrée par jour, plus une avant chaque déploiement (`deploy.sh`).
+
+**Schéma.** `backup/backup.sh` produit deux fichiers dans un répertoire temporaire (`/opt/linkr/backup/tmp.*`, effacé en sortie) : `pg_dump -Fc` de la base et archive `tar.gz` du volume `linkr_uploads` (photos du portfolio), pris l'un après l'autre dans la même exécution. Chacun est **chiffré avec `age`** vers une clé publique (`backup/age-recipient.txt`) puis envoyé par `rclone` vers OVH Object Storage (région BHS), bucket `linkr-backups-prod`, dossiers `db/` et `uploads/`. Après chaque envoi, la taille distante est comparée à la taille locale. Rétention : **14 jours** (`rclone delete --min-age 14d`). En fin de succès, un signal est envoyé à Healthchecks.io ; **sans signal pendant 26 h, Healthchecks alerte**.
+
+**Minuterie.** `linkr-backup.timer` : tous les jours à **3 h, heure de Québec** (`America/Toronto`), `Persistent=true` (une exécution manquée parce que le serveur était éteint est rattrapée au démarrage). `linkr-backup.service` : `oneshot`, utilisateur `ubuntu`, après `docker.service`. Installation : copier les deux unités dans `/etc/systemd/system/`, puis `sudo systemctl daemon-reload && sudo systemctl enable --now linkr-backup.timer`. Lancer à la main : `sudo systemctl start linkr-backup.service`, puis `journalctl -u linkr-backup.service`.
+
+**Fichiers qui ne vivent que sur le serveur** (ignorés par git) : `backup/rclone.conf` (accès OVH), `backup/age-recipient.txt` (clé **publique**), `backup/healthcheck.url`. Les versions réelles se copient avec `chmod 600`.
+
+**Clés.** Le VPS ne détient que la clé **publique** : un serveur compromis ne peut pas lire les sauvegardes passées. La clé **privée** est dans Bitwarden, avec une copie hors ligne. Sans elle, les sauvegardes sont irrécupérables : vérifier qu'on peut la lire avant d'en avoir besoin.
+
+**Restauration dans un Postgres jetable** (sans jamais écrire la clé privée sur le disque). Depuis un poste de confiance, avec `rclone`, `age` et Docker :
+
+```bash
+# 1. Récupérer le fichier chiffré
+rclone --config rclone.conf copyto ovh:linkr-backups-prod/db/linkr-db-<HORODATAGE>.dump.age db.dump.age
+
+# 2. Postgres jetable (même image que la production)
+docker run -d --name linkr-restore -e POSTGRES_PASSWORD=restore postgis/postgis:16-3.4
+
+# 3. Déchiffrer et restaurer ; la clé privée n'est saisie qu'en mémoire (rien sur le disque)
+read -rs AGE_KEY && echo
+age -d -i <(printf '%s\n' "$AGE_KEY") db.dump.age \
+  | docker exec -i linkr-restore pg_restore -U postgres -d postgres --no-owner --clean --if-exists
+unset AGE_KEY
+
+# 4. Vérifier, puis tout jeter
+docker exec linkr-restore psql -U postgres -c 'SELECT count(*) FROM users;'
+docker rm -f linkr-restore && rm db.dump.age
+```
+
+Les uploads se restaurent de la même façon : `age -d … | tar -tzf -` pour lister, `tar -xzf -` dans un dossier jetable pour extraire. La base et les uploads d'une même exécution portent des horodatages proches : restaurer la paire la plus proche, sinon des photos référencées manquent (ou des fichiers restent orphelins).
+
+> **⚠️ À refaire après la première semaine de testeurs : un test de restauration avec de vraies données.** Les sauvegardes actuelles ont été éprouvées sur une base presque vide. Une sauvegarde jamais restaurée n'est pas une sauvegarde.
+
+**Sous-traitants ajoutés par les sauvegardes** (à reporter dans l'ÉFVP, `docs/compliance/efvp-2026-10.md`, avant la production) :
+
+| Service | Reçoit | Notes |
+|---|---|---|
+| OVH Object Storage (BHS, Canada) | Les sauvegardes, **chiffrées** : OVH ne peut pas les lire | Même fournisseur que le VPS |
+| Healthchecks.io | **Un signal vide** (une requête HTTP sans corps ni donnée) à la fin de chaque sauvegarde réussie | Aucun renseignement personnel |
+
 ## ⚠️ Avant d'ouvrir aux testeurs
 
 - **PR D2 — à vérifier sur le VPS.** La configuration est en place (« Adresse du client ») ; les deux vérifications « En-tête forgé ignoré » et « Compteurs séparés » doivent passer avant d'ouvrir. Sinon tous les visiteurs partagent un seul compteur sur `login`, `signup`, `forgot-password` et `reset-password`, et le premier qui l'épuise bloque tout le monde.
-- **Sauvegardes (PR séparée)** : le volume `uploads` (photos du portfolio, `STORAGE_DRIVER=local`) doit être sauvegardé **avec** la base, au même moment : une base restaurée sans ses fichiers référence des photos absentes, et l'inverse laisse des fichiers orphelins. `redis_data` porte les files BullMQ en cours, pas des données durables.
+- **Sauvegardes** (« Sauvegardes » ci-dessus) : le volume `uploads` (photos du portfolio, `STORAGE_DRIVER=local`) doit être sauvegardé **avec** la base, au même moment : une base restaurée sans ses fichiers référence des photos absentes, et l'inverse laisse des fichiers orphelins. `redis_data` porte les files BullMQ en cours, pas des données durables.
