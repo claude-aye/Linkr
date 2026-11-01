@@ -1685,10 +1685,10 @@ export interface components {
             acceptTerms: true;
             /**
              * @description Version (civil date YYYY-MM-DD) of the legal texts accepted. Must equal the current version, otherwise 400.
-             * @example 2026-10-11
+             * @example 2026-11-01
              * @enum {string}
              */
-            termsVersion: "2026-10-11";
+            termsVersion: "2026-11-01";
         };
         RefreshTokenDto: Record<string, never>;
         ForgotPasswordDto: {
