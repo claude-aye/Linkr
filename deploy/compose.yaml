@@ -103,6 +103,24 @@ services:
         condition: service_healthy
     logging: *logging
 
+  # Catalogue de référence (métiers, services, exigences) : le FICHIER
+  # quebec-catalog.seed.ts est la source de vérité. Lancé explicitement, comme
+  # migrate (jamais par deploy.sh) : docs/deploy/production.md, « Catalogue de référence ».
+  seed-catalog:
+    image: *api-image
+    profiles: ["tools"]
+    restart: "no"
+    command: ["node", "dist/database/seeders/quebec-catalog.seed.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+
   postgres:
     image: postgis/postgis:16-3.4
     restart: unless-stopped

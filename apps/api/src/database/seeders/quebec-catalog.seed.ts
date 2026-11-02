@@ -1,16 +1,27 @@
 /**
- * Idempotent Quebec catalog seed.
+ * Replayable Quebec catalog seed — THIS FILE is the source of truth.
  *
- * Upsert strategy:
- *   - categories  → by `slug`
- *   - items        → by `(service_category_id, slug)`
- *   - requirements → by `(service_category_id, country_code, subdivision_code, authority_code)`
- *
+ * Keys: categories -> `slug`; items -> `(service_category_id, slug)`;
+ * requirements -> `(service_category_id, country_code, subdivision_code, authority_code)`.
  * Slugs are the stable natural keys — never rename them.
- * Run with: npx ts-node -r tsconfig-paths/register src/database/seeders/quebec-catalog.seed.ts
+ *
+ * Per run, for each entry of the file:
+ *   +  absent from the database -> created
+ *   ~  present, name/description/sort_order differ -> realigned on the file
+ *   =  present and identical -> nothing written
+ *   !  regulation_level or a requirement field differs -> NOT written, counted.
+ *      These fields decide which checks providers must pass: changing them is a
+ *      deliberate act (migration / one-off SQL), never a redeploy side effect.
+ *   ?  in the database but not in the file -> reported only, never deleted.
+ * `is_active` and `approval_status` of an existing row are never touched
+ * (a category switched off by hand stays off).
+ *
+ * Dev:  npx ts-node -r tsconfig-paths/register src/database/seeders/quebec-catalog.seed.ts
+ * Prod: docker compose --profile tools run --rm seed-catalog   (compiled, plain node)
  */
 
 import 'dotenv/config';
+import { isDeepStrictEqual } from 'node:util';
 import { DataSource } from 'typeorm';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { ServiceCategory } from '../../modules/services-catalog/entities/service-category.entity';
@@ -235,6 +246,14 @@ const REQUIREMENTS: Array<{
 
 // ── Seeder runner ──────────────────────────────────────────────────────────
 
+type Counts = { created: number; updated: number; unchanged: number; diverged: number; orphans: number };
+const counts: Counts = { created: 0, updated: 0, unchanged: 0, diverged: 0, orphans: 0 };
+
+/** Keys of `fields` whose database value differs from the file value (key order ignored for JSONB). */
+function differing<T extends object>(row: T, fields: Partial<T>): Array<keyof T> {
+  return (Object.keys(fields) as Array<keyof T>).filter((k) => !isDeepStrictEqual(row[k], fields[k]));
+}
+
 async function seed(): Promise<void> {
   await ds.initialize();
 
@@ -244,84 +263,147 @@ async function seed(): Promise<void> {
 
   console.log('Seeding Quebec catalog…');
 
-  // 1. Upsert categories
+  // 1. Categories
   const categoryMap = new Map<string, string>();
   for (const def of CATEGORIES) {
-    let cat = await catRepo.findOne({ where: { slug: def.slug } });
+    const cat = await catRepo.findOne({ where: { slug: def.slug } });
     if (!cat) {
-      cat = catRepo.create({
-        slug: def.slug,
-        regulationLevel: def.regulationLevel,
-        nameTranslations: def.nameTranslations,
-        descriptionTranslations: def.descriptionTranslations,
-        sortOrder: def.sortOrder,
-        isActive: true,
-      });
-      await catRepo.save(cat);
+      const created = await catRepo.save(
+        catRepo.create({
+          slug: def.slug,
+          regulationLevel: def.regulationLevel,
+          nameTranslations: def.nameTranslations,
+          descriptionTranslations: def.descriptionTranslations,
+          sortOrder: def.sortOrder,
+          isActive: true,
+        }),
+      );
+      categoryMap.set(def.slug, created.id);
+      counts.created++;
       console.log(`  + category: ${def.slug}`);
-    } else {
-      console.log(`  = category (exists): ${def.slug}`);
+      continue;
     }
     categoryMap.set(def.slug, cat.id);
+    if (cat.regulationLevel !== def.regulationLevel) {
+      counts.diverged++;
+      console.log(`  ! category ${def.slug}: regulation_level db=${cat.regulationLevel} file=${def.regulationLevel} (NOT applied)`);
+    }
+    const want = {
+      nameTranslations: def.nameTranslations,
+      descriptionTranslations: def.descriptionTranslations,
+      sortOrder: def.sortOrder,
+    };
+    const diff = differing(cat, want);
+    if (diff.length) {
+      await catRepo.update(cat.id, want);
+      counts.updated++;
+      console.log(`  ~ category: ${def.slug} (${diff.join(', ')})`);
+    } else {
+      counts.unchanged++;
+      console.log(`  = category: ${def.slug}`);
+    }
+  }
+  for (const cat of await catRepo.find()) {
+    if (!categoryMap.has(cat.slug)) {
+      counts.orphans++;
+      console.log(`  ? category in database, not in file: ${cat.slug}`);
+    }
   }
 
-  // 2. Upsert items
+  // 2. Items
   for (const def of ITEMS) {
     const categoryId = categoryMap.get(def.categorySlug);
     if (!categoryId) throw new Error(`Unknown category slug: ${def.categorySlug}`);
 
-    const exists = await itemRepo.findOne({
-      where: { serviceCategoryId: categoryId, slug: def.slug },
-    });
-    if (!exists) {
-      const item = itemRepo.create({
-        serviceCategoryId: categoryId,
-        slug: def.slug,
-        nameTranslations: def.nameTranslations,
-        descriptionTranslations: {},
-        approvalStatus: ApprovalStatus.APPROVED,
-        isActive: true,
-      });
-      await itemRepo.save(item);
+    const item = await itemRepo.findOne({ where: { serviceCategoryId: categoryId, slug: def.slug } });
+    if (!item) {
+      await itemRepo.save(
+        itemRepo.create({
+          serviceCategoryId: categoryId,
+          slug: def.slug,
+          nameTranslations: def.nameTranslations,
+          descriptionTranslations: {},
+          approvalStatus: ApprovalStatus.APPROVED,
+          isActive: true,
+        }),
+      );
+      counts.created++;
       console.log(`  + item: ${def.categorySlug}/${def.slug}`);
+      continue;
+    }
+    // The file carries no item descriptions: only the name is realigned.
+    const want = { nameTranslations: def.nameTranslations };
+    if (differing(item, want).length) {
+      await itemRepo.update(item.id, want);
+      counts.updated++;
+      console.log(`  ~ item: ${def.categorySlug}/${def.slug} (nameTranslations)`);
     } else {
-      console.log(`  = item (exists): ${def.categorySlug}/${def.slug}`);
+      counts.unchanged++;
+      console.log(`  = item: ${def.categorySlug}/${def.slug}`);
+    }
+  }
+  for (const item of await itemRepo.find()) {
+    if (!ITEMS.some((d) => d.slug === item.slug && categoryMap.get(d.categorySlug) === item.serviceCategoryId)) {
+      counts.orphans++;
+      console.log(`  ? item in database, not in file: ${item.slug}`);
     }
   }
 
-  // 3. Upsert requirements
+  // 3. Requirements (created if absent; existing ones are only compared)
   for (const def of REQUIREMENTS) {
     const categoryId = categoryMap.get(def.categorySlug);
     if (!categoryId) throw new Error(`Unknown category slug: ${def.categorySlug}`);
 
-    const exists = await reqRepo.findOne({
-      where: {
-        serviceCategoryId: categoryId,
-        countryCode: def.countryCode,
-        subdivisionCode: def.subdivisionCode,
-        authorityCode: def.authorityCode,
-      },
+    const key = {
+      serviceCategoryId: categoryId,
+      countryCode: def.countryCode,
+      subdivisionCode: def.subdivisionCode,
+      authorityCode: def.authorityCode,
+    };
+    const req = await reqRepo.findOne({ where: key });
+    const label = `${def.categorySlug}/${def.authorityCode}`;
+    if (!req) {
+      await reqRepo.save(
+        reqRepo.create({
+          ...key,
+          authorityFullNameTranslations: def.authorityFullNameTranslations,
+          requiredDocumentType: def.requiredDocumentType,
+          inputType: def.inputType,
+          isRequired: def.isRequired,
+        }),
+      );
+      counts.created++;
+      console.log(`  + requirement: ${label}`);
+      continue;
+    }
+    const diff = differing(req, {
+      authorityFullNameTranslations: def.authorityFullNameTranslations,
+      requiredDocumentType: def.requiredDocumentType,
+      inputType: def.inputType,
+      isRequired: def.isRequired,
     });
-    if (!exists) {
-      const req = reqRepo.create({
-        serviceCategoryId: categoryId,
-        countryCode: def.countryCode,
-        subdivisionCode: def.subdivisionCode,
-        authorityCode: def.authorityCode,
-        authorityFullNameTranslations: def.authorityFullNameTranslations,
-        requiredDocumentType: def.requiredDocumentType,
-        inputType: def.inputType,
-        isRequired: def.isRequired,
-      });
-      await reqRepo.save(req);
-      console.log(`  + requirement: ${def.categorySlug}/${def.authorityCode}`);
+    if (diff.length) {
+      counts.diverged++;
+      console.log(`  ! requirement ${label}: ${diff.join(', ')} differ from file (NOT applied)`);
     } else {
-      console.log(`  = requirement (exists): ${def.categorySlug}/${def.authorityCode}`);
+      counts.unchanged++;
+      console.log(`  = requirement: ${label}`);
+    }
+  }
+  const knownReqs = new Set(
+    REQUIREMENTS.map((d) => `${categoryMap.get(d.categorySlug)}|${d.countryCode}|${d.subdivisionCode}|${d.authorityCode}`),
+  );
+  for (const req of await reqRepo.find()) {
+    if (!knownReqs.has(`${req.serviceCategoryId}|${req.countryCode}|${req.subdivisionCode}|${req.authorityCode}`)) {
+      counts.orphans++;
+      console.log(`  ? requirement in database, not in file: ${req.authorityCode} (${req.serviceCategoryId})`);
     }
   }
 
   await ds.destroy();
-  console.log('Done.');
+  console.log(
+    `Done. created=${counts.created} updated=${counts.updated} unchanged=${counts.unchanged} diverged=${counts.diverged} not-in-file=${counts.orphans}`,
+  );
 }
 
 seed().catch((err) => {

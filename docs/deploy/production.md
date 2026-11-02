@@ -82,6 +82,34 @@ docker compose --profile tools run --rm migrate
 
 À lancer **après la sauvegarde** et **avant** `docker compose up -d` de la nouvelle version. La première migration crée les extensions `postgis` et `pgcrypto` (l'utilisateur `POSTGRES_USER` de l'image est superutilisateur).
 
+## Catalogue de référence
+
+Les métiers, services et exigences réglementaires ne viennent d'aucune migration : **le fichier `apps/api/src/database/seeders/quebec-catalog.seed.ts` est la source de vérité**. Sans lui, `GET /service-categories` renvoie `[]` et le tableau de bord prestataire ne propose aucun métier.
+
+```bash
+docker compose --profile tools run --rm seed-catalog
+```
+
+À lancer **après `migrate`** au premier déploiement, puis à chaque modification du catalogue (nouvelle image déployée d'abord). Jamais lancé par `deploy.sh`. Rejouable sans risque : une 2ᵉ exécution n'écrit rien.
+
+**Journal** (une ligne par entrée, clé = `slug`, jamais renommé) :
+
+| Symbole | Sens |
+|---|---|
+| `+` | absent de la base, créé |
+| `~` | existant, nom / description / ordre réalignés sur le fichier |
+| `=` | identique, rien d'écrit |
+| `!` | divergence **non appliquée** (voir ci-dessous) |
+| `?` | présent en base, absent du fichier : signalé seulement, jamais supprimé |
+
+Le résumé final donne les compteurs `created / updated / unchanged / diverged / not-in-file`. Premier lancement attendu : `created=33` (7 métiers, 19 services, 7 exigences).
+
+**Ajouter un métier ou un service** : éditer les tableaux `CATEGORIES` / `ITEMS` / `REQUIREMENTS` du fichier avec un `slug` neuf, merger, déployer l'image, relancer la commande. **Ne jamais renommer un slug** : ce serait une nouvelle entrée, et l'ancienne resterait en base.
+
+**Que fait `!` ?** Le `regulation_level` d'un métier et les champs d'une exigence (`authority_full_name_translations`, `required_document_type`, `input_type`, `is_required`) décident des vérifications exigées des prestataires. Le seed ne les modifie jamais sur une ligne existante. Une divergence est une **décision humaine** : migration ou requête SQL ponctuelle, après relecture, jamais un écrasement automatique par un redéploiement.
+
+**Retirer un métier** : on le désactive (`UPDATE service_categories SET is_active = false WHERE slug = '…'`), on ne le supprime pas. Le seed ne touche ni `is_active` ni `approval_status` d'une ligne existante : un métier désactivé reste désactivé.
+
 ## Premier déploiement (`deploy.sh` automatise ensuite les mises à jour : voir « Mise à jour »)
 
 1. **GitHub** : Variables du dépôt `NEXT_PUBLIC_API_URL=http://api:5000`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (clé de test), `NEXT_PUBLIC_MAPTILER_KEY` (clé de production restreinte à `linkrapp.com`, sans `localhost`). Merger sur `main` → le workflow publie les images. Vérifier dans *Packages* que les deux paquets sont **privés**.
@@ -89,7 +117,7 @@ docker compose --profile tools run --rm migrate
 3. **Serveur** : Docker Engine + plugin Compose ; UFW autorise 22, 80, 443/tcp, 443/udp. Copier `deploy/` (compose, Caddyfile, exemples) dans `/opt/linkr`. Vérifier que le sous-réseau `172.30.10.0/24` est libre (« Sous-réseau Docker » ci-dessous).
 4. **Accès GHCR** : jeton GitHub *classic* limité à `read:packages`, puis `echo "$JETON" | docker login ghcr.io -u claude-aye --password-stdin`.
 5. **Secrets** : `cp .env.example .env` et `cp api.env.example api.env`, remplir, `chmod 600 .env api.env`. `IMAGE_TAG` = SHA complet du commit publié. Mot de passe Postgres en hexadécimal (`openssl rand -hex 32`) : il est inséré tel quel dans `DATABASE_URL`.
-6. `docker compose pull && docker compose up -d postgres redis && docker compose --profile tools run --rm migrate`
+6. `docker compose pull && docker compose up -d postgres redis && docker compose --profile tools run --rm migrate && docker compose --profile tools run --rm seed-catalog`
 7. `docker compose up -d`, puis `docker compose ps` (tous `healthy`) et `curl -I https://linkrapp.com`.
 8. **Stripe** : créer le point de terminaison `https://linkrapp.com/webhooks/stripe` (mode test), copier son `whsec_` dans `api.env` (`STRIPE_WEBHOOK_SECRET`), puis `docker compose up -d api` (le secret est lu au démarrage).
 
