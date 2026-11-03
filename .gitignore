@@ -78,3 +78,10 @@ deploy/backup/rclone.conf
 deploy/backup/age-recipient.txt
 deploy/backup/healthcheck.url
 deploy/backup/tmp.*
+
+# Tests de fumée Playwright (e2e/, paquet autonome)
+e2e/node_modules
+e2e/test-results
+e2e/playwright-report
+e2e/.auth
+e2e/.env.e2e

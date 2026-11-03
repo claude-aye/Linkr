@@ -31,3 +31,6 @@ MANDAT_*.md
 /*.json
 !/package.json
 /*.txt
+
+# Tests de fumée Playwright : paquet autonome, jamais dans une image.
+e2e
