@@ -1982,6 +1982,13 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 - **Compilé, lancé par `node`** : `dist/database/seeders/quebec-catalog.seed.js` est produit par le build existant ; `dotenv`, `typeorm`, `typeorm-naming-strategies` et `pg` sont déjà dans `dependencies`. Service ponctuel `seed-catalog` de `deploy/compose.yaml` (profil `tools`, modèle exact de `migrate`, aucun port). **Non automatisé dans `deploy.sh`** : comme `migrate`, sur commande explicite. Aucun script `package.json` (câblage `seed:catalog` réservé au collaborateur, `MANDAT_01_fixtures.md`).
 - **Mesuré sur une base neuve** (`linkr_seedtest`, migrations jouées, seed compilé) : 1ʳᵉ exécution `created=33`, 2ᵉ `unchanged=33` sans écriture ; un nom modifié donne une ligne `~` puis `=` ; un `regulation_level` divergent donne `!` et la base reste inchangée.
 
+**Tests de fumée Playwright de l'essai (`e2e/`, test only).** Six parcours (accueil et redirection `www`, inscription et profil prestataire, catalogue des 7 métiers dans « Mes métiers », déclaration de Coiffure, recherche client, mauvais mot de passe), lancés **à la main** contre `E2E_BASE_URL` (obligatoire, sans défaut). Mode d'emploi, budget de débit et purge : `docs/deploy/tests-fumee.md`. **ZÉRO fichier applicatif, zéro migration, contrat inchangé.**
+> **⚠️ `e2e/` EST AUTONOME ET HORS WORKSPACE — NE JAMAIS LE RACCORDER AUX DOCKERFILES NI AUX WORKFLOWS SANS DÉCISION ÉCRITE.** Son `pnpm-lock.yaml` est à lui, son `pnpm-workspace.yaml` est vide, il s'installe avec `pnpm install --ignore-workspace`, et `e2e` est dans `.dockerignore`. Le lockfile racine, `pnpm-workspace.yaml`, les Dockerfiles et `.github/` ne sont pas touchés (vérifié par `git diff --stat`). Ne pas l'ajouter au workspace « pour partager des dépendances ».
+- **Comptes reconnaissables** : prénom « e2e », profil `e2e-prestataire-aaaammjj`, courriel `e2e+…@gmail.com`. Mémorisés dans `e2e/.auth/` (ignoré par Git). Aucune purge automatique.
+- **Services externes réels** (Nominatim, MapTiler), adresses fixes ; un échec de géocodage a son propre message.
+- Dans le code lu : un prestataire **sans paiement Stripe configuré est visible en recherche** (`eligibility.sql.ts` ne lit ni `stripe_connect_accounts` ni `charges_enabled`), ce que le test E suppose.
+- **Validation** : typecheck et `playwright test --list` seulement (Docker arrêté sur le poste de dev, aucune base saine) ; première exécution réelle par le fondateur contre l'essai.
+
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
