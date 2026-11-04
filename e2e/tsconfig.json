@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["playwright.config.ts", "lib", "tests"]
+  "include": ["playwright.config.ts", "playwright.payment.config.ts", "lib", "tests"]
 }

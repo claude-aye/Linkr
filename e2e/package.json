@@ -6,6 +6,8 @@
   "scripts": {
     "test": "playwright test",
     "test:list": "playwright test --list",
+    "test:paiement": "playwright test --config playwright.payment.config.ts",
+    "test:paiement:list": "playwright test --config playwright.payment.config.ts --list",
     "typecheck": "tsc --noEmit",
     "report": "playwright show-report"
   },

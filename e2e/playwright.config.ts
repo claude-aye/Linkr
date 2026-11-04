@@ -19,8 +19,17 @@ try {
   throw new Error('E2E_BASE_URL n’est pas une URL valide (ex. https://exemple.ca).');
 }
 
+/**
+ * Le parcours de paiement (tests/payment.spec.ts) n'est JAMAIS lancé par cette
+ * configuration, ni par `pnpm test`, ni par un `playwright test` nu : il a sa
+ * propre configuration (playwright.payment.config.ts, `pnpm test:paiement`),
+ * qui exige en plus E2E_ALLOW_PAYMENT=1.
+ */
+export const PAYMENT_SPEC = '**/payment.spec.ts';
+
 export default defineConfig({
   testDir: './tests',
+  testIgnore: PAYMENT_SPEC,
   // Un seul fichier, des parcours qui se suivent (le prestataire de B sert à E).
   fullyParallel: false,
   workers: 1,
