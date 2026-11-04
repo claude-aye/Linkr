@@ -1,0 +1,528 @@
+/**
+ * Purge e2e (mode A) — exécution : une seule transaction, puis les fichiers.
+ *
+ * Ordre : tables verrouillées et plan recalculé → phrase comparée → liste Stripe écrite
+ * (fichier « .pending ») → suppressions dans l'ordre sûr → vérifications →
+ * empreintes du catalogue → COMMIT. Au moindre écart : ROLLBACK, la liste
+ * Stripe en attente est effacée, rien n'a changé. Après le COMMIT seulement :
+ * la liste Stripe prend son nom final et les fichiers du volume sont supprimés.
+ *
+ * Aucun ordre de schéma, aucun vidage de table : seulement `DELETE … WHERE id
+ * = ANY($1)`, sur les tables de la liste fermée, avec le nombre de lignes
+ * attendu.
+ */
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
+import { buildPlan, isBlocked, isEmpty, PurgePlan, Queryable } from './purge-plan';
+import {
+  assertModifiable,
+  assertProtected,
+  DELETE_ORDER,
+  FORBIDDEN_COLUMNS,
+  isSafeStorageKey,
+  ModifiableTable,
+  PROTECTED_TABLES,
+  planPhrase,
+  PurgeRefusal,
+} from './purge-rules';
+
+export interface TxClient extends Queryable {
+  release?: () => void;
+}
+
+export type CatalogFingerprint = Record<string, { n: number; h: string }>;
+
+/** Compte + md5 des lignes triées de chacune des cinq tables protégées. */
+export async function catalogFingerprint(db: Queryable): Promise<CatalogFingerprint> {
+  const out: CatalogFingerprint = {};
+  for (const table of PROTECTED_TABLES) {
+    assertProtected(table);
+    const r = await db.query<{ n: number; h: string }>(
+      `SELECT count(*)::int AS n, md5(coalesce(string_agg(t::text, E'\\n' ORDER BY t::text), '')) AS h FROM ${table} t`,
+    );
+    out[table] = r.rows[0];
+  }
+  return out;
+}
+
+export function sameCatalog(a: CatalogFingerprint, b: CatalogFingerprint): boolean {
+  return PROTECTED_TABLES.every((t) => a[t]?.n === b[t]?.n && a[t]?.h === b[t]?.h);
+}
+
+/**
+ * Le rôle de connexion doit être linkr_purge (D9) : pas super-utilisateur,
+ * aucun droit d'écriture sur une table protégée, droit de suppression sur
+ * chaque table de la liste fermée.
+ */
+export async function assertPurgeRole(db: Queryable): Promise<void> {
+  const r = await db.query<{ rolsuper: boolean }>(
+    `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`,
+  );
+  if (r.rows[0]?.rolsuper) throw new PurgeRefusal('connexion en super-utilisateur refusée : utiliser le rôle linkr_purge');
+  for (const table of PROTECTED_TABLES) {
+    // Propriétaire = tous les droits, y compris ceux qui ne s'écrivent pas ici.
+    // `has_table_privilege` avec une liste répond vrai si L'UN des droits est tenu.
+    const p = await db.query<{ w: boolean }>(
+      `SELECT has_table_privilege(current_user, $1, 'INSERT, UPDATE, DELETE')
+           OR EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = $1::regclass
+                        AND pg_get_userbyid(c.relowner) = current_user) AS w`,
+      [table],
+    );
+    if (p.rows[0]?.w) throw new PurgeRefusal(`le rôle peut écrire dans la table protégée ${table} : refus`);
+  }
+  for (const table of DELETE_ORDER) {
+    const p = await db.query<{ d: boolean }>(`SELECT has_table_privilege(current_user, $1, 'DELETE') AS d`, [table]);
+    if (!p.rows[0]?.d) throw new PurgeRefusal(`le rôle n'a pas le droit DELETE sur ${table}`);
+  }
+  // M2 : jamais de lecture d'un haché de mot de passe ou de jeton.
+  for (const [table, column] of FORBIDDEN_COLUMNS) {
+    const p = await db.query<{ r: boolean }>(`SELECT has_column_privilege(current_user, $1, $2, 'SELECT') AS r`, [table, column]);
+    if (p.rows[0]?.r) throw new PurgeRefusal(`le rôle peut lire ${table}.${column} : refus (droits par colonne, docs/deploy/purge.md)`);
+  }
+}
+
+/**
+ * Verrouille les tables de la liste fermée pour la durée de la transaction.
+ *
+ * ⚠️ PAS `SELECT … FOR UPDATE` : PostgreSQL l'exige avec le droit UPDATE, que
+ * le rôle linkr_purge n'a pas (D9 : SELECT et DELETE seulement — mesuré par la
+ * sonde, « permission denied for table users »). `SHARE ROW EXCLUSIVE` se prend
+ * avec le seul droit DELETE, et bloque toute insertion, modification ou
+ * suppression concurrente sur ces tables jusqu'au COMMIT : le plan lu ensuite
+ * ne peut plus changer. Les lectures ne sont pas bloquées. `lock_timeout`
+ * borne l'attente : un verrou qui ne vient pas annule tout.
+ */
+export async function lockModifiableTables(db: Queryable): Promise<void> {
+  for (const table of DELETE_ORDER) {
+    assertModifiable(table);
+    await db.query(`LOCK TABLE ${table} IN SHARE ROW EXCLUSIVE MODE`);
+  }
+}
+
+/** Arêtes de clés étrangères vers les entités supprimables (vérification après). */
+const REFERENCE_EDGES: Array<[child: string, column: string, parent: ModifiableTable]> = [
+  ['refunds', 'payment_id', 'payments'],
+  ['payments', 'service_request_id', 'service_requests'],
+  ['payments', 'payment_method_id', 'payment_methods'],
+  ['payments', 'payer_user_id', 'users'],
+  ['payments', 'recipient_service_provider_id', 'service_providers'],
+  ['refunds', 'initiated_by_user_id', 'users'],
+  ['reviews', 'service_request_id', 'service_requests'],
+  ['reviews', 'author_user_id', 'users'],
+  ['reviews', 'service_provider_id', 'service_providers'],
+  ['notifications', 'service_request_id', 'service_requests'],
+  ['notifications', 'recipient_user_id', 'users'],
+  ['notifications', 'recipient_service_provider_id', 'service_providers'],
+  ['quotes', 'service_request_id', 'service_requests'],
+  ['quotes', 'service_provider_id', 'service_providers'],
+  ['service_request_attachments', 'service_request_id', 'service_requests'],
+  ['service_request_attachments', 'uploaded_by_user_id', 'users'],
+  ['service_request_assignments', 'service_request_id', 'service_requests'],
+  ['service_request_assignments', 'worker_user_id', 'users'],
+  ['service_request_assignments', 'assigned_by_user_id', 'users'],
+  ['service_requests', 'client_user_id', 'users'],
+  ['service_requests', 'cancelled_by_user_id', 'users'],
+  ['service_requests', 'requested_service_provider_id', 'service_providers'],
+  ['service_requests', 'assigned_service_provider_id', 'service_providers'],
+  ['payment_methods', 'owner_user_id', 'users'],
+  ['portfolio_items', 'service_provider_id', 'service_providers'],
+  ['verification_documents', 'professional_service_category_id', 'professional_service_categories'],
+  ['verification_documents', 'reviewed_by_user_id', 'users'],
+  ['professional_services', 'professional_service_category_id', 'professional_service_categories'],
+  ['professional_service_categories', 'service_provider_id', 'service_providers'],
+  ['professional_service_zones', 'service_provider_id', 'service_providers'],
+  ['stripe_connect_accounts', 'service_provider_id', 'service_providers'],
+  ['service_providers', 'user_id', 'users'],
+  ['organization_memberships', 'user_id', 'users'],
+  ['password_reset_tokens', 'user_id', 'users'],
+  ['user_auth_providers', 'user_id', 'users'],
+  ['service_items', 'suggested_by_user_id', 'users'],
+  ['service_items', 'approved_by_user_id', 'users'],
+];
+
+const COLUMN_NAME = /^[a-z_]+$/;
+
+/** Zéro ligne restante qui pointe vers un identifiant supprimé. */
+export async function danglingReferences(
+  db: Queryable,
+  deleted: Record<ModifiableTable, string[]>,
+): Promise<string[]> {
+  const problems: string[] = [];
+  for (const [child, column, parent] of REFERENCE_EDGES) {
+    const ids = deleted[parent];
+    if (ids.length === 0) continue;
+    if (!COLUMN_NAME.test(child) || !COLUMN_NAME.test(column)) throw new PurgeRefusal('nom invalide');
+    const r = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM ${child} WHERE ${column} = ANY($1::uuid[])`,
+      [ids],
+    );
+    if (r.rows[0].n > 0) problems.push(`${child}.${column} → ${parent} : ${r.rows[0].n} ligne(s)`);
+  }
+  for (const table of DELETE_ORDER) {
+    const ids = deleted[table];
+    if (ids.length === 0) continue;
+    const r = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table} WHERE id = ANY($1::uuid[])`, [ids]);
+    if (r.rows[0].n > 0) problems.push(`${table} : ${r.rows[0].n} ligne(s) encore présente(s)`);
+  }
+  return problems;
+}
+
+export interface ExecuteOptions {
+  /** Phrase tapée. Vide accepté seulement quand le plan est vide (reprise des fichiers seule). */
+  confirm: string;
+  outDir: string;
+  storageDir: string;
+  /** Horodatage UTC compact, injecté pour les tests. */
+  stamp?: string;
+  /**
+   * Appelé JUSTE APRÈS le COMMIT, avant toute opération sur les fichiers : le
+   * rapport de la base est affiché même si l'étape fichiers échoue ensuite.
+   */
+  onCommitted?: (report: CommittedReport) => void;
+  /** Tests : remplace l'envoi du COMMIT, pour simuler une coupure (M1). */
+  commit?: (db: TxClient) => Promise<void>;
+}
+
+export interface CommittedReport {
+  deletedCounts: Record<string, number>;
+  fixedCheck: string;
+  /** Chemin final de la liste Stripe, ou chemin `.pending` si le renommage a échoué. */
+  stripeFile: string | null;
+}
+
+export interface ExecuteResult {
+  plan: PurgePlan;
+  /** false : plan vide, aucune transaction validée, seulement la reprise des fichiers. */
+  committed: boolean;
+  deletedCounts: Record<string, number>;
+  stripeFile: string | null;
+  files: FilesReport;
+  leftovers: FilesReport;
+  fixedCheck: string[];
+  /** Liste des clés refusées (M4), à traiter à la main, ou null. */
+  refusedList: string | null;
+}
+
+export interface FilesReport {
+  deleted: string[];
+  absent: string[];
+  remaining: string[];
+  skipped: string[];
+}
+
+const emptyFiles = (): FilesReport => ({ deleted: [], absent: [], remaining: [], skipped: [] });
+
+/**
+ * La base est purgée (COMMIT validé) mais l'étape fichiers ou la liste Stripe
+ * n'est pas allée au bout. `notDeleted` : clés dont la suppression n'est pas
+ * confirmée, à reprendre à la main si aucune liste n'a pu être écrite.
+ */
+export class PostCommitError extends Error {
+  constructor(
+    message: string,
+    readonly notDeleted: string[],
+  ) {
+    super(message);
+    this.name = 'PostCommitError';
+  }
+}
+
+/** Le COMMIT a levé une erreur : on ne sait pas s'il a été appliqué (M1). */
+export class CommitUncertainError extends Error {
+  constructor(
+    message: string,
+    readonly stripeFile: string | null,
+  ) {
+    super(message);
+    this.name = 'CommitUncertainError';
+  }
+}
+
+function stampNow(): string {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+}
+
+function stripeFileContent(plan: PurgePlan, stamp: string): string | null {
+  const ids = [...plan.stripe.customers, ...plan.stripe.accounts, ...plan.stripe.paymentMethods];
+  if (ids.length === 0) return null;
+  return [
+    `# Purge e2e ${stamp} — identifiants Stripe (mode TEST) des seules entités supprimées.`,
+    '# Bac à sable PARTAGÉ avec le développement : supprimer à la main uniquement ces identifiants.',
+    '# Ne jamais utiliser « Supprimer toutes les données de test ». Détruire ce fichier après usage.',
+    ...ids,
+    '',
+  ].join('\n');
+}
+
+async function fixedAccountsSnapshot(db: Queryable, plan: PurgePlan): Promise<string> {
+  const fixed = plan.accounts.filter((a) => a.mode === 'TRANSACTIONS_ONLY').map((a) => a.id);
+  const r = await db.query<{ u: number; p: number; c: number }>(
+    `SELECT (SELECT count(*)::int FROM users WHERE id = ANY($1::uuid[]) AND deleted_at_utc IS NULL) AS u,
+            (SELECT count(*)::int FROM service_providers WHERE user_id = ANY($1::uuid[])) AS p,
+            (SELECT count(*)::int FROM stripe_connect_accounts sca JOIN service_providers sp
+                ON sp.id = sca.service_provider_id WHERE sp.user_id = ANY($1::uuid[])) AS c`,
+    [fixed],
+  );
+  const { u, p, c } = r.rows[0];
+  return `comptes=${u} prestataires=${p} connect=${c}`;
+}
+
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/**
+ * Exécute la purge. Le client doit être une connexion dédiée (pas un pool
+ * partagé) : BEGIN/COMMIT y sont posés.
+ *
+ * Erreurs :
+ *   - avant le COMMIT : ROLLBACK, liste Stripe `.pending` effacée, erreur
+ *     relancée telle quelle (rien n'a changé) ;
+ *   - pendant le COMMIT : `CommitUncertainError`, la liste `.pending` est GARDÉE ;
+ *   - après le COMMIT : `onCommitted` a déjà été appelé, puis `PostCommitError`.
+ * Plan vide : aucune phrase exigée, aucune écriture en base, seulement la
+ * reprise des fichiers laissés par un passage précédent (sans ligne en base).
+ */
+export async function executePurge(db: TxClient, opts: ExecuteOptions): Promise<ExecuteResult> {
+  const stamp = opts.stamp ?? stampNow();
+  const pending = join(opts.outDir, `${stamp}-stripe-ids.txt.pending`);
+  const finalStripe = join(opts.outDir, `${stamp}-stripe-ids.txt`);
+  let wrotePending = false;
+  let committing = false;
+  const deletedCounts: Record<string, number> = {};
+  const commit = opts.commit ?? (async (c: TxClient): Promise<void> => void (await c.query('COMMIT')));
+
+  await db.query('BEGIN');
+  let plan: PurgePlan;
+  let fixedAfter = '';
+  try {
+    await db.query(`SET LOCAL lock_timeout = '5s'`);
+    await lockModifiableTables(db);
+    const catalogBefore = await catalogFingerprint(db);
+    plan = await buildPlan(db);
+
+    if (isBlocked(plan)) throw new PurgeRefusal('contrôle de fermeture ou catalogue : purge bloquée (voir la simulation)');
+
+    if (isEmpty(plan)) {
+      // Rien en base : aucune phrase, la transaction (sans écriture) est annulée.
+      await db.query('ROLLBACK');
+      const leftovers = await retryLeftoverFiles(db, opts.outDir, opts.storageDir, stamp);
+      return { plan, committed: false, deletedCounts, stripeFile: null, files: emptyFiles(), leftovers, fixedCheck: [], refusedList: null };
+    }
+
+    const expected = planPhrase(plan.accounts, plan.fingerprint);
+    if (opts.confirm !== expected) {
+      throw new PurgeRefusal(`la phrase ne correspond pas au plan actuel (attendu : « ${expected} ») : la base a changé ou la phrase est fausse`);
+    }
+
+    const fixedBefore = await fixedAccountsSnapshot(db, plan);
+
+    const content = stripeFileContent(plan, stamp);
+    if (content) {
+      writeFileSync(pending, content, { mode: 0o600 });
+      chmodSync(pending, 0o600);
+      wrotePending = true;
+    }
+
+    for (const table of DELETE_ORDER) {
+      assertModifiable(table);
+      const ids = plan.rows[table];
+      if (ids.length === 0) continue;
+      const r = await db.query(`DELETE FROM ${table} WHERE id = ANY($1::uuid[])`, [ids]);
+      if (r.rowCount !== ids.length) {
+        throw new PurgeRefusal(`${table} : ${r.rowCount} ligne(s) supprimée(s) au lieu de ${ids.length}`);
+      }
+      deletedCounts[table] = ids.length;
+    }
+
+    const dangling = await danglingReferences(db, plan.rows);
+    if (dangling.length > 0) throw new PurgeRefusal(`références restantes : ${dangling.join(' ; ')}`);
+
+    fixedAfter = await fixedAccountsSnapshot(db, plan);
+    if (fixedAfter !== fixedBefore) {
+      throw new PurgeRefusal(`comptes fixes modifiés (${fixedBefore} → ${fixedAfter})`);
+    }
+
+    const catalogAfter = await catalogFingerprint(db);
+    if (!sameCatalog(catalogBefore, catalogAfter)) throw new PurgeRefusal('empreinte du catalogue modifiée');
+
+    committing = true;
+    await commit(db);
+    committing = false;
+  } catch (err) {
+    await db.query('ROLLBACK').catch(() => undefined);
+    if (committing) {
+      // M1 : le serveur a peut-être validé. La liste Stripe est GARDÉE.
+      const kept = wrotePending ? pending : null;
+      throw new CommitUncertainError(
+        `état du COMMIT incertain : vérifier la base, conserver ${kept ?? '(aucune liste Stripe)'} (${message(err)})`,
+        kept,
+      );
+    }
+    if (wrotePending) rmSync(pending, { force: true });
+    throw err;
+  }
+
+  // ── La base est purgée. Rien ci-dessous ne doit pouvoir faire croire le contraire. ──
+  let stripeFile: string | null = null;
+  let stripeError: string | null = null;
+  if (wrotePending) {
+    try {
+      renameSync(pending, finalStripe);
+      stripeFile = finalStripe;
+    } catch (err) {
+      stripeFile = pending;
+      stripeError = `liste Stripe non renommée, conservée sous ${pending} (${message(err)})`;
+    }
+  }
+  opts.onCommitted?.({ deletedCounts, fixedCheck: fixedAfter, stripeFile });
+
+  const { files, listError } = deletePlanFiles(opts.storageDir, opts.outDir, stamp, plan.fileKeys);
+  const notDeleted = [...files.remaining, ...files.skipped];
+  let refusedList: string | null = null;
+  let leftovers: FilesReport;
+  try {
+    if (listError) throw new Error(listError);
+    if (files.skipped.length > 0) {
+      // M4 : clés refusées (forme inattendue ou hors du volume), jamais reprises
+      // automatiquement : à examiner à la main.
+      refusedList = join(opts.outDir, `${stamp}-files-refused.txt`);
+      writeFileSync(refusedList, `${files.skipped.join('\n')}\n`, { mode: 0o600 });
+    }
+    leftovers = await retryLeftoverFiles(db, opts.outDir, opts.storageDir, stamp);
+  } catch (err) {
+    throw new PostCommitError(`étape fichiers : ${message(err)}`, notDeleted);
+  }
+  if (stripeError) throw new PostCommitError(stripeError, notDeleted);
+
+  return { plan, committed: true, deletedCounts, stripeFile, files, leftovers, fixedCheck: [fixedAfter], refusedList };
+}
+
+/** Résout une clé dans le volume, ou null si elle en sortirait. */
+export function resolveInStorage(storageDir: string, key: string): string | null {
+  if (!isSafeStorageKey(key)) return null;
+  const root = resolve(storageDir);
+  const full = resolve(root, key);
+  return full.startsWith(root + sep) ? full : null;
+}
+
+export function deleteFiles(storageDir: string, keys: readonly string[]): FilesReport {
+  const report: FilesReport = { deleted: [], absent: [], remaining: [], skipped: [] };
+  for (const key of keys) {
+    const full = resolveInStorage(storageDir, key);
+    if (!full) {
+      report.skipped.push(key);
+      continue;
+    }
+    try {
+      unlinkSync(full);
+      report.deleted.push(key);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') report.absent.push(key);
+      else report.remaining.push(key);
+    }
+  }
+  return report;
+}
+
+/**
+ * Fichiers des lignes purgées, supprimés APRÈS le COMMIT (M-e).
+ *
+ * La liste `<stamp>-files-remaining.txt` est écrite AVANT le premier `unlink`,
+ * avec toutes les clés à supprimer : un processus tué pendant la suppression
+ * laisse la liste complète, que le passage suivant reprend (seulement les clés
+ * sans ligne en base, `retryLeftoverFiles`). Après la suppression, la liste est
+ * réécrite avec ce qui reste, ou effacée si tout est parti.
+ *
+ * Si la liste ne peut pas être écrite avant, la suppression a lieu quand même :
+ * ce sont des données de personnes à détruire, et l'échec de la réécriture
+ * (même dossier) remonte en `listError`, donc en code 4. Ne lève pas.
+ */
+export function deletePlanFiles(
+  storageDir: string,
+  outDir: string,
+  stamp: string,
+  keys: readonly string[],
+): { files: FilesReport; listError: string | null } {
+  const list = join(outDir, `${stamp}-files-remaining.txt`);
+  const toDelete = keys.filter((k) => resolveInStorage(storageDir, k) !== null);
+  let journalWritten = false;
+  if (toDelete.length > 0) {
+    try {
+      writeFileSync(list, `${toDelete.join('\n')}\n`, { mode: 0o600 });
+      journalWritten = true;
+    } catch {
+      // Voir l'en-tête : la réécriture ci-dessous signalera le dossier illisible.
+    }
+  }
+  const files = deleteFiles(storageDir, keys);
+  try {
+    if (files.remaining.length > 0) {
+      writeFileSync(list, `${files.remaining.join('\n')}\n`, { mode: 0o600 });
+    } else if (journalWritten) {
+      rmSync(list, { force: true });
+    }
+  } catch (err) {
+    return { files, listError: message(err) };
+  }
+  return { files, listError: null };
+}
+
+/** Clés encore référencées en base (dans l'une des trois colonnes de fichier). */
+async function keysStillReferenced(db: Queryable, keys: string[]): Promise<Set<string>> {
+  if (keys.length === 0) return new Set();
+  const r = await db.query<{ k: string }>(
+    `SELECT storage_key AS k FROM portfolio_items WHERE storage_key = ANY($1::text[])
+     UNION SELECT file_url FROM verification_documents WHERE file_url = ANY($1::text[])
+     UNION SELECT file_url FROM service_request_attachments WHERE file_url = ANY($1::text[])`,
+    [keys],
+  );
+  return new Set(r.rows.map((x) => x.k));
+}
+
+/** Listes « *-files-remaining.txt » laissées par un passage précédent. */
+export function leftoverLists(outDir: string, exceptStamp?: string): string[] {
+  if (!existsSync(outDir)) return [];
+  return readdirSync(outDir)
+    .filter((f) => f.endsWith('-files-remaining.txt'))
+    .filter((f) => !exceptStamp || !f.startsWith(exceptStamp))
+    .map((f) => join(outDir, f));
+}
+
+/**
+ * Un nouveau passage ne supprime que des fichiers SANS ligne en base : une clé
+ * encore référencée reste dans la liste, et la liste est réécrite.
+ */
+export async function retryLeftoverFiles(
+  db: Queryable,
+  outDir: string,
+  storageDir: string,
+  exceptStamp?: string,
+): Promise<FilesReport> {
+  const total: FilesReport = { deleted: [], absent: [], remaining: [], skipped: [] };
+  for (const list of leftoverLists(outDir, exceptStamp)) {
+    const keys = readFileSync(list, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean);
+    const referenced = await keysStillReferenced(db, keys);
+    const free = keys.filter((k) => !referenced.has(k));
+    const r = deleteFiles(storageDir, free);
+    const keep = [...keys.filter((k) => referenced.has(k)), ...r.remaining, ...r.skipped];
+    total.deleted.push(...r.deleted);
+    total.absent.push(...r.absent);
+    total.remaining.push(...keep);
+    if (keep.length === 0) rmSync(list, { force: true });
+    else writeFileSync(list, `${keep.join('\n')}\n`, { mode: 0o600 });
+  }
+  return total;
+}
+
+/** Simulation : combien de fichiers du volume seraient supprimés. */
+export function countStorageFiles(storageDir: string, keys: readonly string[]): { present: number; absent: number; unsafe: number } {
+  let present = 0;
+  let absent = 0;
+  let unsafe = 0;
+  for (const key of keys) {
+    const full = resolveInStorage(storageDir, key);
+    if (!full) unsafe += 1;
+    else if (existsSync(full)) present += 1;
+    else absent += 1;
+  }
+  return { present, absent, unsafe };
+}

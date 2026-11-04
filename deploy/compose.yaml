@@ -121,6 +121,36 @@ services:
         condition: service_healthy
     logging: *logging
 
+  # Purge des comptes e2e (mode A) : lancée À LA MAIN par deploy/purge.sh,
+  # jamais par une tâche planifiée ni par un agent. Simulation par défaut.
+  # Réseau backend seul (aucun accès Internet), AUCUNE clé Stripe, rôle
+  # Postgres dédié linkr_purge (droits limités à la liste fermée des tables) :
+  # docs/deploy/purge.md. Le script refuse de démarrer sans PURGE_DATABASE_URL.
+  purge:
+    image: *api-image
+    profiles: ["tools"]
+    restart: "no"
+    # entrypoint, pas command : `run purge --execute` AJOUTE l'argument au
+    # script (un `command` serait remplacé par « --execute »). L'image n'a pas
+    # d'ENTRYPOINT, et un entrypoint de compose efface le CMD de l'image.
+    entrypoint: ["node", "dist/database/purge/purge.js"]
+    command: []
+    environment:
+      NODE_ENV: production
+      PURGE_DATABASE_URL: ${PURGE_DATABASE_URL:-}
+      PURGE_STORAGE_DIR: /app/apps/api/storage/uploads
+      PURGE_OUT_DIR: /purge-out
+      PURGE_CONFIRM: ${PURGE_CONFIRM:-}
+    volumes:
+      - uploads:/app/apps/api/storage/uploads
+      - ./purge-out:/purge-out
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+
   postgres:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
