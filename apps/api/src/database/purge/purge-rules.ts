@@ -11,6 +11,14 @@
  *     ce4afa3) ET prénom « e2e », supprimés en entier.
  * Aucune autre adresse ne peut être visée. Jamais de correspondance partielle
  * de type motif SQL : égalité exacte, ou expression régulière ANCRÉE.
+ *
+ * ⚠️ L'adresse est comparée BRUTE : jamais de passage en minuscules (ni en SQL
+ * ni en JS), jamais de trim.
+ * L'inscription ne normalise pas l'adresse et l'index unique porte sur
+ * l'adresse brute : « E2E-Client@LinkrApp.com » est un AUTRE compte, que
+ * n'importe qui peut créer (aucune vérification de courriel). Normaliser la
+ * casse ferait de ce compte un deuxième « compte fixe ». Même raison pour le
+ * signe Kelvin (U+212A), que la mise en minuscules de Postgres change en « k ».
  */
 import { createHash } from 'node:crypto';
 import { isAbsolute, posix } from 'node:path';
@@ -36,7 +44,10 @@ export const LEGACY_E2E_EMAIL_PATTERN =
 export const LEGACY_E2E_EMAIL_SQL_PATTERN =
   '^e2e\\+(prestataire|client)-[0-9]{8}-[0-9a-f]{8}@gmail\\.com$';
 
-/** Prénom posé par flows.ts sur tout compte e2e. Exigé pour un ancien compte. */
+/**
+ * Prénom posé par e2e/lib/flows.ts sur tout compte e2e (inscription). Exigé
+ * pour TOUS les comptes visés, fixes compris.
+ */
 export const LEGACY_E2E_FIRST_NAME = 'e2e';
 
 /**
@@ -44,8 +55,11 @@ export const LEGACY_E2E_FIRST_NAME = 'e2e';
  * rapport de phase 1). C'est la LISTE FERMÉE : aucune autre table ne reçoit
  * d'ordre d'écriture, et le rôle linkr_purge n'a le droit d'écrire que là.
  *
- * `organization_memberships` y figure parce que le contrôle de fermeture doit
- * la LIRE ; elle ne reçoit jamais de suppression : une adhésion d'un compte
+ * `organization_memberships` y figure pour deux raisons : le contrôle de
+ * fermeture la LIT, et elle doit être VERROUILLÉE (`LOCK TABLE … SHARE ROW
+ * EXCLUSIVE`, qui exige le droit DELETE) : sans ce verrou, une adhésion insérée
+ * pendant la purge serait supprimée en silence par la cascade depuis `users`.
+ * Elle ne reçoit jamais d'ordre DELETE du script : une adhésion d'un compte
  * e2e est une donnée d'organisation, la purge s'arrête si elle en trouve une.
  */
 export const DELETE_ORDER = [
@@ -147,8 +161,11 @@ export type Classification =
  * Un ancien compte n'est visé que si la regex ancrée ET le prénom concordent.
  */
 export function classifyAccount(row: CandidateAccount): Classification {
-  const email = row.email.trim().toLowerCase();
+  const email = row.email; // BRUTE : voir l'en-tête du fichier
   if (FIXED_E2E_EMAILS.includes(email)) {
+    if (row.firstName !== LEGACY_E2E_FIRST_NAME) {
+      return { kind: 'ignored', id: row.id, reason: 'adresse fixe mais prénom différent de « e2e », non touché' };
+    }
     if (row.deletedAtUtc != null) {
       return { kind: 'ignored', id: row.id, reason: 'compte fixe déjà supprimé en douceur, non touché' };
     }
@@ -174,6 +191,19 @@ export function classifyAccount(row: CandidateAccount): Classification {
     };
   }
   return { kind: 'ignored', id: row.id, reason: 'adresse hors liste e2e' };
+}
+
+/**
+ * Une adresse fixe doit désigner UNE seule ligne (supprimée en douceur
+ * comprise). Plus d'une : refus net, l'opérateur décide.
+ */
+export function assertSingleFixedRow(emails: readonly string[]): void {
+  for (const fixed of FIXED_E2E_EMAILS) {
+    const n = emails.filter((e) => e === fixed).length;
+    if (n > 1) {
+      throw new PurgeRefusal(`l'adresse fixe « ${fixed.split('@')[0]} » correspond à ${n} lignes : refus`);
+    }
+  }
 }
 
 /** D4 : jamais de compte ADMIN supprimé ni touché. */
@@ -205,9 +235,24 @@ export function planFingerprint(
   return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 12);
 }
 
-/** Phrase que l'opérateur tape à la main avant l'exécution. */
-export function confirmationPhrase(accountCount: number, fingerprint: string): string {
-  return `PURGER E2E ${accountCount} COMPTES ${fingerprint}`;
+/**
+ * Phrase que l'opérateur tape à la main avant l'exécution. Le nombre est celui
+ * des comptes supprimés EN ENTIER ; les comptes fixes gardés sont affichés à
+ * part. L'empreinte, elle, couvre tous les comptes visés.
+ */
+export function confirmationPhrase(deletedAccountCount: number, fingerprint: string): string {
+  return `PURGER E2E ${deletedAccountCount} COMPTES ${fingerprint}`;
+}
+
+/** Comptes supprimés en entier, gardés : la phrase porte le premier nombre. */
+export function accountCounts(accounts: readonly Pick<RetainedAccount, 'mode'>[]): { full: number; kept: number } {
+  const full = accounts.filter((a) => a.mode === 'FULL').length;
+  return { full, kept: accounts.length - full };
+}
+
+/** Phrase attendue pour un plan donné. Seule source, pour le CLI et l'exécution. */
+export function planPhrase(accounts: readonly Pick<RetainedAccount, 'mode'>[], fingerprint: string): string {
+  return confirmationPhrase(accountCounts(accounts).full, fingerprint);
 }
 
 /**
@@ -235,9 +280,59 @@ export const STRIPE_SHARED_SANDBOX_WARNING =
  * recopie, et un test vérifie que la doc contient exactement ce texte.
  */
 export function roleGrantSql(): string {
+  const columnScoped = Object.keys(COLUMN_SCOPED_SELECT);
+  const fullSelect = DELETE_ORDER.filter((t) => !columnScoped.includes(t));
   return [
     `CREATE ROLE linkr_purge LOGIN PASSWORD '<mot de passe généré>';`,
-    `GRANT SELECT, DELETE ON TABLE ${DELETE_ORDER.join(', ')} TO linkr_purge;`,
+    `GRANT SELECT, DELETE ON TABLE ${fullSelect.join(', ')} TO linkr_purge;`,
+    `GRANT DELETE ON TABLE ${columnScoped.join(', ')} TO linkr_purge;`,
+    ...Object.entries(COLUMN_SCOPED_SELECT).map(
+      ([table, cols]) => `GRANT SELECT (${cols.join(', ')}) ON TABLE ${table} TO linkr_purge;`,
+    ),
     `GRANT SELECT ON TABLE ${PROTECTED_TABLES.join(', ')} TO linkr_purge;`,
   ].join('\n');
+}
+
+/**
+ * Tables dont le rôle ne lit QUE certaines colonnes (M2) : jamais un haché de
+ * mot de passe ni de jeton. La purge n'a besoin que de `id` et `user_id`.
+ */
+export const COLUMN_SCOPED_SELECT: Readonly<Record<'user_auth_providers' | 'password_reset_tokens', readonly string[]>> = {
+  user_auth_providers: ['id', 'user_id'],
+  password_reset_tokens: ['id', 'user_id'],
+};
+
+/** Colonnes que le rôle ne doit JAMAIS pouvoir lire (vérifié au démarrage). */
+export const FORBIDDEN_COLUMNS: ReadonlyArray<readonly [table: string, column: string]> = [
+  ['user_auth_providers', 'password_hash'],
+  ['password_reset_tokens', 'token_hash'],
+];
+
+/**
+ * Témoin de sauvegarde (I4), écrit par deploy/purge.sh dans purge-out APRÈS
+ * une sauvegarde réussie : `<horodatage ISO UTC> <nom du fichier de base>`.
+ *
+ * ⚠️ Garde-fou contre l'ERREUR D'USAGE (oublier la sauvegarde en lançant le
+ * conteneur à la main), PAS contre la malveillance : quiconque a un shell sur
+ * le VPS peut écrire ce fichier. La barrière reste la règle « aucun agent
+ * n'écrit en production » (CLAUDE.md §13 nº 20).
+ */
+export const BACKUP_WITNESS_FILE = 'backup-witness.txt';
+export const BACKUP_WITNESS_MAX_AGE_MS = 15 * 60 * 1000;
+const WITNESS_LINE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) (linkr-db-\d{8}T\d{6}Z\.dump\.age)$/;
+
+/** Lève si le témoin est absent, illisible, du futur ou plus vieux que 15 min. */
+export function assertFreshBackupWitness(content: string | null, now: Date): { at: string; backup: string } {
+  if (content === null) {
+    throw new PurgeRefusal(`témoin de sauvegarde absent (${BACKUP_WITNESS_FILE}) : lancer la purge par deploy/purge.sh --execute`);
+  }
+  const m = WITNESS_LINE.exec(content.trim());
+  if (!m) throw new PurgeRefusal(`témoin de sauvegarde illisible (${BACKUP_WITNESS_FILE})`);
+  const age = now.getTime() - Date.parse(m[1]);
+  // Une minute de tolérance pour un écart d'horloge, jamais plus.
+  if (!Number.isFinite(age) || age < -60_000) throw new PurgeRefusal('témoin de sauvegarde daté du futur');
+  if (age > BACKUP_WITNESS_MAX_AGE_MS) {
+    throw new PurgeRefusal(`témoin de sauvegarde de plus de 15 minutes (${m[1]}) : relancer deploy/purge.sh --execute`);
+  }
+  return { at: m[1], backup: m[2] };
 }

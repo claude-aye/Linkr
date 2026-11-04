@@ -13,15 +13,16 @@
  */
 import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { buildPlan, isBlocked, PurgePlan, Queryable } from './purge-plan';
+import { buildPlan, isBlocked, isEmpty, PurgePlan, Queryable } from './purge-plan';
 import {
   assertModifiable,
   assertProtected,
-  confirmationPhrase,
   DELETE_ORDER,
+  FORBIDDEN_COLUMNS,
   isSafeStorageKey,
   ModifiableTable,
   PROTECTED_TABLES,
+  planPhrase,
   PurgeRefusal,
 } from './purge-rules';
 
@@ -72,6 +73,11 @@ export async function assertPurgeRole(db: Queryable): Promise<void> {
   for (const table of DELETE_ORDER) {
     const p = await db.query<{ d: boolean }>(`SELECT has_table_privilege(current_user, $1, 'DELETE') AS d`, [table]);
     if (!p.rows[0]?.d) throw new PurgeRefusal(`le rôle n'a pas le droit DELETE sur ${table}`);
+  }
+  // M2 : jamais de lecture d'un haché de mot de passe ou de jeton.
+  for (const [table, column] of FORBIDDEN_COLUMNS) {
+    const p = await db.query<{ r: boolean }>(`SELECT has_column_privilege(current_user, $1, $2, 'SELECT') AS r`, [table, column]);
+    if (p.rows[0]?.r) throw new PurgeRefusal(`le rôle peut lire ${table}.${column} : refus (droits par colonne, docs/deploy/purge.md)`);
   }
 }
 
@@ -162,20 +168,39 @@ export async function danglingReferences(
 }
 
 export interface ExecuteOptions {
+  /** Phrase tapée. Vide accepté seulement quand le plan est vide (reprise des fichiers seule). */
   confirm: string;
   outDir: string;
   storageDir: string;
   /** Horodatage UTC compact, injecté pour les tests. */
   stamp?: string;
+  /**
+   * Appelé JUSTE APRÈS le COMMIT, avant toute opération sur les fichiers : le
+   * rapport de la base est affiché même si l'étape fichiers échoue ensuite.
+   */
+  onCommitted?: (report: CommittedReport) => void;
+  /** Tests : remplace l'envoi du COMMIT, pour simuler une coupure (M1). */
+  commit?: (db: TxClient) => Promise<void>;
+}
+
+export interface CommittedReport {
+  deletedCounts: Record<string, number>;
+  fixedCheck: string;
+  /** Chemin final de la liste Stripe, ou chemin `.pending` si le renommage a échoué. */
+  stripeFile: string | null;
 }
 
 export interface ExecuteResult {
   plan: PurgePlan;
+  /** false : plan vide, aucune transaction validée, seulement la reprise des fichiers. */
+  committed: boolean;
   deletedCounts: Record<string, number>;
   stripeFile: string | null;
   files: FilesReport;
   leftovers: FilesReport;
   fixedCheck: string[];
+  /** Liste des clés refusées (M4), à traiter à la main, ou null. */
+  refusedList: string | null;
 }
 
 export interface FilesReport {
@@ -183,6 +208,34 @@ export interface FilesReport {
   absent: string[];
   remaining: string[];
   skipped: string[];
+}
+
+const emptyFiles = (): FilesReport => ({ deleted: [], absent: [], remaining: [], skipped: [] });
+
+/**
+ * La base est purgée (COMMIT validé) mais l'étape fichiers ou la liste Stripe
+ * n'est pas allée au bout. `notDeleted` : clés dont la suppression n'est pas
+ * confirmée, à reprendre à la main si aucune liste n'a pu être écrite.
+ */
+export class PostCommitError extends Error {
+  constructor(
+    message: string,
+    readonly notDeleted: string[],
+  ) {
+    super(message);
+    this.name = 'PostCommitError';
+  }
+}
+
+/** Le COMMIT a levé une erreur : on ne sait pas s'il a été appliqué (M1). */
+export class CommitUncertainError extends Error {
+  constructor(
+    message: string,
+    readonly stripeFile: string | null,
+  ) {
+    super(message);
+    this.name = 'CommitUncertainError';
+  }
 }
 
 function stampNow(): string {
@@ -214,20 +267,32 @@ async function fixedAccountsSnapshot(db: Queryable, plan: PurgePlan): Promise<st
   return `comptes=${u} prestataires=${p} connect=${c}`;
 }
 
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 /**
  * Exécute la purge. Le client doit être une connexion dédiée (pas un pool
  * partagé) : BEGIN/COMMIT y sont posés.
+ *
+ * Erreurs :
+ *   - avant le COMMIT : ROLLBACK, liste Stripe `.pending` effacée, erreur
+ *     relancée telle quelle (rien n'a changé) ;
+ *   - pendant le COMMIT : `CommitUncertainError`, la liste `.pending` est GARDÉE ;
+ *   - après le COMMIT : `onCommitted` a déjà été appelé, puis `PostCommitError`.
+ * Plan vide : aucune phrase exigée, aucune écriture en base, seulement la
+ * reprise des fichiers laissés par un passage précédent (sans ligne en base).
  */
 export async function executePurge(db: TxClient, opts: ExecuteOptions): Promise<ExecuteResult> {
   const stamp = opts.stamp ?? stampNow();
   const pending = join(opts.outDir, `${stamp}-stripe-ids.txt.pending`);
   const finalStripe = join(opts.outDir, `${stamp}-stripe-ids.txt`);
   let wrotePending = false;
+  let committing = false;
   const deletedCounts: Record<string, number> = {};
+  const commit = opts.commit ?? (async (c: TxClient): Promise<void> => void (await c.query('COMMIT')));
 
   await db.query('BEGIN');
   let plan: PurgePlan;
-  let fixedCheck: string[] = [];
+  let fixedAfter = '';
   try {
     await db.query(`SET LOCAL lock_timeout = '5s'`);
     await lockModifiableTables(db);
@@ -235,7 +300,15 @@ export async function executePurge(db: TxClient, opts: ExecuteOptions): Promise<
     plan = await buildPlan(db);
 
     if (isBlocked(plan)) throw new PurgeRefusal('contrôle de fermeture ou catalogue : purge bloquée (voir la simulation)');
-    const expected = confirmationPhrase(plan.accounts.length, plan.fingerprint);
+
+    if (isEmpty(plan)) {
+      // Rien en base : aucune phrase, la transaction (sans écriture) est annulée.
+      await db.query('ROLLBACK');
+      const leftovers = await retryLeftoverFiles(db, opts.outDir, opts.storageDir, stamp);
+      return { plan, committed: false, deletedCounts, stripeFile: null, files: emptyFiles(), leftovers, fixedCheck: [], refusedList: null };
+    }
+
+    const expected = planPhrase(plan.accounts, plan.fingerprint);
     if (opts.confirm !== expected) {
       throw new PurgeRefusal(`la phrase ne correspond pas au plan actuel (attendu : « ${expected} ») : la base a changé ou la phrase est fausse`);
     }
@@ -263,33 +336,66 @@ export async function executePurge(db: TxClient, opts: ExecuteOptions): Promise<
     const dangling = await danglingReferences(db, plan.rows);
     if (dangling.length > 0) throw new PurgeRefusal(`références restantes : ${dangling.join(' ; ')}`);
 
-    const fixedAfter = await fixedAccountsSnapshot(db, plan);
+    fixedAfter = await fixedAccountsSnapshot(db, plan);
     if (fixedAfter !== fixedBefore) {
       throw new PurgeRefusal(`comptes fixes modifiés (${fixedBefore} → ${fixedAfter})`);
     }
-    fixedCheck = [fixedAfter];
 
     const catalogAfter = await catalogFingerprint(db);
     if (!sameCatalog(catalogBefore, catalogAfter)) throw new PurgeRefusal('empreinte du catalogue modifiée');
 
-    await db.query('COMMIT');
+    committing = true;
+    await commit(db);
+    committing = false;
   } catch (err) {
     await db.query('ROLLBACK').catch(() => undefined);
+    if (committing) {
+      // M1 : le serveur a peut-être validé. La liste Stripe est GARDÉE.
+      const kept = wrotePending ? pending : null;
+      throw new CommitUncertainError(
+        `état du COMMIT incertain : vérifier la base, conserver ${kept ?? '(aucune liste Stripe)'} (${message(err)})`,
+        kept,
+      );
+    }
     if (wrotePending) rmSync(pending, { force: true });
     throw err;
   }
 
-  const stripeFile = wrotePending ? finalStripe : null;
-  if (wrotePending) renameSync(pending, finalStripe);
+  // ── La base est purgée. Rien ci-dessous ne doit pouvoir faire croire le contraire. ──
+  let stripeFile: string | null = null;
+  let stripeError: string | null = null;
+  if (wrotePending) {
+    try {
+      renameSync(pending, finalStripe);
+      stripeFile = finalStripe;
+    } catch (err) {
+      stripeFile = pending;
+      stripeError = `liste Stripe non renommée, conservée sous ${pending} (${message(err)})`;
+    }
+  }
+  opts.onCommitted?.({ deletedCounts, fixedCheck: fixedAfter, stripeFile });
 
   const files = deleteFiles(opts.storageDir, plan.fileKeys);
-  if (files.remaining.length > 0) {
-    const list = join(opts.outDir, `${stamp}-files-remaining.txt`);
-    writeFileSync(list, `${files.remaining.join('\n')}\n`, { mode: 0o600 });
+  const notDeleted = [...files.remaining, ...files.skipped];
+  let refusedList: string | null = null;
+  let leftovers: FilesReport;
+  try {
+    if (files.remaining.length > 0) {
+      writeFileSync(join(opts.outDir, `${stamp}-files-remaining.txt`), `${files.remaining.join('\n')}\n`, { mode: 0o600 });
+    }
+    if (files.skipped.length > 0) {
+      // M4 : clés refusées (forme inattendue ou hors du volume), jamais reprises
+      // automatiquement : à examiner à la main.
+      refusedList = join(opts.outDir, `${stamp}-files-refused.txt`);
+      writeFileSync(refusedList, `${files.skipped.join('\n')}\n`, { mode: 0o600 });
+    }
+    leftovers = await retryLeftoverFiles(db, opts.outDir, opts.storageDir, stamp);
+  } catch (err) {
+    throw new PostCommitError(`étape fichiers : ${message(err)}`, notDeleted);
   }
-  const leftovers = await retryLeftoverFiles(db, opts.outDir, opts.storageDir, stamp);
+  if (stripeError) throw new PostCommitError(stripeError, notDeleted);
 
-  return { plan, deletedCounts, stripeFile, files, leftovers, fixedCheck };
+  return { plan, committed: true, deletedCounts, stripeFile, files, leftovers, fixedCheck: [fixedAfter], refusedList };
 }
 
 /** Résout une clé dans le volume, ou null si elle en sortirait. */

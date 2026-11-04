@@ -2,12 +2,16 @@
 # Purge des comptes e2e (mode A). Copié sur le VPS : /opt/linkr/purge.sh
 #
 #   ./purge.sh             SIMULATION (par défaut) : affiche le plan, n'écrit rien
-#   ./purge.sh --execute   verrou -> sauvegarde -> plan -> phrase tapée -> transaction
+#   ./purge.sh --execute   verrou -> sauvegarde -> témoin -> plan -> phrase tapée -> transaction
 #
 # ⚠️ Lancé À LA MAIN, jamais par une tâche planifiée ni par un agent.
 # Le conteneur `purge` n'a ni accès Internet ni clé Stripe : la liste des
 # identifiants Stripe est écrite dans purge-out/ et se traite À LA MAIN.
 # Mode d'emploi : docs/deploy/purge.md.
+#
+# Codes de sortie relayés depuis le conteneur : 0 terminé · 1 erreur, aucune
+# transaction validée · 2 refus · 3 purge bloquée · 4 BASE PURGÉE, étape
+# fichiers incomplète · 5 état du COMMIT incertain.
 #
 # Variables facultatives : LINKR_DIR (défaut /opt/linkr). Le script n'affiche
 # jamais le contenu de .env.
@@ -16,6 +20,7 @@ set -euo pipefail
 
 LINKR_DIR="${LINKR_DIR:-/opt/linkr}"
 OUT_DIR="$LINKR_DIR/purge-out"
+WITNESS="$OUT_DIR/backup-witness.txt"
 CONTAINER_UID=1000   # utilisateur `node` de l'image API
 
 log() { echo "$(date -u +%FT%TZ) $*"; }
@@ -27,8 +32,10 @@ Usage : ./purge.sh [--execute]
 
   (sans argument)  simulation : comptes visés, lignes par table, fichiers,
                    identifiants Stripe, empreinte. Rien n'est écrit.
-  --execute        sauvegarde, puis la phrase « PURGER E2E <n> COMPTES <empreinte> »
-                   à taper à la main, puis une seule transaction.
+  --execute        sauvegarde, témoin de sauvegarde, puis la phrase
+                   « PURGER E2E <n> COMPTES <empreinte> » à taper à la main,
+                   puis une seule transaction. Plan vide : seulement la
+                   reprise des fichiers restants, sans phrase.
 USAGE
 }
 
@@ -64,10 +71,24 @@ if [ "$EXECUTE" -eq 0 ]; then
 fi
 
 # 1. Sauvegarde obligatoire : si elle échoue, ARRÊT, rien n'est touché.
+#    Sa sortie est affichée et lue pour retrouver le nom de la sauvegarde.
 log "Sauvegarde avant purge..."
-"$LINKR_DIR/backup/backup.sh" || die "la sauvegarde a échoué. ARRÊT : rien n'a été modifié."
+rm -f "$WITNESS"
+BACKUP_LOG="$(mktemp)"
+trap 'rm -f "$BACKUP_LOG"' EXIT
+if ! "$LINKR_DIR/backup/backup.sh" 2>&1 | tee "$BACKUP_LOG"; then
+  die "la sauvegarde a échoué. ARRÊT : rien n'a été modifié."
+fi
+BACKUP_NAME="$(grep -oE 'linkr-db-[0-9]{8}T[0-9]{6}Z\.dump\.age' "$BACKUP_LOG" | tail -n 1 || true)"
+[ -n "$BACKUP_NAME" ] || die "nom de la sauvegarde introuvable dans sa sortie. ARRÊT : rien n'a été modifié."
 
-# 2. Plan (simulation), affiché à l'opérateur.
+# 2. Témoin lu par le conteneur (refus de --execute s'il a plus de 15 minutes).
+#    Garde-fou contre l'oubli de la sauvegarde, PAS contre un agent ou une
+#    personne qui a un shell sur ce serveur.
+( umask 022; printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BACKUP_NAME" > "$WITNESS" )
+log "Témoin de sauvegarde écrit : $BACKUP_NAME"
+
+# 3. Plan (simulation), affiché à l'opérateur.
 log "Plan de purge..."
 set +e
 PLAN="$(run_purge)"
@@ -76,16 +97,32 @@ set -e
 printf '%s\n' "$PLAN"
 [ "$code" -eq 0 ] || die "simulation en échec ou purge bloquée (code $code) : rien n'a été modifié."
 EXPECTED="$(printf '%s\n' "$PLAN" | sed -n 's/^PURGE_PHRASE=//p' | tail -n 1)"
-[ -n "$EXPECTED" ] || { log "Rien à purger."; exit 0; }
 
-# 3. Phrase tapée à la main (jamais lue d'un fichier ni d'une variable).
-echo
-read -r -p "Phrase de confirmation : " TYPED </dev/tty
-[ "$TYPED" = "$EXPECTED" ] || die "phrase différente du plan : rien n'a été modifié."
+if [ -z "$EXPECTED" ]; then
+  # Plan vide : pas de phrase, seulement la reprise des fichiers restants
+  # (le script ne supprime que des fichiers sans ligne en base).
+  log "Rien à purger en base : reprise des fichiers restants."
+  export PURGE_CONFIRM=""
+else
+  # 4. Phrase tapée à la main (jamais lue d'un fichier ni d'une variable).
+  echo
+  read -r -p "Phrase de confirmation : " TYPED </dev/tty
+  [ "$TYPED" = "$EXPECTED" ] || die "phrase différente du plan : rien n'a été modifié."
+  export PURGE_CONFIRM="$TYPED"   # interpolé par compose dans le service purge
+fi
 
-# 4. Exécution : le script recalcule le plan sous verrou et refuse si
-#    l'empreinte a changé depuis la simulation.
+# 5. Exécution : le script recalcule le plan sous verrou et refuse si
+#    l'empreinte a changé depuis la simulation. Son rapport n'est pas capturé :
+#    il s'affiche tel quel, y compris en cas d'échec après le COMMIT.
 log "Exécution..."
-export PURGE_CONFIRM="$TYPED"   # interpolé par compose dans le service purge
+set +e
 run_purge --execute
-log "Purge terminée. Traiter la liste Stripe à la main (docs/deploy/purge.md), puis la détruire."
+code=$?
+set -e
+case "$code" in
+  0) log "Purge terminée. Traiter la liste Stripe à la main (docs/deploy/purge.md), puis la détruire." ;;
+  4) log "BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE (code 4) : lire le rapport ci-dessus avant toute relance." ;;
+  5) log "État du COMMIT INCERTAIN (code 5) : vérifier la base, conserver la liste Stripe .pending." ;;
+  *) log "Échec (code $code) : aucune transaction validée." ;;
+esac
+exit "$code"

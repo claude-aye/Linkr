@@ -3,15 +3,22 @@ import { join, resolve } from 'node:path';
 import { buildPlan, isBlocked, Queryable } from './purge-plan';
 import { executePurge, resolveInStorage } from './purge-execute';
 import {
+  accountCounts,
   assertClosedLists,
+  assertFreshBackupWitness,
   assertModifiable,
+  assertSingleFixedRow,
+  BACKUP_WITNESS_MAX_AGE_MS,
   classifyAccount,
+  COLUMN_SCOPED_SELECT,
   confirmationPhrase,
+  FORBIDDEN_COLUMNS,
   DELETE_ORDER,
   isSafeStorageKey,
   LEGACY_E2E_EMAIL_PATTERN,
   LEGACY_E2E_EMAIL_SQL_PATTERN,
   planFingerprint,
+  planPhrase,
   PROTECTED_TABLES,
   PurgeRefusal,
   roleGrantSql,
@@ -20,8 +27,8 @@ import {
 const base = { firstName: 'e2e', systemRole: 'USER', deletedAtUtc: null };
 
 describe('purge e2e — sélection des comptes', () => {
-  it('retient les deux comptes fixes en mode transactions seulement (égalité exacte, casse ignorée)', () => {
-    for (const email of ['e2e-prestataire@linkrapp.com', 'E2E-Client@LinkrApp.com']) {
+  it('retient les deux comptes fixes en mode transactions seulement (égalité exacte de l’adresse brute)', () => {
+    for (const email of ['e2e-prestataire@linkrapp.com', 'e2e-client@linkrapp.com']) {
       const c = classifyAccount({ ...base, id: 'u', email });
       expect(c.kind).toBe('retained');
       if (c.kind === 'retained') expect(c.account.mode).toBe('TRANSACTIONS_ONLY');
@@ -53,6 +60,34 @@ describe('purge e2e — sélection des comptes', () => {
     ' e2e-client@linkrapp.co',
   ])('refuse une adresse proche : %s', (email) => {
     expect(classifyAccount({ ...base, id: 'u', email }).kind).toBe('ignored');
+  });
+
+  it.each([
+    ['casse différente', 'E2E-Client@LinkrApp.com'],
+    ['une seule majuscule', 'e2e-client@Linkrapp.com'],
+    ['signe Kelvin U+212A (lower() le change en « k »)', 'e2e-client@lin\u212Arapp.com'],
+    ['ancienne adresse en majuscules', 'E2E+CLIENT-20261102-AB12CD34@GMAIL.COM'],
+    ['ancienne adresse, domaine en majuscules', 'e2e+client-20261102-ab12cd34@Gmail.com'],
+    ['ancienne adresse, préfixe en majuscules', 'E2E+client-20261102-ab12cd34@gmail.com'],
+    ['espace en tête', ' e2e-client@linkrapp.com'],
+    ['espace en fin', 'e2e-client@linkrapp.com '],
+  ])('ignore une adresse qui n’est pas e2e au caractère près (%s)', (_label, email) => {
+    expect(classifyAccount({ ...base, id: 'u', email }).kind).toBe('ignored');
+  });
+
+  it('la regex des anciens comptes est sensible à la casse (aucun drapeau i)', () => {
+    expect(LEGACY_E2E_EMAIL_PATTERN.flags).toBe('');
+    expect(LEGACY_E2E_EMAIL_PATTERN.test('E2E+client-20261102-ab12cd34@gmail.com')).toBe(false);
+  });
+
+  it('exige le prénom « e2e » pour un compte FIXE aussi', () => {
+    expect(classifyAccount({ ...base, firstName: 'Carol', id: 'u', email: 'e2e-client@linkrapp.com' }).kind).toBe('ignored');
+    expect(classifyAccount({ ...base, firstName: 'E2E', id: 'u', email: 'e2e-prestataire@linkrapp.com' }).kind).toBe('ignored');
+  });
+
+  it('refuse net une adresse fixe qui correspond à plus d’une ligne', () => {
+    expect(() => assertSingleFixedRow(['e2e-client@linkrapp.com', 'e2e-prestataire@linkrapp.com'])).not.toThrow();
+    expect(() => assertSingleFixedRow(['e2e-client@linkrapp.com', 'e2e-client@linkrapp.com'])).toThrow(PurgeRefusal);
   });
 
   it('exige le prénom « e2e » pour un ancien compte', () => {
@@ -93,6 +128,59 @@ describe('purge e2e — listes fermées et phrase', () => {
   it('la phrase porte le nombre de comptes et l’empreinte', () => {
     expect(confirmationPhrase(3, 'abc123def456')).toBe('PURGER E2E 3 COMPTES abc123def456');
   });
+
+  it('la phrase ne compte que les comptes supprimés EN ENTIER (M5)', () => {
+    const accounts = [{ mode: 'FULL' as const }, { mode: 'TRANSACTIONS_ONLY' as const }, { mode: 'TRANSACTIONS_ONLY' as const }];
+    expect(accountCounts(accounts)).toEqual({ full: 1, kept: 2 });
+    expect(planPhrase(accounts, 'abc123def456')).toBe('PURGER E2E 1 COMPTES abc123def456');
+    expect(planPhrase(accounts.slice(1), 'abc123def456')).toBe('PURGER E2E 0 COMPTES abc123def456');
+  });
+});
+
+describe('purge e2e — témoin de sauvegarde (I4)', () => {
+  const now = new Date('2026-11-04T12:00:00Z');
+  const line = (at: string): string => `${at} linkr-db-20261104T115500Z.dump.age\n`;
+
+  it('accepte un témoin récent et rend le nom de la sauvegarde', () => {
+    expect(assertFreshBackupWitness(line('2026-11-04T11:55:00Z'), now)).toEqual({
+      at: '2026-11-04T11:55:00Z',
+      backup: 'linkr-db-20261104T115500Z.dump.age',
+    });
+  });
+
+  it('accepte un témoin de 15 minutes pile', () => {
+    expect(BACKUP_WITNESS_MAX_AGE_MS).toBe(15 * 60 * 1000);
+    expect(() => assertFreshBackupWitness(line('2026-11-04T11:45:00Z'), now)).not.toThrow();
+  });
+
+  it.each([
+    ['absent', null],
+    ['vide', ''],
+    ['illisible', 'sauvegarde faite\n'],
+    ['sans nom de sauvegarde', '2026-11-04T11:55:00Z\n'],
+    ['avec un nom inattendu', '2026-11-04T11:55:00Z ../../etc/passwd\n'],
+    ['de plus de 15 minutes', line('2026-11-04T11:44:59Z')],
+    ['daté du futur', line('2026-11-04T12:02:00Z')],
+  ])('refuse un témoin %s', (_label, content) => {
+    expect(() => assertFreshBackupWitness(content as string | null, now)).toThrow(PurgeRefusal);
+  });
+});
+
+describe('purge e2e — droits du rôle (M2)', () => {
+  it('ne donne jamais SELECT sur les hachés de mot de passe et de jeton', () => {
+    const sql = roleGrantSql();
+    expect(sql).not.toMatch(/password_hash|token_hash/);
+    expect(sql).toContain('GRANT SELECT (id, user_id) ON TABLE user_auth_providers TO linkr_purge;');
+    expect(sql).toContain('GRANT SELECT (id, user_id) ON TABLE password_reset_tokens TO linkr_purge;');
+    const fullGrant = sql.split('\n').find((l) => l.startsWith('GRANT SELECT, DELETE ON TABLE')) ?? '';
+    for (const t of Object.keys(COLUMN_SCOPED_SELECT)) expect(fullGrant).not.toContain(t);
+    for (const [t] of FORBIDDEN_COLUMNS) expect(Object.keys(COLUMN_SCOPED_SELECT)).toContain(t);
+  });
+
+  it('chaque table de la liste fermée reçoit DELETE (nécessaire au verrou)', () => {
+    const grants = roleGrantSql().split('\n').filter((l) => /^GRANT (SELECT, )?DELETE ON TABLE/.test(l)).join(' ');
+    for (const t of DELETE_ORDER) expect(grants.split(/[ ,;]+/)).toContain(t);
+  });
 });
 
 describe('purge e2e — clés de stockage', () => {
@@ -126,6 +214,12 @@ const LEGACY = { id: '00000000-0000-4000-8000-000000000001', email: 'e2e+client-
 describe('purge e2e — plan', () => {
   it('refuse net un compte ADMIN dans la liste (D4)', async () => {
     const db = fakeDb({ users: [{ ...LEGACY, system_role: 'ADMIN' }] });
+    await expect(buildPlan(db)).rejects.toThrow(PurgeRefusal);
+  });
+
+  it('refuse net deux lignes pour une même adresse fixe', async () => {
+    const fixed = { ...LEGACY, email: 'e2e-client@linkrapp.com' };
+    const db = fakeDb({ users: [fixed, { ...fixed, id: '00000000-0000-4000-8000-000000000002', deleted_at_utc: new Date() }] });
     await expect(buildPlan(db)).rejects.toThrow(PurgeRefusal);
   });
 
@@ -165,7 +259,10 @@ describe('purge e2e — plan', () => {
     expect(seen.some((s) => /FOR UPDATE|LOCK TABLE/.test(s))).toBe(false);
 
     seen.length = 0;
-    await expect(executePurge(db, { confirm: 'faux', outDir: '/nulle-part', storageDir: '/nulle-part' })).rejects.toThrow(PurgeRefusal);
+    // Plan vide : aucune phrase exigée, aucune suppression, aucun COMMIT.
+    await expect(executePurge(db, { confirm: '', outDir: '/nulle-part', storageDir: '/nulle-part' })).resolves.toMatchObject({ committed: false });
+    expect(seen.some((s) => s.startsWith('DELETE'))).toBe(false);
+    expect(seen.includes('COMMIT')).toBe(false);
     const locks = seen.filter((s) => s.startsWith('LOCK TABLE'));
     expect(locks).toEqual(DELETE_ORDER.map((t) => `LOCK TABLE ${t} IN SHARE ROW EXCLUSIVE MODE`));
     const firstPlanRead = seen.findIndex((s) => /FROM\s+users/.test(s));
@@ -178,6 +275,13 @@ describe('purge e2e — plan', () => {
 describe('purge e2e — code source', () => {
   const dir = __dirname;
   const sources = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'));
+
+  it('ne normalise jamais une adresse (aucun lower() ni toLowerCase())', () => {
+    for (const f of sources) {
+      const text = readFileSync(join(dir, f), 'utf8');
+      expect({ f, hit: /lower\(|toLowerCase\(|toUpperCase\(|upper\(|ILIKE/i.exec(text)?.[0] ?? null }).toEqual({ f, hit: null });
+    }
+  });
 
   it('ne contient aucun ordre de schéma ni de vidage de table', () => {
     expect(sources.length).toBeGreaterThanOrEqual(4);

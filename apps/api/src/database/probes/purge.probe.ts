@@ -16,8 +16,14 @@
  *      (utilisateur, prestataire, métier, service, compte Connect), anciens
  *      comptes supprimés en entier avec leurs fichiers, liste Stripe exacte,
  *      catalogue identique, données réelles et adresses proches intactes ;
- *   E. second passage : rien à purger ; fichier restant sans ligne supprimé,
- *      fichier encore référencé gardé.
+ *   E. second passage : rien à purger, et l'exécution sans phrase reprend quand
+ *      même les fichiers restants (fichier sans ligne supprimé, fichier encore
+ *      référencé gardé) ;
+ * plus, depuis la relecture indépendante : adresses sosies (casse, signe
+ * Kelvin, ancienne adresse en majuscules) et compte fixe au mauvais prénom
+ * jamais visés, adresse fixe en double refusée (I1) ; colonnes de hachés
+ * illisibles au rôle (M2) ; COMMIT incertain qui garde la liste Stripe (M1) ;
+ * échec de l'étape fichiers après le COMMIT, rapport de base déjà émis (I3).
  *
  * Lancement (base JETABLE seulement — refus de tout nom sans « probe ») :
  *   PURGE_PROBE_ADMIN_URL=postgresql://<superuser>@…/linkr_purge_probe \
@@ -33,13 +39,15 @@ import { Client } from 'pg';
 import {
   assertPurgeRole,
   catalogFingerprint,
+  CommitUncertainError,
+  CommittedReport,
   executePurge,
   lockModifiableTables,
-  retryLeftoverFiles,
+  PostCommitError,
   sameCatalog,
 } from '../purge/purge-execute';
 import { buildPlan, isBlocked, PurgePlan } from '../purge/purge-plan';
-import { confirmationPhrase, DELETE_ORDER, PurgeRefusal, roleGrantSql } from '../purge/purge-rules';
+import { DELETE_ORDER, planPhrase, PurgeRefusal, roleGrantSql } from '../purge/purge-rules';
 
 let passed = 0;
 const failures: string[] = [];
@@ -78,6 +86,10 @@ const U_REALPRO = id(6); // vrai prestataire
 const U_ADMIN = id(7); // administrateur
 const U_NEAR = id(8); // adresse proche
 const U_WRONGNAME = id(9); // bon format, mauvais prénom
+const U_LOOK_CASE = id(10); // « E2E-Client@LinkrApp.com »
+const U_LOOK_KELVIN = id(11); // signe Kelvin U+212A
+const U_LOOK_LEGACY = id(12); // ancienne adresse en majuscules
+const U_DUP = id(13); // doublon supprimé en douceur d'une adresse fixe
 // Prestataires
 const P_FIX = id(101);
 const P_LEG = id(102);
@@ -102,6 +114,7 @@ const CON_LEG = id(402);
 const PM_FC = id(411);
 const PM_LC = id(412);
 const PM_REAL = id(413);
+const PM_LOOK = id(414);
 // Demandes
 const SR_FIX_DONE = id(501);
 const SR_FIX_TENDER = id(502);
@@ -189,6 +202,9 @@ async function seed(db: Client, storage: string): Promise<void> {
   await insertUser(db, U_ADMIN, 'admin-sonde@linkr.test', 'Ada', { system_role: 'ADMIN' });
   await insertUser(db, U_NEAR, 'xe2e+client-20261102-ab12cd34@gmail.com', 'e2e');
   await insertUser(db, U_WRONGNAME, 'e2e+client-20261102-11111111@gmail.com', 'Carol');
+  await insertUser(db, U_LOOK_CASE, 'E2E-Client@LinkrApp.com', 'e2e');
+  await insertUser(db, U_LOOK_KELVIN, 'e2e-client@lin\u212Arapp.com', 'e2e');
+  await insertUser(db, U_LOOK_LEGACY, 'E2E+client-20261102-ab12cd34@gmail.com', 'e2e');
 
   // Prestataires, métiers, services, Connect
   await insertProvider(db, P_FIX, U_FP);
@@ -231,7 +247,7 @@ async function seed(db: Client, storage: string): Promise<void> {
       [cid, pid, acct],
     );
   }
-  for (const [pm, owner, spm] of [[PM_FC, U_FC, 'pm_sonde_fixe'], [PM_LC, U_LC, 'pm_sonde_ancien'], [PM_REAL, U_REAL, 'pm_sonde_reel']]) {
+  for (const [pm, owner, spm] of [[PM_FC, U_FC, 'pm_sonde_fixe'], [PM_LC, U_LC, 'pm_sonde_ancien'], [PM_REAL, U_REAL, 'pm_sonde_reel'], [PM_LOOK, U_LOOK_CASE, 'pm_sonde_sosie']]) {
     await db.query(
       `INSERT INTO payment_methods (id, owner_user_id, stripe_payment_method_id, type, last4, is_default) VALUES ($1, $2, $3, 'CARD', '4242', true)`,
       [pm, owner, spm],
@@ -381,7 +397,7 @@ async function main(): Promise<void> {
       check('la demande du vrai testeur n’est pas dans le plan', plan.rows.service_requests.includes(SR_BLOCK), false);
       await refusal(
         'exécution d’un plan bloqué',
-        () => executePurge(db, { confirm: confirmationPhrase(plan.accounts.length, plan.fingerprint), outDir, storageDir: storage }),
+        () => executePurge(db, { confirm: planPhrase(plan.accounts, plan.fingerprint), outDir, storageDir: storage }),
         'bloquée',
       );
     });
@@ -425,7 +441,23 @@ async function main(): Promise<void> {
         write = /permission denied/.test(String(err)) ? 'refusé' : String(err);
       }
       check('écriture dans le catalogue refusée au rôle', write, 'refusé');
+      for (const [table, col] of [['user_auth_providers', 'password_hash'], ['password_reset_tokens', 'token_hash']]) {
+        let read = 'accepté';
+        try {
+          await db.query(`SELECT ${col} FROM ${table} LIMIT 1`);
+        } catch (err) {
+          read = /permission denied/.test(String(err)) ? 'refusé' : String(err);
+        }
+        check(`M2 : lecture de ${table}.${col} refusée au rôle`, read, 'refusé');
+      }
+      const ids = await db.query(`SELECT id, user_id FROM user_auth_providers WHERE user_id = $1`, [U_LP]);
+      check('M2 : id et user_id restent lisibles', ids.rowCount, 1);
     });
+    await admin.query(`GRANT SELECT (password_hash) ON TABLE user_auth_providers TO linkr_purge`);
+    await asPurge(purgeUrl.toString(), async (db) => {
+      await refusal('M2 : rôle qui peut lire password_hash', () => assertPurgeRole(db), 'password_hash');
+    });
+    await admin.query(`REVOKE SELECT (password_hash) ON TABLE user_auth_providers FROM linkr_purge`);
 
     console.log('B. ADMIN, catalogue, super-utilisateur');
     await refusal('connexion en super-utilisateur', () => assertPurgeRole(admin), 'super-utilisateur');
@@ -440,6 +472,19 @@ async function main(): Promise<void> {
       check('D6 : catalogue qui pointe vers un compte visé → bloqué', plan.catalogBlockers.map((b) => b.id), [ITEM]);
     });
     await admin.query(`UPDATE service_items SET suggested_by_user_id = NULL WHERE id = $1`, [ITEM]);
+    await insertUser(admin, U_DUP, FIXED_EMAILS[1], 'e2e', { deleted_at_utc: new Date() });
+    await asPurge(purgeUrl.toString(), async (db) => {
+      await refusal('I1 : adresse fixe en double (une ligne supprimée en douceur)', () => simulate(db), 'lignes');
+    });
+    await admin.query(`DELETE FROM user_auth_providers WHERE user_id = $1`, [U_DUP]);
+    await admin.query(`DELETE FROM users WHERE id = $1`, [U_DUP]);
+    await admin.query(`UPDATE users SET first_name = 'Carole' WHERE id = $1`, [U_FC]);
+    await asPurge(purgeUrl.toString(), async (db) => {
+      const plan = await simulate(db);
+      check('I1 : compte fixe au mauvais prénom non visé', plan.accounts.some((a) => a.id === U_FC), false);
+      check('I1 : ses demandes vers le prestataire e2e bloquent la purge', isBlocked(plan), true);
+    });
+    await admin.query(`UPDATE users SET first_name = 'e2e' WHERE id = $1`, [U_FC]);
     check('rien supprimé après les refus', await counts(admin), before);
 
     console.log('C. Phrase fausse, puis base modifiée après la simulation');
@@ -454,8 +499,15 @@ async function main(): Promise<void> {
         `${U_LC}:FULL`,
       ].sort());
       check('aucun libellé de compte ne contient une adresse', plan.accounts.some((a) => a.label.includes('@')), false);
+      check(
+        'I1 : sosies (casse, Kelvin, ancienne adresse en majuscules) jamais visés',
+        plan.accounts.filter((a) => [U_LOOK_CASE, U_LOOK_KELVIN, U_LOOK_LEGACY].includes(a.id)).length,
+        0,
+      );
+      check('I1 : carte du sosie hors du plan', plan.rows.payment_methods.includes(PM_LOOK), false);
+      check('M5 : la phrase compte les comptes supprimés en entier (2), pas les 4 visés', planPhrase(plan.accounts, plan.fingerprint).startsWith('PURGER E2E 2 COMPTES '), true);
       check('signalement du titre e2e-paiement- absent (la demande est dans le plan)', plan.warnings.filter((w) => w.includes('e2e-paiement')), []);
-      phrase = confirmationPhrase(plan.accounts.length, plan.fingerprint);
+      phrase = planPhrase(plan.accounts, plan.fingerprint);
       await refusal('phrase fausse', () => executePurge(db, { confirm: `${phrase}x`, outDir, storageDir: storage }), 'phrase');
     });
     check('rien supprimé après la phrase fausse', await counts(admin), before);
@@ -469,17 +521,60 @@ async function main(): Promise<void> {
     check('rien supprimé après le changement d’empreinte', await counts(admin), { ...before, notifications: before.notifications + 1 });
     check('aucune liste Stripe laissée après les refus', readdirSync(outDir), []);
 
-    console.log('D. Purge réelle, sous le rôle linkr_purge (tables verrouillées)');
+    console.log('M1. COMMIT qui lève une erreur réseau');
+    await asPurge(purgeUrl.toString(), async (db) => {
+      const p = await simulate(db);
+      let outcome = 'aucune erreur';
+      try {
+        await executePurge(db, {
+          confirm: planPhrase(p.accounts, p.fingerprint),
+          outDir,
+          storageDir: storage,
+          stamp: '20261104T000001Z',
+          commit: async () => {
+            throw new Error('Connection terminated unexpectedly');
+          },
+        });
+      } catch (err) {
+        outcome = err instanceof CommitUncertainError && err.message.startsWith('état du COMMIT incertain : vérifier la base, conserver ')
+          ? 'incertain'
+          : String(err);
+      }
+      check('M1 : erreur « état du COMMIT incertain »', outcome, 'incertain');
+    });
+    check('M1 : la liste Stripe .pending est GARDÉE', existsSync(join(outDir, '20261104T000001Z-stripe-ids.txt.pending')), true);
+    check('M1 : rien supprimé (COMMIT non envoyé dans la sonde)', await counts(admin), { ...before, notifications: before.notifications + 1 });
+    rmSync(join(outDir, '20261104T000001Z-stripe-ids.txt.pending'));
+
+    console.log('D. Purge réelle, sous le rôle linkr_purge, avec échec de l’étape fichiers (I3)');
+    // Une pièce jointe qui ne peut pas être supprimée (un dossier à sa place),
+    // et une liste de fichiers restants qui ne peut pas être écrite.
+    rmSync(join(storage, KEY_ATT));
+    mkdirSync(join(storage, KEY_ATT));
+    writeFileSync(join(storage, KEY_ATT, 'garde'), 'x');
+    mkdirSync(join(outDir, '20261104T000000Z-files-remaining.txt'));
     let plan!: PurgePlan;
     await asPurge(purgeUrl.toString(), async (db) => {
       const p = await simulate(db);
-      const result = await executePurge(db, {
-        confirm: confirmationPhrase(p.accounts.length, p.fingerprint),
-        outDir,
-        storageDir: storage,
-        stamp: '20261104T000000Z',
-      });
-      plan = result.plan;
+      plan = p;
+      const committedReports: CommittedReport[] = [];
+      let failure: PostCommitError | null = null;
+      try {
+        await executePurge(db, {
+          confirm: planPhrase(p.accounts, p.fingerprint),
+          outDir,
+          storageDir: storage,
+          stamp: '20261104T000000Z',
+          onCommitted: (r) => committedReports.push(r),
+        });
+      } catch (err) {
+        if (err instanceof PostCommitError) failure = err;
+        else throw err;
+      }
+      check('I3 : rapport de la base émis une fois, avant l’étape fichiers', committedReports.length, 1);
+      check('I3 : PostCommitError levée', failure !== null, true);
+      check('I3 : fichier non supprimé listé', failure?.notDeleted ?? null, [KEY_ATT]);
+      const result = committedReports[0];
       check('lignes supprimées par table', result.deletedCounts, {
         refunds: 1,
         payments: 3,
@@ -501,10 +596,11 @@ async function main(): Promise<void> {
         user_auth_providers: 2,
         users: 2,
       });
-      check('fichiers supprimés', [...result.files.deleted].sort(), [KEY_ATT, KEY_DOC, KEY_PORT_LEG].sort());
-      check('aucun fichier restant', result.files.remaining, []);
-      check('liste Stripe écrite', result.stripeFile !== null, true);
+      check('liste Stripe finale indiquée dans le rapport de la base', result.stripeFile, join(outDir, '20261104T000000Z-stripe-ids.txt'));
+      check('fichiers des lignes supprimées effacés', [KEY_DOC, KEY_PORT_LEG].map((k) => existsSync(join(storage, k))), [false, false]);
     });
+    rmSync(join(outDir, '20261104T000000Z-files-remaining.txt'), { recursive: true });
+    rmSync(join(storage, KEY_ATT), { recursive: true });
 
     const stripeLines = readFileSync(join(outDir, '20261104T000000Z-stripe-ids.txt'), 'utf8')
       .split('\n')
@@ -540,11 +636,16 @@ async function main(): Promise<void> {
       `SELECT 'user:'||id AS k FROM users WHERE id = ANY($1::uuid[])
        UNION ALL SELECT 'request:'||id FROM service_requests WHERE id = ANY($2::uuid[])
        UNION ALL SELECT 'portfolio:'||id FROM portfolio_items WHERE id = $3
-       UNION ALL SELECT 'pm:'||id FROM payment_methods WHERE id = $4
+       UNION ALL SELECT 'pm:'||id FROM payment_methods WHERE id = ANY($4::uuid[])
        ORDER BY 1`,
-      [[U_REAL, U_REALPRO, U_ADMIN, U_NEAR, U_WRONGNAME], [SR_REAL, SR_REAL_TENDER], PORT_REAL, PM_REAL],
+      [
+        [U_REAL, U_REALPRO, U_ADMIN, U_NEAR, U_WRONGNAME, U_LOOK_CASE, U_LOOK_KELVIN, U_LOOK_LEGACY],
+        [SR_REAL, SR_REAL_TENDER],
+        PORT_REAL,
+        [PM_REAL, PM_LOOK],
+      ],
     );
-    check('données réelles, ADMIN et adresses proches intactes (5 comptes, 2 demandes, 1 photo, 1 carte)', real.rows.length, 9);
+    check('données réelles, ADMIN, adresses proches et sosies intacts (8 comptes, 2 demandes, 1 photo, 2 cartes)', real.rows.length, 13);
     check('fichier d’un vrai prestataire gardé', existsSync(join(storage, KEY_PORT_REAL)), true);
     check('catalogue identique (compte et md5)', sameCatalog(catalogBefore, await catalogFingerprint(admin)), true);
 
@@ -563,9 +664,12 @@ async function main(): Promise<void> {
       check('second passage : rien à purger', DELETE_ORDER.every((t) => again.rows[t].length === 0), true);
       check('second passage : comptes fixes toujours visés', again.accounts.length, 2);
       writeFileSync(join(outDir, '20261103T000000Z-files-remaining.txt'), `${KEY_ORPHAN}\n${KEY_PORT_REAL}\n`);
-      const r = await retryLeftoverFiles(db, outDir, storage);
-      check('fichier sans ligne supprimé', r.deleted, [KEY_ORPHAN]);
-      check('fichier encore référencé gardé', r.remaining, [KEY_PORT_REAL]);
+      const before2 = await counts(admin);
+      const r = await executePurge(db, { confirm: '', outDir, storageDir: storage, stamp: '20261104T000002Z' });
+      check('I2 : plan vide, exécution sans phrase, aucune transaction validée', r.committed, false);
+      check('I2 : fichier sans ligne supprimé', r.leftovers.deleted, [KEY_ORPHAN]);
+      check('I2 : fichier encore référencé gardé', r.leftovers.remaining, [KEY_PORT_REAL]);
+      check('I2 : rien écrit en base', await counts(admin), before2);
     });
     check('fichier référencé toujours sur le disque', existsSync(join(storage, KEY_PORT_REAL)), true);
   } finally {

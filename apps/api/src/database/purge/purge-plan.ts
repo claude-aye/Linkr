@@ -18,6 +18,7 @@
  */
 import {
   assertNoAdmin,
+  assertSingleFixedRow,
   classifyAccount,
   FIXED_E2E_EMAILS,
   LEGACY_E2E_EMAIL_SQL_PATTERN,
@@ -87,7 +88,8 @@ export async function buildPlan(db: Queryable): Promise<PurgePlan> {
   const violations: Violation[] = [];
   const warnings: string[] = [];
 
-  // 1. Comptes : égalité exacte OU regex ancrée. Jamais de motif partiel.
+  // 1. Comptes : égalité exacte OU regex ancrée, sur l'adresse BRUTE (aucun
+  //    passage en minuscules : voir purge-rules.ts). `~` est sensible à la casse.
   const candidates = await db.query<{
     id: string;
     email: string;
@@ -95,9 +97,9 @@ export async function buildPlan(db: Queryable): Promise<PurgePlan> {
     system_role: string;
     deleted_at_utc: Date | null;
   }>(
-    `SELECT id, lower(email) AS email, first_name, system_role, deleted_at_utc
+    `SELECT id, email, first_name, system_role, deleted_at_utc
        FROM users
-      WHERE lower(email) = ANY($1::text[]) OR lower(email) ~ $2
+      WHERE email = ANY($1::text[]) OR email ~ $2
       ORDER BY id`,
     [FIXED_E2E_EMAILS, LEGACY_E2E_EMAIL_SQL_PATTERN],
   );
@@ -115,6 +117,7 @@ export async function buildPlan(db: Queryable): Promise<PurgePlan> {
     if (decision.kind === 'retained') accounts.push(decision.account);
     else ignored.push({ id: decision.id, reason: decision.reason });
   }
+  assertSingleFixedRow(candidates.rows.map((c) => c.email));
   assertNoAdmin(accounts);
 
   const T = accounts.map((a) => a.id);
@@ -415,4 +418,9 @@ export async function buildPlan(db: Queryable): Promise<PurgePlan> {
 
 export function isBlocked(plan: PurgePlan): boolean {
   return plan.violations.length > 0 || plan.catalogBlockers.length > 0;
+}
+
+/** Aucune ligne à supprimer (les comptes fixes peuvent être visés sans rien à purger). */
+export function isEmpty(plan: PurgePlan): boolean {
+  return (Object.keys(plan.rows) as ModifiableTable[]).every((t) => plan.rows[t].length === 0);
 }
