@@ -42,7 +42,7 @@ Durée : environ 1 min 30 au premier lancement, 1 min ensuite.
 | E | Un client cherche « Coiffure » autour de « Place d’Youville, Québec » et retrouve le prestataire de B et D. |
 | F | Mauvais mot de passe : « Identifiants invalides », reste sur `/login`, aucune erreur JavaScript. |
 
-B et E utilisent les **vrais** services externes (Nominatim, MapTiler), sans doublure. Les adresses sont fixes : le cache de géocodage de l'API (30 jours) évite Nominatim après le premier lancement. Un échec de géocodage produit un message qui commence par « ÉCHEC DE GÉOCODAGE (service externe…) », distinct d'un échec applicatif.
+B et E utilisent les **vrais** services externes (Nominatim, MapTiler), sans doublure. Les adresses sont fixes : le cache de géocodage de l'API (30 jours) évite Nominatim après le premier lancement. Les candidats d'adresse sont choisis par **libellé** (« Agglomération de Québec »), jamais par position : le géocodeur place Montréal avant Québec pour « Place d’Youville ». Un échec de géocodage produit un message qui commence par « ÉCHEC DE GÉOCODAGE (service externe…) », distinct d'un échec applicatif.
 
 ## Lire le rapport
 

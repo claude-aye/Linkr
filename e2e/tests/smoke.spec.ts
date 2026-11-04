@@ -7,6 +7,7 @@ import {
   createProviderProfile,
   geocodeFailure,
   logIn,
+  pickCandidateByLabel,
   sessionFor,
   signUp,
 } from '../lib/flows';
@@ -133,7 +134,7 @@ test('E — un client trouve le prestataire en recherche de proximité', async (
   if (await geoDown.first().isVisible()) throw geocodeFailure('la recherche d’adresse est indisponible.');
   if (await noAddress.first().isVisible()) throw geocodeFailure(`« ${SEARCH_ADDRESS} » n’a donné aucun résultat.`);
 
-  await candidates.locator('xpath=..').getByRole('link').first().click();
+  await pickCandidateByLabel(candidates.locator('xpath=..').getByRole('link'), SEARCH_ADDRESS);
 
   // Le prestataire de B/D n'a aucune ligne Stripe Connect et reste découvrable :
   // l'éligibilité (eligibility.sql.ts) ne lit ni stripe_connect_accounts ni charges_enabled.
