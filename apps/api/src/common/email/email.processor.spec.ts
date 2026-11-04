@@ -91,3 +91,54 @@ describe('EmailProcessor.onFailed', () => {
     expect(error.mock.calls[0][0]).toContain('no job attached');
   });
 });
+
+/**
+ * Logs never carry the recipient address (personal information; Docker logs
+ * rotate by size and can keep a tester's address for months).
+ */
+describe('EmailProcessor logs — no recipient address', () => {
+  const ADDRESS = 'destinataire@linkr.test';
+  let sender: IEmailSender;
+  let processor: EmailProcessor;
+  let calls: jest.SpyInstance[];
+
+  beforeEach(() => {
+    sender = { send: jest.fn(async (_: EmailMessage) => undefined) };
+    processor = new EmailProcessor(sender);
+    const logger = processor['logger'];
+    calls = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map((m) =>
+      jest.spyOn(logger, m).mockImplementation(() => undefined),
+    );
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const allMessages = () =>
+    calls.flatMap((spy) => spy.mock.calls.map((c) => String(c[0])));
+
+  it('success: sends to the address but never logs it', async () => {
+    await processor.process(failedJob({ attemptsMade: 0 }));
+
+    expect(sender.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ADDRESS }),
+    );
+    const messages = allMessages();
+    expect(messages.length).toBeGreaterThan(0);
+    for (const m of messages) expect(m).not.toContain(ADDRESS);
+  });
+
+  it('failure (retry and permanent): never logs the address', () => {
+    processor.onFailed(
+      failedJob({ attemptsMade: 1, finishedOn: null }),
+      new Error('ECONNREFUSED'),
+    );
+    processor.onFailed(
+      failedJob({ attemptsMade: 3, finishedOn: Date.now() }),
+      new Error('ECONNREFUSED'),
+    );
+
+    const messages = allMessages();
+    expect(messages).toHaveLength(2);
+    for (const m of messages) expect(m).not.toContain(ADDRESS);
+  });
+});
