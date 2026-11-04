@@ -1,21 +1,20 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { existingAccount, newAccount, saveAccount, utcDay } from '../lib/accounts';
+import { PROVIDER_DISPLAY_NAME, accountEmail, knownAccount, saveAccount } from '../lib/accounts';
 import {
-  SEARCH_ADDRESS,
   closeSession,
   createProviderProfile,
-  geocodeFailure,
+  ensureRegistered,
   logIn,
-  pickCandidateByLabel,
+  searchProviderCard,
   sessionFor,
-  signUp,
 } from '../lib/flows';
 
 /**
- * Tests de fumée de la version d'essai. Lancés à la main (voir docs/deploy/e2e-smoke.md).
+ * Tests de fumée de la version d'essai. Lancés à la main (voir docs/deploy/tests-fumee.md).
  * Séquentiels : le prestataire créé en B et D est celui que E doit retrouver.
- * Aucun paiement, aucune réinitialisation par courriel, aucun appel hors navigateur.
+ * Aucun paiement (voir payment.spec.ts, lancé à part), aucune réinitialisation par
+ * courriel, aucun appel hors navigateur. Comptes à adresses fixes e2e-*@linkrapp.com.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -41,24 +40,18 @@ test('A — accueil en HTTPS, www redirige vers l’apex', async ({ page, reques
 });
 
 test('B — inscription prestataire, connexion, profil prestataire', async ({ browser }) => {
-  let account = existingAccount('provider');
-  if (!account) {
-    // Inscription dans un contexte jetable : la connexion qui suit part d'une session vierge.
-    account = newAccount('provider');
-    const signup = await browser.newContext();
-    await signUp(await signup.newPage(), account);
-    saveAccount('provider', account);
-    await signup.close();
-  }
+  // Inscription si le mot de passe n'est pas mémorisé (un 409 sans mot de passe connu échoue).
+  const { account } = await ensureRegistered(browser, 'provider');
 
   const context = await browser.newContext();
   const page = await context.newPage();
   await logIn(page, account);
+  saveAccount('provider', account);
 
   await page.goto('/dashboard');
   const hasProfile = await page.getByRole('navigation', { name: PROVIDER_NAV }).isVisible();
   if (!hasProfile) {
-    const displayName = account.displayName ?? `e2e-prestataire-${utcDay()}`;
+    const displayName = account.displayName ?? PROVIDER_DISPLAY_NAME;
     await createProviderProfile(page, displayName);
     saveAccount('provider', { ...account, displayName });
   }
@@ -120,49 +113,22 @@ test('D — déclarer le métier Coiffure', async ({ browser }) => {
 
 test('E — un client trouve le prestataire en recherche de proximité', async ({ browser }) => {
   const { context } = await sessionFor(browser, 'client');
-  const provider = existingAccount('provider');
+  const displayName = knownAccount('provider').account.displayName ?? PROVIDER_DISPLAY_NAME;
   const page = await context.newPage();
-  await page.goto('/recherche');
-  await page.getByLabel('Métier', { exact: true }).selectOption({ label: 'Coiffure' });
-  await page.getByLabel('Adresse', { exact: true }).fill(SEARCH_ADDRESS);
-  await page.getByRole('button', { name: 'Rechercher cette adresse' }).click();
-
-  const candidates = page.getByText(/Choisissez l.adresse exacte/);
-  const geoDown = page.getByText(/Recherche d.adresse impossible/);
-  const noAddress = page.getByText(/Aucune adresse trouvée/);
-  await expect(candidates.or(geoDown).or(noAddress)).toBeVisible({ timeout: 30_000 });
-  if (await geoDown.first().isVisible()) throw geocodeFailure('la recherche d’adresse est indisponible.');
-  if (await noAddress.first().isVisible()) throw geocodeFailure(`« ${SEARCH_ADDRESS} » n’a donné aucun résultat.`);
-
-  await pickCandidateByLabel(candidates.locator('xpath=..').getByRole('link'), SEARCH_ADDRESS);
-
-  // Le prestataire de B/D n'a aucune ligne Stripe Connect et reste découvrable :
-  // l'éligibilité (eligibility.sql.ts) ne lit ni stripe_connect_accounts ni charges_enabled.
-  const expectedName = provider?.displayName ? new RegExp(provider.displayName) : /e2e-prestataire-\d{8}/;
-  const card = page.getByRole('link', { name: expectedName });
-  const searchFailed = page.getByText('Recherche impossible');
-  const empty = page.getByText(/Aucun (prestataire|professionnel)/);
-  await expect(card.first().or(searchFailed).or(empty.first())).toBeVisible({ timeout: 30_000 });
-  if (await searchFailed.isVisible()) {
-    throw new Error('ÉCHEC APPLICATIF : « Recherche impossible » (GET /service-providers/discover a échoué).');
-  }
-  await expect(
-    card.first(),
-    'Le prestataire créé en B et D (Coiffure, rayon 25 km) devrait figurer dans les résultats',
-  ).toBeVisible();
+  await searchProviderCard(page, displayName);
   await closeSession(context, 'client');
 });
 
 test('F — mauvais mot de passe : message clair, pas de crash', async ({ browser }) => {
-  const account = existingAccount('provider') ?? existingAccount('client');
-  test.skip(!account, 'Aucun compte connu : B doit avoir réussi.');
+  // Adresse fixe du prestataire de B (le compte existe dès que B a réussi).
+  const email = accountEmail('provider');
   const context = await browser.newContext();
   const page: Page = await context.newPage();
   const crashes: string[] = [];
   page.on('pageerror', (e) => crashes.push(e.message));
 
   await page.goto('/login');
-  await page.getByLabel('Courriel').fill(account!.email);
+  await page.getByLabel('Courriel').fill(email);
   await page.getByLabel('Mot de passe', { exact: true }).fill('Mauvais-mot-de-passe-1!');
   await page.getByRole('button', { name: 'Se connecter' }).click();
 
