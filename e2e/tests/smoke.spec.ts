@@ -166,7 +166,7 @@ test('F — mauvais mot de passe : message clair, pas de crash', async ({ browse
   await page.getByLabel('Mot de passe', { exact: true }).fill('Mauvais-mot-de-passe-1!');
   await page.getByRole('button', { name: 'Se connecter' }).click();
 
-  await expect(page.getByRole('alert')).toContainText(/Identifiants invalides/);
+  await expect(page.getByRole('alert').filter({ hasText: /Identifiants invalides/ })).toBeVisible();
   await expect(page).toHaveURL(/\/login/);
   expect(crashes, 'Aucune erreur JavaScript non interceptée').toEqual([]);
   await context.close();
