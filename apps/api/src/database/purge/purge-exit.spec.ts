@@ -70,6 +70,18 @@ describe('purge e2e — liste des fichiers écrite avant les unlink (M-e)', () =
   const keys = ['portfolio/p/1.webp', 'portfolio/p/2.webp', 'verifications/d/3.pdf'];
   const list = (): string => join(out, `${stamp}-files-remaining.txt`);
 
+  // Node charge paresseusement son implémentation récursive de rmSync (rimraf) et y
+  // garde une référence à fs.unlinkSync. Le premier rmSync récursif du processus,
+  // s'il a lieu pendant un espion, fige l'espion : une fois restauré il ne fait plus
+  // rien, et tout rmSync ultérieur (production comprise) cesse de supprimer. On
+  // l'amorce donc ici, avant tout espion.
+  beforeAll(() => {
+    const warm = mkdtempSync(join(tmpdir(), 'purge-warm-'));
+    mkdirSync(join(warm, 'd'));
+    writeFileSync(join(warm, 'd', 'f'), 'x');
+    rmSync(warm, { recursive: true, force: true });
+  });
+
   beforeEach(() => {
     storage = mkdtempSync(join(tmpdir(), 'purge-st-'));
     out = mkdtempSync(join(tmpdir(), 'purge-out-'));
@@ -78,36 +90,63 @@ describe('purge e2e — liste des fichiers écrite avant les unlink (M-e)', () =
       writeFileSync(join(storage, k), 'x');
     }
   });
+  // Aucun espion ne survit au test : le nettoyage ci-dessous passe par la vraie fs.
   afterEach(() => {
-    jest.restoreAllMocks();
     rmSync(storage, { recursive: true, force: true });
     rmSync(out, { recursive: true, force: true });
   });
 
+  /**
+   * Espionne fs.unlinkSync en ne traitant QUE les chemins du stockage du test.
+   * Tout autre chemin (la liste, les dossiers temporaires) passe directement par la
+   * vraie fonction : sous Linux, rmSync rappelle unlinkSync par l'objet exporté.
+   * L'espion est restauré dans un finally, avant tout nettoyage.
+   */
+  function withUnlinkSpy(onStorageFile: (p: string, real: (p: string) => void) => void, run: () => void): void {
+    const real = fs.unlinkSync;
+    const spy = jest.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
+      if (String(p).startsWith(storage)) onStorageFile(String(p), real);
+      else real(p);
+    });
+    try {
+      run();
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
   it('à chaque unlink, la liste sur le disque contient TOUTES les clés (processus tué = liste complète)', () => {
     const seen: string[][] = [];
-    const real = fs.unlinkSync;
-    jest.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
-      seen.push(readFileSync(list(), 'utf8').split('\n').filter(Boolean));
-      real(p);
-    });
-    const { files, listError } = deletePlanFiles(storage, out, stamp, keys);
+    let outcome!: ReturnType<typeof deletePlanFiles>;
+    withUnlinkSpy(
+      (p, real) => {
+        seen.push(readFileSync(list(), 'utf8').split('\n').filter(Boolean));
+        real(p);
+      },
+      () => {
+        outcome = deletePlanFiles(storage, out, stamp, keys);
+      },
+    );
     expect(seen).toHaveLength(3);
     for (const snapshot of seen) expect(snapshot).toEqual(keys);
-    expect(files.deleted).toEqual(keys);
-    expect(listError).toBeNull();
+    expect(outcome.files.deleted).toEqual(keys);
+    expect(outcome.listError).toBeNull();
     expect(existsSync(list())).toBe(false); // tout est parti : liste effacée
   });
 
   it('après la suppression, la liste ne garde que ce qui reste', () => {
-    const real = fs.unlinkSync;
-    jest.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
-      if (String(p).endsWith('2.webp')) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
-      real(p);
-    });
-    const { files, listError } = deletePlanFiles(storage, out, stamp, keys);
-    expect(files.remaining).toEqual(['portfolio/p/2.webp']);
-    expect(listError).toBeNull();
+    let outcome!: ReturnType<typeof deletePlanFiles>;
+    withUnlinkSpy(
+      (p, real) => {
+        if (p.endsWith('2.webp')) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+        real(p);
+      },
+      () => {
+        outcome = deletePlanFiles(storage, out, stamp, keys);
+      },
+    );
+    expect(outcome.files.remaining).toEqual(['portfolio/p/2.webp']);
+    expect(outcome.listError).toBeNull();
     expect(readFileSync(list(), 'utf8')).toBe('portfolio/p/2.webp\n');
   });
 
@@ -119,14 +158,18 @@ describe('purge e2e — liste des fichiers écrite avant les unlink (M-e)', () =
 
   it('dossier des listes inutilisable : suppression faite quand même, erreur remontée si un fichier reste', () => {
     mkdirSync(list()); // un dossier à la place de la liste
-    const real = fs.unlinkSync;
-    jest.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
-      if (String(p).endsWith('3.pdf')) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' });
-      real(p);
-    });
-    const { files, listError } = deletePlanFiles(storage, out, stamp, keys);
-    expect(files.deleted).toEqual(keys.slice(0, 2));
-    expect(files.remaining).toEqual(['verifications/d/3.pdf']);
-    expect(listError).not.toBeNull();
+    let outcome!: ReturnType<typeof deletePlanFiles>;
+    withUnlinkSpy(
+      (p, real) => {
+        if (p.endsWith('3.pdf')) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' });
+        real(p);
+      },
+      () => {
+        outcome = deletePlanFiles(storage, out, stamp, keys);
+      },
+    );
+    expect(outcome.files.deleted).toEqual(keys.slice(0, 2));
+    expect(outcome.files.remaining).toEqual(['verifications/d/3.pdf']);
+    expect(outcome.listError).not.toBeNull();
   });
 });
