@@ -44,11 +44,12 @@ export class EmailService {
       locale,
     });
 
-    // Recipient and template only. `vars` is never logged: in A-2 it carries a
-    // password-reset token, and a log line is the one place a secret outlives
-    // every retention policy written for the store it came from.
+    // Template, locale and job id only. Neither the recipient address nor
+    // `vars` is ever logged: the address is personal information, and `vars`
+    // carries a password-reset token. A log line outlives every retention
+    // policy written for the store it came from.
     this.logger.log(
-      `Queued "${input.template}" for ${input.to} (${locale}) as job ${job.id}`,
+      `Queued "${input.template}" (${locale}) as job ${job.id}`,
     );
   }
 }

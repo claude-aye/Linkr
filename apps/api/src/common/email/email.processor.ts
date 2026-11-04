@@ -45,7 +45,8 @@ export class EmailProcessor extends WorkerHost {
       text: rendered.text,
     });
 
-    this.logger.log(`Sent "${template}" to ${to} (${locale})`);
+    // Never log the recipient address (personal information): job id only.
+    this.logger.log(`Sent "${template}" (${locale}) as job ${job.id}`);
   }
 
   /**
@@ -78,19 +79,20 @@ export class EmailProcessor extends WorkerHost {
 
     // Defensive: this hook exists so a dead email is never silent, so it must
     // not be the thing that throws. A malformed job still gets a line.
-    const { to, template } = job.data ?? {};
+    // The recipient address is deliberately not read: it must not reach a log.
+    const { template } = job.data ?? {};
     const attempts = job.opts?.attempts ?? 1;
 
     if (job.finishedOn == null) {
       this.logger.warn(
-        `Email "${template}" to ${to} failed on attempt ${job.attemptsMade}/${attempts}, will retry: ${reason}`,
+        `Email "${template}" (job ${job.id}) failed on attempt ${job.attemptsMade}/${attempts}, will retry: ${reason}`,
       );
       return;
     }
 
     this.logger.error(
       `Email PERMANENTLY FAILED after ${job.attemptsMade} attempt(s): ` +
-        `"${template}" to ${to} (job ${job.id}) — ${reason}`,
+        `"${template}" (job ${job.id}) — ${reason}`,
     );
   }
 }
