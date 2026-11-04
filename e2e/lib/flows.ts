@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type Browser, type Locator, type BrowserContext, type Page } from '@playwright/test';
 
 import { AUTH_DIR, type Account, type Role, existingAccount, newAccount, saveAccount, statePath } from './accounts';
 
@@ -81,6 +81,25 @@ export function geocodeFailure(detail: string): Error {
   return new Error(GEOCODE_FAILURE + detail);
 }
 
+/** Les candidats voulus sont à Québec : le géocodeur place Montréal avant (« Place d’Youville »). */
+export const QUEBEC_CANDIDATE = /Agglomération de Québec/i;
+
+/**
+ * Clique le candidat d'adresse dont le LIBELLÉ correspond, jamais par position.
+ * Aucun ne correspond : échec de géocodage listant tous les libellés vus.
+ */
+export async function pickCandidateByLabel(items: Locator, address: string): Promise<void> {
+  const labels = (await items.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+  const index = labels.findIndex((t) => QUEBEC_CANDIDATE.test(t));
+  if (index === -1) {
+    throw geocodeFailure(
+      `aucun candidat de « ${address} » ne correspond à ${QUEBEC_CANDIDATE}. Candidats vus : ` +
+        labels.map((t, i) => `${i + 1}. ${t}`).join(' | '),
+    );
+  }
+  await items.nth(index).click();
+}
+
 /** Crée le profil prestataire sur /providers/new (géocodage RÉEL de l'adresse fixe). */
 export async function createProviderProfile(page: Page, displayName: string): Promise<void> {
   await page.goto('/providers/new');
@@ -97,7 +116,7 @@ export async function createProviderProfile(page: Page, displayName: string): Pr
   if (await noMatch.isVisible()) throw geocodeFailure(`« ${PROVIDER_ADDRESS} » n’a donné aucun résultat.`);
   if (await unavailable.isVisible()) throw geocodeFailure('le service d’adresses est indisponible.');
 
-  await candidates.locator('xpath=..').getByRole('button').first().click();
+  await pickCandidateByLabel(candidates.locator('xpath=..').getByRole('button'), PROVIDER_ADDRESS);
   await expect(page.getByText(/Localisé/)).toBeVisible();
   await submit.click();
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
