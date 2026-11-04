@@ -130,6 +130,52 @@ function printResult(r: ExecuteResult): void {
   printFiles('Fichiers restants d’un passage précédent', r.leftovers);
 }
 
+/**
+ * Lance l'exécution et traduit son issue en code de sortie. `execute` reçoit le
+ * rappel à passer en `onCommitted` : dès qu'il a été appelé, le COMMIT est fait,
+ * et TOUTE erreur levée ensuite (rappel compris) sort en 4, jamais en 1 (I-b).
+ */
+export async function runExecution(
+  execute: (onCommitted: (r: CommittedReport) => void) => Promise<ExecuteResult>,
+): Promise<number> {
+  let result: ExecuteResult;
+  let committed = false;
+  try {
+    result = await execute((r) => {
+      committed = true;
+      printCommitted(r);
+    });
+  } catch (err) {
+    if (err instanceof PostCommitError) {
+      out(`BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE : ${err.message}`);
+      if (err.notDeleted.length === 0) out('  (aucun fichier de cette purge en attente)');
+      for (const k of err.notDeleted) out(`  non supprimé : ${k}`);
+      return EXIT.postCommit;
+    }
+    if (err instanceof CommitUncertainError) {
+      out(err.message);
+      return EXIT.commitUncertain;
+    }
+    if (committed) {
+      try {
+        out(`BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE : erreur après le COMMIT (${err instanceof Error ? err.message : String(err)})`);
+      } catch {
+        // Sortie illisible : le code 4 suffit à dire que la base est purgée.
+      }
+      return EXIT.postCommit;
+    }
+    throw err;
+  }
+  try {
+    printResult(result);
+  } catch (err) {
+    if (!committed) throw err;
+    out(`BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE : rapport non affiché (${err instanceof Error ? err.message : String(err)})`);
+    return EXIT.postCommit;
+  }
+  return EXIT.ok;
+}
+
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   if (args.includes('--print-role-sql')) {
@@ -180,52 +226,26 @@ async function main(): Promise<number> {
     }
 
     out('=== EXÉCUTION ===');
-    let result: ExecuteResult;
-    let committed = false;
-    try {
-      result = await executePurge(db, {
-        confirm,
-        outDir: outDir as string,
-        storageDir,
-        onCommitted: (r) => {
-          committed = true;
-          printCommitted(r);
-        },
-      });
-    } catch (err) {
-      if (err instanceof PostCommitError) {
-        out(`BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE : ${err.message}`);
-        if (err.notDeleted.length === 0) out('  (aucun fichier de cette purge en attente)');
-        for (const k of err.notDeleted) out(`  non supprimé : ${k}`);
-        return EXIT.postCommit;
-      }
-      if (err instanceof CommitUncertainError) {
-        out(err.message);
-        return EXIT.commitUncertain;
-      }
-      throw err;
-    }
-    try {
-      printResult(result);
-    } catch (err) {
-      if (!committed) throw err;
-      out(`BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE : rapport non affiché (${err instanceof Error ? err.message : String(err)})`);
-      return EXIT.postCommit;
-    }
-    return EXIT.ok;
+    return await runExecution((onCommitted) =>
+      executePurge(db, { confirm, outDir: outDir as string, storageDir, onCommitted }),
+    );
   } finally {
     await db.end().catch(() => undefined);
   }
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err: unknown) => {
-    if (err instanceof PurgeRefusal) {
-      process.stderr.write(`REFUS : ${err.message}\n`);
-      process.exit(EXIT.refusal);
-    }
-    // Jamais l'URL de connexion ni un secret : seulement le message.
-    process.stderr.write(`ERREUR (aucune transaction validée) : ${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(EXIT.error);
-  });
+// Lancé par `node dist/database/purge/purge.js` ; importé par les tests sans
+// rien exécuter.
+if (require.main === module) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((err: unknown) => {
+      if (err instanceof PurgeRefusal) {
+        process.stderr.write(`REFUS : ${err.message}\n`);
+        process.exit(EXIT.refusal);
+      }
+      // Jamais l'URL de connexion ni un secret : seulement le message.
+      process.stderr.write(`ERREUR (aucune transaction validée) : ${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(EXIT.error);
+    });
+}

@@ -84,15 +84,18 @@ Verrou, sauvegarde, témoin, plan affiché, puis la phrase **tapée à la main**
 |---|---|
 | 0 | terminé |
 | 1 | erreur, aucune transaction validée |
-| 2 | refus : configuration, témoin de sauvegarde, phrase, rôle, ADMIN, adresse fixe en double |
-| 3 | purge bloquée : contrôle de fermeture ou catalogue (rien supprimé) |
+| 2 | refus : configuration, témoin de sauvegarde, phrase, rôle, ADMIN, adresse fixe en double ; **et** purge bloquée détectée **sous verrou** pendant l'exécution (rien supprimé) |
+| 3 | purge bloquée détectée par la **simulation** : contrôle de fermeture ou catalogue (rien supprimé) |
 | 4 | **BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE** : lire le rapport avant toute relance |
 | 5 | **état du COMMIT incertain** : vérifier la base, conserver la liste Stripe `.pending` |
+| autre (130, 137, 143, 255…) | **état inconnu** : conteneur tué ou interrompu, peut-être après le COMMIT. Lire le rapport (une ligne `TRANSACTION VALIDÉE` dit que la base est purgée) et relancer la **simulation** avant toute autre action |
+
+En `--execute`, `purge.sh` lance d'abord la simulation : si elle répond 1, 2 ou 3, il s'arrête avec **ce même code**, sans rien modifier. Une purge bloquée apparaît donc normalement en **3** à cette étape. Elle ne sort en **2** que si une ligne tierce apparaît entre la simulation et l'exécution : le plan est recalculé sous verrou, et un plan bloqué y est un refus (`contrôle de fermeture ou catalogue : purge bloquée`). Le témoin de sauvegarde est effacé à la sortie de `purge.sh`, succès ou échec.
 
 ### Lire le rapport
 
 - `TRANSACTION VALIDÉE. Lignes supprimées :` est affiché **juste après le COMMIT**, avant toute opération sur les fichiers, avec le nombre de lignes par table, `Comptes fixes après purge : comptes=2 prestataires=1 connect=1` (identique à avant, sinon la transaction aurait été annulée), `Catalogue : empreintes identiques avant et après.` et le chemin de la liste Stripe (`/purge-out/<horodatage>-stripe-ids.txt`, sur l'hôte `/opt/linkr/purge-out/…`, `chmod 600`) suivi de l'avertissement ci-dessous.
-- `Fichiers : N supprimé(s), … NON supprimé(s), … clé(s) refusée(s)` : les fichiers sont supprimés **après** le COMMIT, seulement ceux des lignes supprimées. Un échec est listé dans `purge-out/<horodatage>-files-remaining.txt` (repris par un passage suivant, voir « Plan vide »). Une clé refusée (forme inattendue, ou qui sortirait du volume) est listée dans `purge-out/<horodatage>-files-refused.txt` et n'est **jamais** reprise automatiquement : l'examiner à la main.
+- `Fichiers : N supprimé(s), … NON supprimé(s), … clé(s) refusée(s)` : les fichiers sont supprimés **après** le COMMIT, seulement ceux des lignes supprimées. Avant le premier fichier, la liste complète est écrite dans `purge-out/<horodatage>-files-remaining.txt` ; après, elle est réécrite avec ce qui reste, ou effacée si tout est parti. Un processus tué pendant la suppression laisse donc la liste complète, reprise par un passage suivant (voir « Plan vide »). Une clé refusée (forme inattendue, ou qui sortirait du volume) est listée dans `purge-out/<horodatage>-files-refused.txt` et n'est **jamais** reprise automatiquement : l'examiner à la main.
 - `BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE : …` (code 4) : la base est purgée, mais une liste n'a pas pu être écrite, la reprise a échoué ou la liste Stripe n'a pas pu être renommée (elle reste alors en `.pending`). Le rapport liste les fichiers dont la suppression n'est pas confirmée : les noter, puis corriger la cause (disque plein, droits de `purge-out`) avant de relancer.
 - `état du COMMIT incertain : vérifier la base, conserver <chemin>` (code 5) : la connexion a lâché pendant le COMMIT. Relancer la **simulation** : si les comptes anciens et les demandes ont disparu, le COMMIT est passé et la liste Stripe `.pending` est à traiter comme une liste finale ; sinon, rien n'a changé et la liste `.pending` peut être détruite.
 - `PURGE BLOQUÉE — …` (code 3) : chaque ligne tierce, table et identifiant. Rien n'a été supprimé.
@@ -106,6 +109,22 @@ Marche à suivre :
 1. Lire la liste du rapport (table, identifiant, raison). Identifier, en lecture seule, à qui appartient chaque ligne et ce qu'elle désigne.
 2. **Ne JAMAIS faire de `DELETE` à la main en super-utilisateur** pour « débloquer » la purge : c'est contourner tous les garde-fous (liste fermée, phrase, empreinte, sauvegarde, vérifications) sur une donnée qui n'est pas e2e.
 3. La décision appartient à l'exploitant : laisser la donnée e2e en place tant que la ligne tierce existe, ou traiter la ligne tierce par le chemin normal de l'application, puis relancer la simulation. La règle d'arrêt n'est pas assouplie.
+
+## Adresse fixe en double
+
+Refus `l'adresse fixe « e2e-client » correspond à 2 lignes` (code 2). L'index unique sur l'adresse est **partiel** (`WHERE deleted_at_utc IS NULL`) : si un compte fixe a été supprimé en douceur (par `DELETE /users/me`) puis recréé avec la même adresse, deux lignes existent, et la purge refuse **toute** opération, anciens comptes Gmail compris.
+
+1. Analyser, en lecture seule : `SELECT id, first_name, deleted_at_utc, created_at_utc FROM users WHERE email = 'e2e-client@linkrapp.com';` (adresse exacte, sans `lower()`). Identifier quelle ligne est le compte de test actuel et ce que l'autre porte encore (demandes, cartes, prestataire).
+2. La décision appartient à l'exploitant. **Ne JAMAIS faire de `DELETE` à la main en super-utilisateur**, ni sur l'une ni sur l'autre ligne : même raison que pour une purge bloquée.
+3. Prévention : **ne jamais appeler `DELETE /users/me` sur un compte e2e**, ni depuis un test, ni à la main. Les comptes fixes sont faits pour durer ; seules leurs transactions sont purgées.
+
+## Fichier `.pending` orphelin
+
+Un `purge-out/<horodatage>-stripe-ids.txt.pending` sans code 5 vient d'un conteneur tué entre l'écriture de la liste et le COMMIT (aucune ligne `TRANSACTION VALIDÉE` dans le rapport, code « autre »). Avant d'en faire quoi que ce soit :
+
+1. Vérifier en base, en lecture seule, que les `pm_` listés y sont encore : `SELECT stripe_payment_method_id FROM payment_methods WHERE stripe_payment_method_id = ANY(ARRAY['pm_…', 'pm_…']);`
+2. **S'ils y sont tous** : le COMMIT n'a pas eu lieu, rien n'a été supprimé. Le `.pending` peut être effacé à la main (`shred -u`). Ne **pas** traiter Stripe : ces cartes sont encore utilisées.
+3. **S'ils n'y sont plus** : la purge a eu lieu. Conserver la liste et la traiter comme une liste finale (voir « Ce qui reste à la main »), puis relancer la simulation pour confirmer.
 
 ## Ce qui reste à la main
 
@@ -125,7 +144,17 @@ Après traitement, détruire le fichier (`shred -u`).
 
 Toute nouvelle table avec une clé étrangère vers `users`, `service_providers`, `service_requests`, `payments` ou une autre table de la liste doit être ajoutée au plan (`purge-plan.ts`), aux arêtes vérifiées (`purge-execute.ts`), à la liste fermée et aux droits du rôle (`GRANT`). Sans cela : une clé `RESTRICT` fait échouer la purge (sûr), mais une clé `CASCADE` supprimerait des lignes en silence (les cascades s'exécutent avec les droits du propriétaire de la table, pas ceux de `linkr_purge`).
 
+## Banc de `purge.sh`
+
+`deploy/tests/purge-sh.test.sh` vérifie, avec un faux `docker` et une fausse sauvegarde, les codes relayés, les libellés de fin et l'effacement du témoin. À lancer dans un conteneur jetable, jamais sur le VPS :
+
+```bash
+docker run --rm -v "$PWD/deploy:/deploy:ro" debian:bookworm-slim bash /deploy/tests/purge-sh.test.sh
+```
+
 ## Dettes connues (non corrigées)
+
+- **Témoin périmé pendant la phrase** (M-f) : si l'opérateur met plus de 15 minutes à taper la phrase, le conteneur refuse `--execute` (code 2) alors qu'une sauvegarde complète vient d'être faite. Sans danger ; relancer `./purge.sh --execute` (nouvelle sauvegarde).
 
 - **Notifications des comptes fixes sur de vraies demandes** : un `NEW_TENDER_MATCH` reçu par le prestataire e2e au sujet d'un vrai appel d'offres est supprimé (le destinataire est e2e). C'est une donnée du compte e2e, mais pas une « transaction » au sens strict de D3.
 - **Sonde embarquée dans l'image** : `src/database/probes/purge.probe.ts` est compilée dans l'image de production (`tsconfig.build.json` n'exclut pas les sondes). Elle refuse toute base dont le nom ne contient pas « probe », mais son bloc `finally` tente `DROP OWNED`/`DROP ROLE linkr_purge` même quand elle n'a pas créé le rôle (sans effet en pratique : `DROP ROLE` échoue tant que le rôle a des droits ailleurs). L'exclure de l'image touche `tsconfig.build.json`, hors périmètre.

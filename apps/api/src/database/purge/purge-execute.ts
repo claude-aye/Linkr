@@ -375,14 +375,12 @@ export async function executePurge(db: TxClient, opts: ExecuteOptions): Promise<
   }
   opts.onCommitted?.({ deletedCounts, fixedCheck: fixedAfter, stripeFile });
 
-  const files = deleteFiles(opts.storageDir, plan.fileKeys);
+  const { files, listError } = deletePlanFiles(opts.storageDir, opts.outDir, stamp, plan.fileKeys);
   const notDeleted = [...files.remaining, ...files.skipped];
   let refusedList: string | null = null;
   let leftovers: FilesReport;
   try {
-    if (files.remaining.length > 0) {
-      writeFileSync(join(opts.outDir, `${stamp}-files-remaining.txt`), `${files.remaining.join('\n')}\n`, { mode: 0o600 });
-    }
+    if (listError) throw new Error(listError);
     if (files.skipped.length > 0) {
       // M4 : clés refusées (forme inattendue ou hors du volume), jamais reprises
       // automatiquement : à examiner à la main.
@@ -423,6 +421,49 @@ export function deleteFiles(storageDir: string, keys: readonly string[]): FilesR
     }
   }
   return report;
+}
+
+/**
+ * Fichiers des lignes purgées, supprimés APRÈS le COMMIT (M-e).
+ *
+ * La liste `<stamp>-files-remaining.txt` est écrite AVANT le premier `unlink`,
+ * avec toutes les clés à supprimer : un processus tué pendant la suppression
+ * laisse la liste complète, que le passage suivant reprend (seulement les clés
+ * sans ligne en base, `retryLeftoverFiles`). Après la suppression, la liste est
+ * réécrite avec ce qui reste, ou effacée si tout est parti.
+ *
+ * Si la liste ne peut pas être écrite avant, la suppression a lieu quand même :
+ * ce sont des données de personnes à détruire, et l'échec de la réécriture
+ * (même dossier) remonte en `listError`, donc en code 4. Ne lève pas.
+ */
+export function deletePlanFiles(
+  storageDir: string,
+  outDir: string,
+  stamp: string,
+  keys: readonly string[],
+): { files: FilesReport; listError: string | null } {
+  const list = join(outDir, `${stamp}-files-remaining.txt`);
+  const toDelete = keys.filter((k) => resolveInStorage(storageDir, k) !== null);
+  let journalWritten = false;
+  if (toDelete.length > 0) {
+    try {
+      writeFileSync(list, `${toDelete.join('\n')}\n`, { mode: 0o600 });
+      journalWritten = true;
+    } catch {
+      // Voir l'en-tête : la réécriture ci-dessous signalera le dossier illisible.
+    }
+  }
+  const files = deleteFiles(storageDir, keys);
+  try {
+    if (files.remaining.length > 0) {
+      writeFileSync(list, `${files.remaining.join('\n')}\n`, { mode: 0o600 });
+    } else if (journalWritten) {
+      rmSync(list, { force: true });
+    }
+  } catch (err) {
+    return { files, listError: message(err) };
+  }
+  return { files, listError: null };
 }
 
 /** Clés encore référencées en base (dans l'une des trois colonnes de fichier). */

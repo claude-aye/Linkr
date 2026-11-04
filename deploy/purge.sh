@@ -11,7 +11,10 @@
 #
 # Codes de sortie relayés depuis le conteneur : 0 terminé · 1 erreur, aucune
 # transaction validée · 2 refus · 3 purge bloquée · 4 BASE PURGÉE, étape
-# fichiers incomplète · 5 état du COMMIT incertain.
+# fichiers incomplète · 5 état du COMMIT incertain · tout autre code : état
+# inconnu (conteneur tué ou interrompu). En --execute, la simulation préalable
+# relaie aussi son code (2, 3) sans rien modifier. Le témoin de sauvegarde est
+# effacé à la sortie, succès ou échec.
 #
 # Variables facultatives : LINKR_DIR (défaut /opt/linkr). Le script n'affiche
 # jamais le contenu de .env.
@@ -56,6 +59,14 @@ grep -qE '^PURGE_DATABASE_URL=.+' .env || die "PURGE_DATABASE_URL absente de .en
 exec 9>"$LINKR_DIR/.deploy.lock"
 flock -n 9 || die "un déploiement ou une purge est en cours"
 
+# Le témoin de sauvegarde ne survit jamais à ce script, succès ou échec (M-b) :
+# un témoin resté en place laisserait passer, pendant 15 minutes, un
+# « docker compose run purge --execute » lancé à la main. Posé APRÈS le verrou :
+# un second lancement refusé par flock ne doit pas effacer le témoin d'une purge
+# en cours.
+BACKUP_LOG=""
+trap 'rm -f "$WITNESS" ${BACKUP_LOG:+"$BACKUP_LOG"}' EXIT
+
 mkdir -p "$OUT_DIR"
 chmod 700 "$OUT_DIR"
 [ "$(stat -c %u "$OUT_DIR")" = "$CONTAINER_UID" ] \
@@ -75,7 +86,6 @@ fi
 log "Sauvegarde avant purge..."
 rm -f "$WITNESS"
 BACKUP_LOG="$(mktemp)"
-trap 'rm -f "$BACKUP_LOG"' EXIT
 if ! "$LINKR_DIR/backup/backup.sh" 2>&1 | tee "$BACKUP_LOG"; then
   die "la sauvegarde a échoué. ARRÊT : rien n'a été modifié."
 fi
@@ -95,7 +105,11 @@ PLAN="$(run_purge)"
 code=$?
 set -e
 printf '%s\n' "$PLAN"
-[ "$code" -eq 0 ] || die "simulation en échec ou purge bloquée (code $code) : rien n'a été modifié."
+if [ "$code" -ne 0 ]; then
+  # Code relayé tel quel (M-a) : 2 refus, 3 purge bloquée, 1 erreur.
+  log "ERREUR: simulation en échec, refus ou purge bloquée (code $code) : rien n'a été modifié." >&2
+  exit "$code"
+fi
 EXPECTED="$(printf '%s\n' "$PLAN" | sed -n 's/^PURGE_PHRASE=//p' | tail -n 1)"
 
 if [ -z "$EXPECTED" ]; then
@@ -123,6 +137,9 @@ case "$code" in
   0) log "Purge terminée. Traiter la liste Stripe à la main (docs/deploy/purge.md), puis la détruire." ;;
   4) log "BASE PURGÉE, ÉTAPE FICHIERS INCOMPLÈTE (code 4) : lire le rapport ci-dessus avant toute relance." ;;
   5) log "État du COMMIT INCERTAIN (code 5) : vérifier la base, conserver la liste Stripe .pending." ;;
-  *) log "Échec (code $code) : aucune transaction validée." ;;
+  1|2|3) log "Échec (code $code) : aucune transaction validée." ;;
+  # Tout autre code (130, 137, 143, 255…) : conteneur tué ou interrompu, peut-être
+  # APRÈS le COMMIT. Rien ne permet d'affirmer qu'aucune transaction n'a eu lieu.
+  *) log "code inattendu ($code) : état inconnu, lire le rapport ci-dessus et vérifier la base avant de relancer." ;;
 esac
 exit "$code"

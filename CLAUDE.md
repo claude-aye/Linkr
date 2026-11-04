@@ -2018,6 +2018,15 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
   - **M2** : `linkr_purge` ne lit que `id, user_id` de `user_auth_providers` et `password_reset_tokens` (droits par colonne) ; `assertPurgeRole` refuse un rôle qui peut lire `password_hash` ou `token_hash`. **M4** : clés refusées consignées dans `<horodatage>-files-refused.txt`, jamais reprises seules. **M5** : la phrase compte les comptes supprimés **en entier** ; « Comptes fixes gardés : n » à part. **M10** : `IMAGE_TAG` doit désigner une image construite après le merge.
   - **Reportés, écrits en dettes dans `purge.md`** : M3, M6 (sonde embarquée dans l'image : `tsconfig.build.json` hors périmètre), M7, M8, M9.
   - **Validé** : jest `purge.spec.ts` 61/61 ; sonde **59/59** (sosies, prénom, doublon, hachés illisibles, COMMIT incertain, échec de l'étape fichiers, reprise sans phrase) ; deux mutations détectées (contrôle de fermeture désarmé : 2 rouges ; `lower()` réintroduit : refus) ; CLI compilée (témoin absent ou périmé → code 2) ; banc de `purge.sh` en conteneur Debian, faux `docker` et fausse sauvegarde, 27/27 (non commité).
+- **Corrections de la seconde relecture (même PR)** :
+  - **I-a** : `purge.sh` ne dit « aucune transaction validée » que pour les codes 1 à 3 ; tout autre code (130, 137, 143, 255…) affiche « code inattendu : état inconnu » et reste relayé tel quel.
+  - **I-b** : le bloc d'exécution de `purge.ts` devient `runExecution` (exporté, testé) ; une fois `onCommitted` appelé, toute erreur sort en **4**, rappel compris. `main()` ne s'exécute que si `require.main === module` (le module s'importe dans jest sans rien lancer).
+  - **M-a** : en `--execute`, la simulation préalable relaie son code (2, 3) au lieu de 1. Une purge bloquée détectée **sous verrou** reste un refus (code 2) ; `purge.md` le dit, le code de ce cas n'a pas changé.
+  - **M-b** : le témoin de sauvegarde est effacé par le `trap` de sortie, posé **après** le verrou (un second lancement refusé par `flock` n'efface pas le témoin d'une purge en cours).
+  - **M-e** : `deletePlanFiles` écrit `<stamp>-files-remaining.txt` avec toutes les clés **avant** le premier `unlink`, puis le réécrit avec ce qui reste ou l'efface. Si la liste ne peut pas être écrite avant, la suppression a lieu quand même (données de personnes à détruire) et l'échec de la réécriture sort en code 4. `keysStillReferenced` n'est pas touché.
+  - **Doc** : adresse fixe en double, `.pending` orphelin, M-f inscrit en dette.
+  - **Banc commité** : `deploy/tests/purge-sh.test.sh` (conteneur Debian, faux `docker`), 78/78 ; contre le `purge.sh` d'avant ces corrections, 26 échecs (M-a, I-a, M-b).
+  - **Validé** : jest **706/706** (dont `purge-exit.spec.ts`, 8 tests) ; sonde **59/59** ; mutations détectées : branche `committed` retirée (2 rouges), liste écrite avant désactivée (1 rouge), contrôle de fermeture désarmé (1 rouge jest, sonde en échec).
 
 ---
 
