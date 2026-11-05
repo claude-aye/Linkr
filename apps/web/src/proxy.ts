@@ -10,7 +10,7 @@ import {
 import { decideProxyRoute } from '@/lib/auth/proxy-decision';
 import { refreshTokens } from '@/lib/auth/refresh';
 import { resolveClientIp } from '@/lib/http/client-ip';
-import { LEGAL_PATHS } from '@/lib/legal/legal-pages';
+import { GUIDE_TESTEUR_PATH, LEGAL_PATHS } from '@/lib/legal/legal-pages';
 import { isPortfolioMediaPath } from '@/lib/portfolio/portfolio-media';
 
 /**
@@ -66,7 +66,10 @@ export async function proxy(request: NextRequest) {
     // logged-in user clicking « Confidentialité » would never reach the policy.
     // Portfolio images are public (the API route is `@Public()`); an `<img>`
     // that received the `/login` page would show nothing.
-    isAlwaysOpen: LEGAL_PATHS.includes(pathname) || isPortfolioMediaPath(pathname),
+    isAlwaysOpen:
+      LEGAL_PATHS.includes(pathname) ||
+      pathname === GUIDE_TESTEUR_PATH ||
+      isPortfolioMediaPath(pathname),
   });
 
   switch (decision.kind) {
