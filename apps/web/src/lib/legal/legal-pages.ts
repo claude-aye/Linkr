@@ -95,6 +95,15 @@ export const LEGAL_PATHS: readonly string[] = Object.values(LEGAL_DOCUMENTS).map
   (doc) => doc.path,
 );
 
+/**
+ * « Guide du testeur » : page publique, hors des quatre textes légaux (pas de
+ * jumelle, pas de version). Lue par `proxy.ts` avec `LEGAL_PATHS`, pour la
+ * même raison : un visiteur connecté ne doit pas être renvoyé ailleurs.
+ * ⚠️ Chemin quasi immuable : le bandeau d'essai et le post de lancement y
+ * renvoient.
+ */
+export const GUIDE_TESTEUR_PATH = '/guide-testeur';
+
 /** Footer and cross-links, per language. */
 export const LEGAL_LINKS: Readonly<
   Record<LegalLocale, { privacy: LegalDocumentKey; terms: LegalDocumentKey }>

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Parisienne } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
+import { GUIDE_TESTEUR_PATH } from "@/lib/legal/legal-pages";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -62,6 +64,13 @@ export default function RootLayout({
             Version d&apos;essai · Les paiements sont en mode test : aucune somme
             réelle n&apos;est prélevée.
           </span>
+          <Link
+            href={GUIDE_TESTEUR_PATH}
+            className="ml-2 inline-flex h-full items-center font-medium underline underline-offset-2"
+          >
+            <span className="sm:hidden">Guide</span>
+            <span className="hidden sm:inline">Guide du testeur</span>
+          </Link>
         </p>
         {children}
       </body>

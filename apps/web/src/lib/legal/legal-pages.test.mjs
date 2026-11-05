@@ -63,3 +63,9 @@ test('a malformed version fails loudly instead of printing « Invalid Date »', 
   assert.throws(() => formatLastUpdated('fr', '11/10/2026'));
   assert.throws(() => formatLastUpdated('fr', '2026-13-45'));
 });
+
+test('the tester guide is a public path outside the four legal texts', async () => {
+  const { GUIDE_TESTEUR_PATH } = await import('./legal-pages.ts');
+  assert.equal(GUIDE_TESTEUR_PATH, '/guide-testeur');
+  assert.ok(!LEGAL_PATHS.includes(GUIDE_TESTEUR_PATH));
+});
