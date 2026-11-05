@@ -78,7 +78,7 @@ We may also disclose information where required by law (for example, at the requ
 ## 6. What other users can see
 
 - **Provider profile**: the business name, title, description, trades, indicative prices, areas served and reviews received are visible to signed-in users. The email address and licence documents are never made public.
-- **Reviews**: a review left on a completed service shows the rating, the optional comment, and the author's **first name and last-name initial** (e.g. "Carol R."). The provider may post a reply under the review. If you delete your review, the provider's reply is removed as well. If your account is deleted, the rating and review remain visible for the provider's reputation, but under an anonymous mention ("—").
+- **Reviews**: a review left on a completed service shows the rating, the optional comment, and the author's **first name and last-name initial** (e.g. "Carol R."). The provider may post a reply under the review. If you delete your review, the provider's reply is removed as well. If your account is closed, the rating and review remain visible until the end of the trial for the provider's reputation, but under the mention "—" instead of your name.
 - **Results map**: a provider appears at the centre of a cell about 550 m wide that contains their base, never at their address. The distances shown are rounded and measured from that same centre.
 - **Direct requests**: a direct booking request and the full service address are visible only to the client who made it and the assigned provider.
 - **Open requests**: when a request is open to several providers in the same trade, eligible providers see the title, the description of the need, the indicative budget, the preferred dates and an approximate distance, rounded to the kilometre. They see neither your name nor your address. The exact address is shared only with the provider selected.
@@ -87,13 +87,15 @@ We may also disclose information where required by law (for example, at the requ
 
 - **During the trial**: your information is kept as long as your account exists.
 - **At the end of the trial**: the end will be announced on the site and by email. **All trial data will be deleted no later than 30 days after the end.**
-- **At any time, on request**: write to [support@linkrapp.com](mailto:support@linkrapp.com) from your account's email address. We will delete your account and anonymize your personal information within 30 days.
+- **At any time, on request**: write to [support@linkrapp.com](mailto:support@linkrapp.com) from your account's email address. We will reply to that address to confirm the request. During the trial, requests are handled by hand. If a service request, a payment or a refund is still in progress, it must first be completed or cancelled through support. Within 30 days of your confirmation, we close your account: you can no longer sign in, and your profile, your services and the reviews you received are no longer displayed. If you are a provider, your portfolio photos and your verification documents are deleted. Your other information then remains in our database, inaccessible to other users, until the end-of-trial purge destroys all of it.
 
 **Geocoding cache.** Addresses entered during a search are kept for up to 30 days (24 hours if the search returns no results) in a cache on our server, with no link to your account. This cache avoids querying the geocoding service on every search.
 
 Stripe retains certain payment data under its own legal obligations, even after your Linkr account is deleted.
 
-**Backups.** An encrypted backup of the database and of uploaded files (portfolio photos) is made every night. It is hosted in Beauharnois (Québec) with OVHcloud and kept for 14 days. A deleted account disappears from the active database, but its information may remain in these backups for up to 14 more days, until they are automatically deleted. At the end of the trial, the database and the uploaded files are deleted no later than 16 days after the end, so that everything, backups included, is erased within 30 days. Messages sent to [support@linkrapp.com](mailto:support@linkrapp.com) are deleted within the same period.
+**Backups.** An encrypted backup of the database and of uploaded files (portfolio photos) is made every night. It is hosted in Beauharnois (Québec) with OVHcloud and kept for 14 days. After the end-of-trial purge, or after a file is deleted when an account is closed, the information concerned may remain in these backups for up to 14 more days, until they are automatically deleted. At the end of the trial, the database and the uploaded files are deleted no later than 16 days after the end, so that everything, backups included, is erased within 30 days. Messages sent to [support@linkrapp.com](mailto:support@linkrapp.com) are deleted within the same period.
+
+**What may remain elsewhere.** When we close your account, we also delete by hand, within the same 30 days, your customer record and saved cards in Stripe's test environment and, if you are a provider, your test payout account. Brevo's sending logs may keep your email address for Brevo's own retention period. Our servers' technical logs do not record each visit, but an error message may contain an IP address; they are limited in size and overwritten as they go, with no fixed duration.
 
 ## 8. Security and incidents
 
@@ -117,7 +119,7 @@ If our response does not satisfy you, you may file a complaint with the [Commiss
 
 ## 10. Minimum age, changes and contact
 
-**Minimum age.** Linkr is reserved exclusively for persons aged 18 and over with full legal capacity. We do not knowingly collect personal information from minors. If we discover that an account was created by a person under 18, we will delete the account without delay and destroy the associated personal information.
+**Minimum age.** Linkr is reserved exclusively for persons aged 18 and over with full legal capacity. We do not knowingly collect personal information from minors. If we discover that an account was created by a person under 18, we will close the account without delay; its information will be destroyed no later than the end-of-trial purge.
 
 **Changes.** If this policy changes significantly, we will inform you by email or on the site before it takes effect and, where necessary, ask you to accept the new version.
 

@@ -16,7 +16,7 @@ Linkr is a matchmaking platform. It lets clients find service providers near the
 - You provide accurate information and keep it up to date.
 - You are responsible for keeping your password confidential and for all activity on your account. Report any unauthorized use to us without delay at [support@linkrapp.com](mailto:support@linkrapp.com).
 - An account is personal: it may not be lent, sold or transferred.
-- You may delete your account at any time by writing to us. Ongoing bookings must first be completed or cancelled.
+- You may ask us to close your account at any time by writing to us, as set out in the privacy policy (section 7). Ongoing bookings must first be completed or cancelled through support.
 
 ## 3. Provider obligations
 

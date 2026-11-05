@@ -16,7 +16,7 @@ Linkr est une plateforme de mise en relation. Elle permet à des clients de trou
 - Vous fournissez des renseignements exacts et les tenez à jour.
 - Vous êtes responsable de la confidentialité de votre mot de passe et de toute activité faite depuis votre compte. Signalez-nous sans délai tout usage non autorisé à [support@linkrapp.com](mailto:support@linkrapp.com).
 - Un compte est personnel : il ne peut être ni prêté, ni vendu, ni transféré.
-- Vous pouvez supprimer votre compte à tout moment en nous écrivant. Les réservations en cours doivent d'abord être terminées ou annulées.
+- Vous pouvez demander la fermeture de votre compte à tout moment en nous écrivant, comme le prévoit la politique de confidentialité (section 7). Les réservations en cours doivent d'abord être terminées ou annulées par l'entremise du soutien.
 
 ## 3. Obligations des prestataires
 
