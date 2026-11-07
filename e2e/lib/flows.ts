@@ -4,8 +4,13 @@ import { expect, type Browser, type Locator, type BrowserContext, type Page } fr
 import { AUTH_DIR, type Account, type Role, knownAccount, saveAccount, statePath } from './accounts';
 
 /** Adresses FIXES : le cache de géocodage de l'API (30 jours) évite Nominatim après le 1er lancement. */
-export const PROVIDER_ADDRESS = '1 rue des Remparts, Québec';
-export const SEARCH_ADDRESS = 'Place d’Youville, Québec';
+// Lieu quasi inhabité (aéroport Jean-Lesage) et rayon de 1 km : un vrai client de la région
+// de Québec ne doit pas pouvoir réserver ce prestataire de test (cela bloquerait la purge).
+// Le client cherche au MÊME endroit : la distance est quasi nulle, donc dans le rayon.
+export const E2E_AIRPORT_ADDRESS = 'Aéroport international Jean-Lesage, Québec';
+export const E2E_PROVIDER_RADIUS_KM = 1;
+export const PROVIDER_ADDRESS = E2E_AIRPORT_ADDRESS;
+export const SEARCH_ADDRESS = E2E_AIRPORT_ADDRESS;
 
 /** Préfixe des messages : un échec du service externe ne doit jamais passer pour un défaut applicatif. */
 export const GEOCODE_FAILURE =
@@ -117,7 +122,7 @@ export function geocodeFailure(detail: string): Error {
   return new Error(GEOCODE_FAILURE + detail);
 }
 
-/** Les candidats voulus sont à Québec : le géocodeur place Montréal avant (« Place d’Youville »). */
+/** Les candidats voulus sont à Québec : le géocodeur peut placer d’autres régions avant. */
 export const QUEBEC_CANDIDATE = /Agglomération de Québec/i;
 
 /**
@@ -141,7 +146,7 @@ export async function createProviderProfile(page: Page, displayName: string): Pr
   await page.goto('/providers/new');
   await page.getByLabel(/Nom d.affichage/).fill(displayName);
   await page.getByLabel('Adresse de base').fill(PROVIDER_ADDRESS);
-  await page.getByLabel('Rayon de service (km)').fill('25');
+  await page.getByLabel('Rayon de service (km)').fill(String(E2E_PROVIDER_RADIUS_KM));
   const submit = page.getByRole('button', { name: 'Créer mon profil' });
   await submit.click();
 
@@ -194,7 +199,7 @@ export async function searchProviderCard(page: Page, displayName: string): Promi
   }
   await expect(
     card,
-    `Le prestataire « ${displayName} » (Coiffure, rayon 25 km) devrait figurer dans les résultats`,
+    `Le prestataire « ${displayName} » (Coiffure, rayon ${E2E_PROVIDER_RADIUS_KM} km) devrait figurer dans les résultats`,
   ).toBeVisible();
   return card;
 }
