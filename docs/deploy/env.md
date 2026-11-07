@@ -42,6 +42,7 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | `SMTP_USER` / `SMTP_PASSWORD` | non, mais ensemble | exéc. | oui | — | L'une sans l'autre fait échouer le boot. |
 | `EMAIL_FROM_ADDRESS` | oui | exéc. | non | `no-reply@exemple.ca` | |
 | `EMAIL_FROM_NAME` | non | exéc. | non | `Linkr` | |
+| `EMAIL_DAILY_BUDGET` | non | exéc. | non | `200` | Plafond quotidien (jour en heure de Toronto, aligné sur la remise à zéro du quota Brevo à minuit, heure de l'Est) des courriels **non essentiels** (tout sauf réinitialisation de mot de passe et échecs d'acompte ou de solde). Au-delà, le courriel est abandonné avec un WARN sans adresse. Le plan gratuit de Brevo permet 300 envois par jour : la valeur par défaut laisse 100 envois aux essentiels et aux reprises. Rien à ajouter dans `/opt/linkr/.env` ; relire au passage à un plan payant. |
 | `NOMINATIM_USER_AGENT` | oui | exéc. | non | `Linkr/1.0 (support@linkrapp.com)` | Exigé par les conditions de Nominatim. |
 | `NOMINATIM_BASE_URL` / `GEOCODING_PROVIDER` | non | exéc. | non | défauts | Instance auto-hébergée à prévoir avant la production réelle. |
 | `STORAGE_DRIVER` | non (défaut `local`) | exéc. | non | `s3` | `local` écrit sur le disque du conteneur (portfolio, documents). |
