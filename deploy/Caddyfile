@@ -55,6 +55,76 @@ linkrapp.com {
 		}
 	}
 
+	# ⚠️ ARRÊT D'URGENCE SANS DÉPLOIEMENT (mandat E). Deux drapeaux, un fichier
+	# chacun dans /opt/linkr/flags (monté en lecture seule sur /etc/caddy/flags) :
+	#   maintenance     → toutes les pages répondent 503 (page statique)
+	#   signups-closed  → /signup et POST /api/auth/signup répondent 503
+	# Le matcher `file` fait un stat À CHAQUE REQUÊTE : poser ou retirer le fichier
+	# suffit, ni rechargement ni redémarrage ni déploiement. Absent = comportement
+	# inchangé. Le webhook Stripe est servi AVANT (handle ci-dessus), donc joignable
+	# dans les deux cas. Les `handle` sont exclusifs et lus dans l'ordre : ne jamais
+	# placer le proxy web avant eux. Mode d'emploi : docs/deploy/arret-urgence.md.
+	@maintenance file {
+		root /etc/caddy/flags
+		try_files maintenance
+	}
+	handle @maintenance {
+		header Content-Type "text/html; charset=utf-8"
+		header Cache-Control "no-store"
+		header Retry-After "600"
+		respond <<HTML
+			<!doctype html>
+			<html lang="fr-CA"><head><meta charset="utf-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1">
+			<meta name="robots" content="noindex, nofollow">
+			<title>Maintenance · Linkr</title></head>
+			<body style="font-family:system-ui,sans-serif;background:#F3EBDF;color:#2E211E;margin:0;display:grid;place-items:center;min-height:100vh;padding:1rem;text-align:center">
+			<main><h1 style="margin:0 0 .5rem">Linkr est en maintenance</h1>
+			<p style="margin:0">Le service est momentanément indisponible. Veuillez réessayer dans quelques minutes.</p></main>
+			</body></html>
+			HTML 503
+	}
+
+	# Page d'inscription (GET /signup) : page statique en français.
+	@signups_closed_page {
+		path /signup /signup/
+		file {
+			root /etc/caddy/flags
+			try_files signups-closed
+		}
+	}
+	handle @signups_closed_page {
+		header Content-Type "text/html; charset=utf-8"
+		header Cache-Control "no-store"
+		respond <<HTML
+			<!doctype html>
+			<html lang="fr-CA"><head><meta charset="utf-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1">
+			<meta name="robots" content="noindex, nofollow">
+			<title>Inscriptions fermées · Linkr</title></head>
+			<body style="font-family:system-ui,sans-serif;background:#F3EBDF;color:#2E211E;margin:0;display:grid;place-items:center;min-height:100vh;padding:1rem;text-align:center">
+			<main><h1 style="margin:0 0 .5rem">Inscriptions temporairement fermées</h1>
+			<p style="margin:0 0 1rem">Nous n'acceptons pas de nouveaux comptes pour le moment. Veuillez réessayer plus tard.</p>
+			<p style="margin:0"><a href="/login" style="color:#6E1E2B">Se connecter</a></p></main>
+			</body></html>
+			HTML 503
+	}
+
+	# Relais d'inscription (POST /api/auth/signup) : un appel direct à l'API web
+	# ne doit pas contourner la fermeture. JSON, même message.
+	@signups_closed_relay {
+		path /api/auth/signup /api/auth/signup/
+		file {
+			root /etc/caddy/flags
+			try_files signups-closed
+		}
+	}
+	handle @signups_closed_relay {
+		header Content-Type "application/json; charset=utf-8"
+		header Cache-Control "no-store"
+		respond `{"message":"Les inscriptions sont temporairement fermées. Veuillez réessayer plus tard."}` 503
+	}
+
 	handle {
 		reverse_proxy web:3001 {
 			import client_ip_headers
