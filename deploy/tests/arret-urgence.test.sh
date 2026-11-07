@@ -39,6 +39,8 @@ chk "POST /api/auth/signup 503" 503 "$(code POST /api/auth/signup)"
 case "$(body GET /signup)" in *"Inscriptions temporairement fermées"*) chk "page FR" a a;; *) chk "page FR" a b;; esac
 case "$(body POST /api/auth/signup)" in *"temporairement fermées"*) chk "json FR" a a;; *) chk "json FR" a b;; esac
 chk "GET / inchangé"            200 "$(code GET /)"
+chk "POST /api/auth/signup/ 503" 503 "$(code POST /api/auth/signup/)"
+chk "GET /SIGNUP 503" 503 "$(code GET /SIGNUP)"
 chk "GET /login inchangé"       200 "$(code GET /login)"
 chk "POST /api/auth/login inchangé" 200 "$(code POST /api/auth/login)"
 chk "webhook inchangé"          200 "$(code POST /webhooks/stripe)"

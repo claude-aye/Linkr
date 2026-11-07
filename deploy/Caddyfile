@@ -113,7 +113,7 @@ linkrapp.com {
 	# Relais d'inscription (POST /api/auth/signup) : un appel direct à l'API web
 	# ne doit pas contourner la fermeture. JSON, même message.
 	@signups_closed_relay {
-		path /api/auth/signup
+		path /api/auth/signup /api/auth/signup/
 		file {
 			root /etc/caddy/flags
 			try_files signups-closed
