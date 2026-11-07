@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { QueueModule } from '../../queue/queue.module';
+import { RedisModule } from '../redis/redis.module';
+import { EmailBudgetService } from './email-budget.service';
 import { EmailProcessor } from './email.processor';
 import { EmailService } from './email.service';
 import { EMAIL_SENDER } from './senders/email-sender.interface';
@@ -18,9 +20,10 @@ import { SmtpEmailSender } from './senders/smtp.sender';
  * will be the first.
  */
 @Module({
-  imports: [QueueModule],
+  imports: [QueueModule, RedisModule],
   providers: [
     { provide: EMAIL_SENDER, useClass: SmtpEmailSender },
+    EmailBudgetService,
     EmailService,
     EmailProcessor,
   ],

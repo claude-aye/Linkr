@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { EMAIL_QUEUE, EmailJob } from '../../queue/queue.constants';
+import { EmailBudgetService } from './email-budget.service';
 import { EmailTemplateName, EmailTemplateVars } from './templates';
 import { DEFAULT_LOCALE, Locale } from './templates/types';
 
@@ -30,6 +31,7 @@ export class EmailService {
 
   constructor(
     @InjectQueue(EMAIL_QUEUE) private readonly queue: Queue<EmailJob>,
+    private readonly budget: EmailBudgetService,
   ) {}
 
   async send<TName extends EmailTemplateName>(
@@ -37,12 +39,26 @@ export class EmailService {
   ): Promise<void> {
     const locale = input.locale ?? DEFAULT_LOCALE;
 
-    const job = await this.queue.add(input.template, {
-      to: input.to,
-      template: input.template,
-      vars: input.vars,
-      locale,
-    });
+    // Daily budget for NON-essential emails (password-reset and the two
+    // payment-failure emails are exempt). Over the cap the email is dropped
+    // here — a WARN without address was already written — and the caller
+    // carries on exactly as if it had been queued.
+    if (!(await this.budget.allow(input.template))) {
+      return;
+    }
+
+    const job = await this.queue.add(
+      input.template,
+      {
+        to: input.to,
+        template: input.template,
+        vars: input.vars,
+        locale,
+      },
+      // Essentials first. Retries and backoff come from EMAIL_JOB_OPTIONS and
+      // are deliberately untouched.
+      { priority: this.budget.priorityFor(input.template) },
+    );
 
     // Template, locale and job id only. Neither the recipient address nor
     // `vars` is ever logged: the address is personal information, and `vars`
