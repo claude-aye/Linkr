@@ -34,6 +34,9 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL manquant dans deploy/.env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Drapeaux d'arrêt d'urgence (docs/deploy/arret-urgence.md). Dossier, pas
+      # fichier : un montage de fichier ne verrait pas un drapeau posé après coup.
+      - ./flags:/etc/caddy/flags:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:

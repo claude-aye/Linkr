@@ -67,7 +67,7 @@ Aucun enregistrement `AAAA` n'existe. **Ajouter un `AAAA` exige de revoir l'adre
 | `apps/web/Dockerfile` | Sortie Next `standalone`, les trois `NEXT_PUBLIC_*` en arguments de build (refus si vide), utilisateur `node`. Healthcheck `GET /robots.txt`. |
 | `.dockerignore` | Contexte = racine du monorepo ; aucun `node_modules` du poste, aucun `.env`. |
 | `deploy/compose.yaml` | Services, réseaux, volumes, `restart: unless-stopped`, journaux `json-file` 10 Mo × 3. |
-| `deploy/Caddyfile` | Proxy inverse, HTTPS automatique. |
+| `deploy/Caddyfile` | Proxy inverse, HTTPS automatique, drapeaux d'arrêt d'urgence (`arret-urgence.md`). |
 | `deploy/.env.example` | Variables du compose (tag d'image, ACME, Postgres). |
 | `deploy/api.env.example` | Variables d'exécution de l'API. Inventaire : `env.md`. |
 | `.github/workflows/images.yml` | Build amd64 + push GHCR (tags `<sha complet>` et `latest`) sur `main` ; build seul sur PR. |
