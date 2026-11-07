@@ -126,6 +126,19 @@ describe('AuthController — login rate limiting', () => {
     expect((await failedLogin(CALLER_B)).status).toBe(401);
   });
 
+  it('caps signup at 20 per hour per address, and leaves login untouched', async () => {
+    expect(AUTH_RATE_LIMITS.SIGNUP.limit).toBe(20);
+    expect(AUTH_RATE_LIMITS.LOGIN.limit).toBe(30);
+    const signup = (ip: string) =>
+      request(app.getHttpServer()).post('/auth/signup').set('X-Forwarded-For', ip).send({});
+
+    for (let i = 0; i < 20; i += 1) {
+      expect((await signup(CALLER_A)).status).not.toBe(429);
+    }
+    expect((await signup(CALLER_A)).status).toBe(429);
+    expect((await signup(CALLER_B)).status).not.toBe(429);
+  });
+
   it('ignores a forwarded address arriving from an UNTRUSTED peer', async () => {
     const { limit } = AUTH_RATE_LIMITS.LOGIN;
     // Nothing is trusted now, so `X-Forwarded-For` is ignored and every caller
