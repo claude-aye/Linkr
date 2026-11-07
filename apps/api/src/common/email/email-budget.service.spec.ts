@@ -118,30 +118,42 @@ describe('EmailBudgetService', () => {
     },
   );
 
-  it('starts a fresh count when the UTC day changes', async () => {
-    const { redis, counters } = fakeRedis();
-    const budget = new EmailBudgetService(redis, config(2));
+  it.each([
+    // Winter (EST, UTC-5): midnight Toronto = 05:00Z.
+    ['winter', '2026-11-07T04:59:00Z', '2026-11-07T05:01:00Z', '2026-11-06', '2026-11-07'],
+    // Summer (EDT, UTC-4): midnight Toronto = 04:00Z.
+    ['summer', '2026-07-15T03:59:00Z', '2026-07-15T04:01:00Z', '2026-07-14', '2026-07-15'],
+  ])(
+    'rolls over at local midnight in Toronto, not UTC (%s)',
+    async (_season, before, after, dayBefore, dayAfter) => {
+      const { redis, counters } = fakeRedis();
+      const budget = new EmailBudgetService(redis, config(2));
 
-    await budget.allow(NON_ESSENTIAL);
-    await budget.allow(NON_ESSENTIAL);
-    await expect(budget.allow(NON_ESSENTIAL)).resolves.toBe(false);
+      jest.setSystemTime(new Date(before)); // 23:59 in Toronto
+      await budget.allow(NON_ESSENTIAL);
+      await budget.allow(NON_ESSENTIAL);
+      await expect(budget.allow(NON_ESSENTIAL)).resolves.toBe(false);
 
-    jest.setSystemTime(new Date('2026-11-07T00:00:01Z'));
-    await expect(budget.allow(NON_ESSENTIAL)).resolves.toBe(true);
+      jest.setSystemTime(new Date(after)); // 00:01 in Toronto
+      await expect(budget.allow(NON_ESSENTIAL)).resolves.toBe(true);
 
-    expect([...counters.keys()].sort()).toEqual([
-      'linkr:email-budget:v1:2026-11-06',
-      'linkr:email-budget:v1:2026-11-07',
-    ]);
-  });
+      expect([...counters.keys()].sort()).toEqual([
+        `linkr:email-budget:v1:${dayBefore}`,
+        `linkr:email-budget:v1:${dayAfter}`,
+      ]);
+    },
+  );
 
-  it('keys the day in UTC, not local time', async () => {
+  it('does not roll over at midnight UTC (19:00 in Toronto in winter)', async () => {
     const { redis, counters } = fakeRedis();
     const budget = new EmailBudgetService(redis, config(5));
-    // 23:30 on 6 Nov in Quebec is already 7 Nov in UTC.
-    jest.setSystemTime(new Date('2026-11-07T04:30:00Z'));
+
+    jest.setSystemTime(new Date('2026-11-06T23:59:00Z'));
     await budget.allow(NON_ESSENTIAL);
-    expect([...counters.keys()]).toEqual(['linkr:email-budget:v1:2026-11-07']);
+    jest.setSystemTime(new Date('2026-11-07T00:01:00Z'));
+    await budget.allow(NON_ESSENTIAL);
+
+    expect([...counters.entries()]).toEqual([['linkr:email-budget:v1:2026-11-06', 2]]);
   });
 
   it('gives the key an expiry on first use only', async () => {

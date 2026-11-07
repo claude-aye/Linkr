@@ -34,19 +34,43 @@ export const DEFAULT_EMAIL_DAILY_BUDGET = 200;
 /** Share of the budget at which one warning is written per day. */
 const WARN_AT_RATIO = 0.8;
 
-/** Two days: the key outlives its own UTC day so a late INCR never resurrects it. */
+/** Two days: the key outlives its own day so a late INCR never resurrects it. */
 const KEY_TTL_SECONDS = 2 * 24 * 60 * 60;
 
 const KEY_PREFIX = 'linkr:email-budget:v1:';
 
 /**
- * Daily cap on NON-essential emails, kept in Redis under a UTC-day key.
+ * Brevo's daily quota resets at midnight Eastern time, so the budget's day
+ * follows the same clock (named zone, never a fixed offset: it handles
+ * daylight saving). A UTC day would roll over at 19:00 (winter) or 20:00
+ * (summer) in Toronto and let up to two quotas' worth of mail through one
+ * Brevo day.
+ */
+export const BUDGET_TIME_ZONE = 'America/Toronto';
+
+const DAY_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: BUDGET_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** AAAA-MM-JJ of the instant, on the Toronto calendar. */
+export const budgetDay = (instant: Date): string => {
+  const parts = Object.fromEntries(
+    DAY_FORMAT.formatToParts(instant).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+/**
+ * Daily cap on NON-essential emails, kept in Redis under a Toronto-day key.
  *
  * Why it exists: the free Brevo plan allows 300 sends a day, and a password
  * reset must not fail because notifications spent the quota. The default cap
  * of 200 leaves 100 for the essentials and for retries.
  *
- * The counter counts non-essential ATTEMPTS of the UTC day, refused ones
+ * The counter counts non-essential ATTEMPTS of the Toronto day, refused ones
  * included (a refusal is not rolled back): it measures pressure, not sends.
  * Reaching the warning threshold and reaching the cap are both decided by
  * `INCR`'s return value, which is atomic — so each fires exactly once per
@@ -93,7 +117,7 @@ export class EmailBudgetService {
 
     let count: number;
     try {
-      const key = `${KEY_PREFIX}${new Date().toISOString().slice(0, 10)}`;
+      const key = `${KEY_PREFIX}${budgetDay(new Date())}`;
       count = await this.redis.incr(key);
       if (count === 1) {
         await this.redis.expire(key, KEY_TTL_SECONDS);
@@ -106,7 +130,7 @@ export class EmailBudgetService {
     const warnAt = Math.ceil(this.dailyBudget * WARN_AT_RATIO);
     if (count === warnAt) {
       this.logger.warn(
-        `Non-essential email budget at ${count}/${this.dailyBudget} for today (UTC); ` +
+        `Non-essential email budget at ${count}/${this.dailyBudget} for today (Toronto day); ` +
           'beyond the cap these emails are dropped',
       );
     }

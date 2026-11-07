@@ -221,7 +221,7 @@ const envSchema = Joi.object({
     .email({ tlds: { allow: false } })
     .required(),
   EMAIL_FROM_NAME: Joi.string().default('Linkr'),
-  // Daily cap (UTC day) on NON-essential emails; password-reset and the two
+  // Daily cap (America/Toronto day) on NON-essential emails; password-reset and the two
   // payment-failure emails are never counted. 200 leaves room under Brevo's
   // free plan (300/day) for the essentials and for retries.
   EMAIL_DAILY_BUDGET: Joi.number().integer().min(1).default(200),
