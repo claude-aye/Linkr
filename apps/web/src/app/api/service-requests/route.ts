@@ -31,7 +31,12 @@ export async function POST(request: Request) {
     const { data, error, response } = await client.POST('/service-requests', {
       body,
     });
-    return NextResponse.json(error ?? data ?? null, { status: response.status });
+    // A 429 carries Retry-After; the form reads it to say HOW LONG.
+    const retryAfter = response.status === 429 ? response.headers.get('retry-after') : null;
+    return NextResponse.json(error ?? data ?? null, {
+      status: response.status,
+      headers: retryAfter ? { 'Retry-After': retryAfter } : undefined,
+    });
   } catch {
     return NextResponse.json(
       { message: 'Service indisponible. Réessaie plus tard.' },

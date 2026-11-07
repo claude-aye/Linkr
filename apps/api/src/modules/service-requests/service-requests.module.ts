@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminGuard } from '../../common/guards/admin.guard';
+import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { UsersModule } from '../users/users.module';
 import { ServiceProvidersModule } from '../service-providers/service-providers.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -49,6 +50,7 @@ import { ServiceRequestsCron } from './service-requests.cron';
     ServiceRequestAttachmentsService,
     ServiceRequestsCron,
     AdminGuard,
+    RateLimitGuard,
   ],
   // ServiceRequestRepository is exported for the reviews module, which must read
   // a request's client, status and assigned provider — the three facts that make

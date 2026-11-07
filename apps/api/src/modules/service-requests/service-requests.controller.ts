@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
@@ -17,6 +18,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
+import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CancelServiceRequestDto } from './dto/cancel-service-request.dto';
@@ -28,20 +31,25 @@ import { ServiceRequestResponseDto } from './dto/service-request-response.dto';
 import { DepositAwaitingConfirmationListDto } from './dto/deposit-awaiting-confirmation.dto';
 import { DepositConfirmationResponseDto } from './dto/deposit-confirmation-response.dto';
 import { BalanceConfirmationResponseDto } from './dto/balance-confirmation-response.dto';
+import { CREATE_REQUEST_RATE_LIMIT } from './constants';
 import { ServiceRequestsService } from './service-requests.service';
 
+// Class-level guard, inert on every route that carries no @RateLimit.
+@UseGuards(RateLimitGuard)
 @ApiTags('service-requests')
 @Controller('service-requests')
 export class ServiceRequestsController {
   constructor(private readonly service: ServiceRequestsService) {}
 
   @Post()
+  @RateLimit(CREATE_REQUEST_RATE_LIMIT)
   @ApiOperation({
     summary:
       'Create a service request (OPEN immediately). DIRECT_BOOKING requires serviceItemId + requestedServiceProviderId. PROJECT_TENDER must not specify requestedServiceProviderId.',
   })
   @ApiResponse({ status: 201, type: ServiceRequestResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error or inactive/unknown provider' })
+  @ApiResponse({ status: 429, description: 'Too many requests created (20 per hour per caller); see Retry-After' })
   create(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateServiceRequestDto,

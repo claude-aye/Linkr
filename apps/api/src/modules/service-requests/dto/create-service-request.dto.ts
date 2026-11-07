@@ -18,7 +18,7 @@ import { IsGeoJSONPoint } from '../../../common/validators/is-geojson-point.vali
 import { GeoJSONPoint } from '../../../common/geojson/geojson.types';
 import { ServiceRequestType } from '../enums/service-request-type.enum';
 import { ServiceRequestLocationPrecision } from '../enums/service-request-location-precision.enum';
-import { CURRENCY_CODE_PATTERN, MAX_ESTIMATED_AMOUNT } from '../constants';
+import { CURRENCY_CODE_PATTERN, DESCRIPTION_MAX, MAX_ESTIMATED_AMOUNT } from '../constants';
 
 export class CreateServiceRequestDto {
   @ApiProperty({ enum: ServiceRequestType })
@@ -78,9 +78,10 @@ export class CreateServiceRequestDto {
   @MaxLength(200)
   title!: string;
 
-  @ApiProperty()
+  @ApiProperty({ maxLength: DESCRIPTION_MAX })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(DESCRIPTION_MAX)
   description!: string;
 
   @ApiProperty({ maxLength: 500 })
