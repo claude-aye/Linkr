@@ -41,13 +41,13 @@ Durée : environ 1 min 30 au premier lancement, 1 min ensuite.
 | Test | Vérifie |
 |---|---|
 | A | Accueil en HTTPS ; `https://www.<domaine>` redirige en 301 vers l'apex. |
-| B | Inscription prestataire, connexion, création du profil `e2e-prestataire-linkrapp` (« 1 rue des Remparts, Québec », rayon 25 km). |
+| B | Inscription prestataire, connexion, création du profil `e2e-prestataire-linkrapp` (« Aéroport international Jean-Lesage, Québec », rayon 1 km ; voir `migration-prestataire-e2e.md` pour le profil déjà créé en production). |
 | C | **Prioritaire.** « Mes métiers » propose les 7 métiers (3 réglementés grisés, 4 actifs) et n'affiche pas « La liste des métiers n’a pas pu être chargée ». |
 | D | Déclaration de Coiffure ; la ligne apparaît avec « Aucune vérification requise ». Rejouable (un 409 « déjà déclaré » compte comme un succès). |
-| E | Un client cherche « Coiffure » autour de « Place d’Youville, Québec » et retrouve le prestataire de B et D. |
+| E | Un client cherche « Coiffure » autour de « Aéroport international Jean-Lesage, Québec » et retrouve le prestataire de B et D. |
 | F | Mauvais mot de passe : « Identifiants invalides », reste sur `/login`, aucune erreur JavaScript. |
 
-B et E utilisent les **vrais** services externes (Nominatim, MapTiler), sans doublure. Les adresses sont fixes : le cache de géocodage de l'API (30 jours) évite Nominatim après le premier lancement. Les candidats d'adresse sont choisis par **libellé** (« Agglomération de Québec »), jamais par position : le géocodeur place Montréal avant Québec pour « Place d’Youville ». Un échec de géocodage produit un message qui commence par « ÉCHEC DE GÉOCODAGE (service externe…) », distinct d'un échec applicatif.
+B et E utilisent les **vrais** services externes (Nominatim, MapTiler), sans doublure. Les adresses sont fixes : le cache de géocodage de l'API (30 jours) évite Nominatim après le premier lancement. Les candidats d'adresse sont choisis par **libellé** (« Agglomération de Québec »), jamais par position : le géocodeur peut placer d’autres régions avant. Un échec de géocodage produit un message qui commence par « ÉCHEC DE GÉOCODAGE (service externe…) », distinct d'un échec applicatif.
 
 ## Lire le rapport
 
