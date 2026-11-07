@@ -59,7 +59,7 @@ Tous les comptes ont le prénom **« e2e »**. Comptes actuels : `e2e-prestatair
 
 ## Budget de débit
 
-Les routes d'authentification sont limitées par IP (`login` 30/h, `signup` 10/h). Un lancement à froid consomme 2 inscriptions et 2 connexions ; un lancement à chaud, 1 à 2 connexions. Ne pas relancer en boucle, ne jamais écrire de test qui vise le 429.
+Les routes d'authentification sont limitées par IP (`login` 30/h, `signup` 20/h). Un lancement à froid consomme 2 inscriptions et 2 connexions ; un lancement à chaud, 1 à 2 connexions. Ne pas relancer en boucle, ne jamais écrire de test qui vise le 429.
 
 ## Limites
 

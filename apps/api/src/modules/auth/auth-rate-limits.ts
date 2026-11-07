@@ -38,11 +38,13 @@ export const AUTH_RATE_LIMITS = {
   LOGIN: { limit: 30, windowSeconds: ONE_HOUR },
 
   /**
-   * 10/h. The opposite shape of traffic: an account is created once. Ten leaves
+   * 20/h (raised from 10 — mandate B2). The opposite shape of traffic: an account
+   * is created once, but a shared network (office, campus, mobile carrier NAT)
+   * puts many honest sign-ups behind one address. Twenty leaves
    * room for a family or a small crew signing up from one connection, and cuts
    * bulk account creation off well before it is worth anyone's while.
    */
-  SIGNUP: { limit: 10, windowSeconds: ONE_HOUR },
+  SIGNUP: { limit: 20, windowSeconds: ONE_HOUR },
 
   /**
    * 10/15min, unchanged from A-2. Caps how hard one address can drive the mail
