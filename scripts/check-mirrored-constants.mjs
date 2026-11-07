@@ -41,10 +41,6 @@ const REQUEST_FORM = 'apps/web/src/app/(app)/requests/new/create-request-form.ts
 // The tender form's rules live in a pure module (tested under `node --test`),
 // not in the component — so the mirror is declared there.
 const TENDER_RULES = 'apps/web/src/lib/service-requests/tender-rules.ts';
-const DECLINED_TEMPLATE =
-  'apps/api/src/common/email/templates/request-declined.template.ts';
-const DECLINE_ACTION =
-  'apps/web/src/app/(app)/dashboard/_actions/decline-request-action.tsx';
 const API_TERMS_VERSION = 'apps/api/src/modules/auth/terms-version.ts';
 const WEB_LEGAL_PAGES = 'apps/web/src/lib/legal/legal-pages.ts';
 const API_PORTFOLIO = 'apps/api/src/modules/portfolio/constants.ts';
@@ -89,11 +85,8 @@ const MIRRORS = [
     why: "R7 — a quote's validity is computed as deadline + this window; a drift would let quotes expire before the client can pick one (or outlive the tender)",
     files: [API_CONSTANTS, TENDER_RULES],
   },
-  {
-    name: 'REASON_MAX_CHARS',
-    why: "decline reason — the box must not accept more than the email will print, or the provider's message reaches the client cut mid-sentence",
-    files: [DECLINED_TEMPLATE, DECLINE_ACTION],
-  },
+  // REASON_MAX_CHARS removed: `reason` is no longer rendered in the
+  // request-declined email (#174), so there is no template-side cap to mirror.
   {
     // The only STRING mirror. Unlike the others, a drift here is not a
     // confusing 400 on one field: the BFF sends LEGAL_VERSION and SignupDto
