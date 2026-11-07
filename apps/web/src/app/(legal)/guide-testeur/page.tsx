@@ -36,8 +36,8 @@ export default function Page() {
             demande).
           </p>
           <p className="mt-4">
-            <strong className="font-semibold">Les paiements sont fictifs.</strong> Ils sont
-            en mode test : aucune somme réelle n&apos;est prélevée. Pour ajouter une carte,
+            <strong className="font-semibold">Les paiements sont fictifs.</strong>{' '}
+            Ils sont en mode test : aucune somme réelle n&apos;est prélevée. Pour ajouter une carte,
             utilisez la carte de test 4242 4242 4242 4242, avec une date d&apos;expiration
             future et un code de sécurité de votre choix. N&apos;entrez jamais vos vraies
             informations bancaires.
@@ -51,14 +51,17 @@ export default function Page() {
           </p>
           <p className="mt-4">
             <strong className="font-semibold">Vos renseignements</strong> : ils sont
-            conservés tant que votre compte existe. La fin de l&apos;essai sera annoncée sur
-            le site et par courriel, et toutes les données de l&apos;essai seront effacées
-            au plus tard 30 jours après la fin. Vous pouvez demander la fermeture de votre
-            compte à tout moment (voir la{' '}
+            conservés pendant l&apos;essai. Si vous demandez la fermeture de votre compte, il
+            est masqué rapidement ; vos données sont détruites au plus tard 30 jours après la
+            fin de l&apos;essai, qui sera annoncée sur le site et par courriel (voir la{' '}
             <Link href={LEGAL_DOCUMENTS['privacy-fr'].path} className={linkClass}>
               politique de confidentialité
             </Link>
             , section 7).
+          </p>
+          <p className="mt-4">
+            Pendant l&apos;essai, le nombre de courriels envoyés par jour est limité :
+            certains courriels de notification peuvent ne pas partir.
           </p>
           <p className="mt-4">
             <strong className="font-semibold">Nous écrire</strong> :{' '}
