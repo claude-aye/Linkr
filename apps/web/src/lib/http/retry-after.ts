@@ -36,6 +36,16 @@ export function retryAfterMessage(header: string | null): string {
 }
 
 /**
+ * Sentence for a 429 on request creation. Unlike the auth screens the budget is
+ * per signed-in ACCOUNT, so "depuis votre appareil" would be wrong here.
+ */
+export const TOO_MANY_CREATED_MESSAGE = 'Vous avez envoyé beaucoup de demandes en peu de temps.';
+
+export function tooManyCreatedMessage(response: Response): string {
+  return `${TOO_MANY_CREATED_MESSAGE} ${retryAfterMessage(response.headers.get('Retry-After'))}`;
+}
+
+/**
  * The full sentence shown when a budget is spent: what happened, then what to
  * do. Kept in one place so the three auth screens cannot drift apart on the one
  * message a user is most likely to hit while doing nothing wrong.

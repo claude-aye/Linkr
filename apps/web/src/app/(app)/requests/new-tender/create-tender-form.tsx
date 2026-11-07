@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import Link from 'next/link';
+import { tooManyCreatedMessage } from '@/lib/http/retry-after';
 import { useRouter } from 'next/navigation';
 import type { components } from '@linkr/api-client';
 
@@ -19,6 +20,7 @@ import {
 } from '@/lib/geocoding/geocode-address';
 import {
   ADDRESS_MAX,
+  DESCRIPTION_MAX,
   type DeadlineChoice,
   FIELD_ORDER,
   MAX_QUOTES_DEADLINE_DAYS,
@@ -452,7 +454,11 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           console.error('POST /api/service-requests (tender) → 400 (unreadable body)');
         }
       }
-      setFormError(messageForStatus(response.status));
+      setFormError(
+        response.status === 429
+          ? tooManyCreatedMessage(response)
+          : messageForStatus(response.status),
+      );
       setErrorNonce((n) => n + 1);
       setPending(false);
       return;
@@ -546,6 +552,7 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           <textarea
             id="tender-description"
             rows={5}
+            maxLength={DESCRIPTION_MAX}
             value={description}
             onChange={(event) => {
               clearError('description');

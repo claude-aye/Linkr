@@ -236,6 +236,9 @@ export function parseBudget(raw: string): BudgetParse {
 
 export const TITLE_MAX = 200;
 export const ADDRESS_MAX = 500;
+// Miroir de `DESCRIPTION_MAX` (API, service-requests/constants.ts) : la garde
+// `check-mirrored-constants` tient les deux valeurs ensemble.
+export const DESCRIPTION_MAX = 5000;
 
 export type TenderField =
   | 'category'
@@ -357,6 +360,9 @@ export function assembleTender(draft: TenderDraft, nowMs: number): TenderAssembl
 
   const description = draft.description.trim();
   if (!description) errors.description = 'Veuillez décrire les travaux.';
+  else if (description.length > DESCRIPTION_MAX) {
+    errors.description = `La description ne peut pas dépasser ${DESCRIPTION_MAX} caractères.`;
+  }
 
   const address = draft.address.trim();
   if (!address) errors.address = 'Veuillez indiquer l’adresse des travaux.';

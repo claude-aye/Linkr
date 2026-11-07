@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { components } from '@linkr/api-client';
+import { tooManyCreatedMessage } from '@/lib/http/retry-after';
 import { formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
 
 /**
@@ -119,6 +120,7 @@ function toLocalInputValue(d: Date): string {
 
 const TITLE_MAX = 200;
 const ADDRESS_MAX = 500;
+const DESCRIPTION_MAX = 5000;
 
 /** Parses a coord param; null when absent, empty, or non-finite. */
 function parseCoord(value: string | undefined): number | null {
@@ -464,7 +466,11 @@ export function CreateRequestForm({
 
     if (!response.ok) {
       // Status-only mapping (locked). The user can correct and re-submit.
-      setError(messageForStatus(response.status));
+      setError(
+        response.status === 429
+          ? tooManyCreatedMessage(response)
+          : messageForStatus(response.status),
+      );
       setPending(false);
       return;
     }
@@ -544,7 +550,11 @@ export function CreateRequestForm({
       reject('Veuillez remplir tous les champs.');
       return;
     }
-    if (trimmedTitle.length > TITLE_MAX || trimmedAddress.length > ADDRESS_MAX) {
+    if (
+      trimmedTitle.length > TITLE_MAX ||
+      trimmedAddress.length > ADDRESS_MAX ||
+      trimmedDescription.length > DESCRIPTION_MAX
+    ) {
       reject('Certains champs dépassent la longueur autorisée.');
       return;
     }
@@ -795,6 +805,7 @@ export function CreateRequestForm({
             name="description"
             required
             rows={4}
+            maxLength={DESCRIPTION_MAX}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className={fieldClass}

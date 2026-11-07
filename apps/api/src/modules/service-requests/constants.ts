@@ -90,6 +90,25 @@ export const MAX_ESTIMATED_AMOUNT = 9_999_999_999.99;
  * Forme d'un code de devise ISO 4217 : trois lettres MAJUSCULES. Vérifie la
  * forme, pas l'appartenance à la liste ISO.
  */
+/**
+ * Plafond de la description d'une demande (et d'un appel d'offres), en
+ * caractères. Le champ est un `text` sans borne en base : sans ce plafond,
+ * un seul POST pouvait y déposer des mégaoctets, que le fan-out d'un appel
+ * d'offres et les cartes des prestataires relaient ensuite. 5 000 caractères
+ * (environ une page) dépassent largement un descriptif honnête de travaux.
+ * Miroir : `DESCRIPTION_MAX` dans `create-request-form.tsx` et
+ * `tender-rules.ts` (garde `check-mirrored-constants`).
+ */
+export const DESCRIPTION_MAX = 5000;
+
+/**
+ * Budget de création, par utilisateur connecté (repli : IP). 20 par heure :
+ * un client réel publie quelques demandes par jour, même en réessayant après
+ * une erreur ; une boucle de script est coupée au 21e envoi. Chaque création
+ * peut aussi déclencher des notifications et un fan-out géographique.
+ */
+export const CREATE_REQUEST_RATE_LIMIT = { limit: 20, windowSeconds: 60 * 60 } as const;
+
 export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
 
 /**

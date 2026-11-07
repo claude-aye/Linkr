@@ -4594,6 +4594,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Too many requests created (20 per hour per caller); see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     ServiceRequestsController_listDepositsAwaitingConfirmation: {

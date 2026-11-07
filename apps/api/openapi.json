@@ -2064,6 +2064,9 @@
           },
           "400": {
             "description": "Validation error or inactive/unknown provider"
+          },
+          "429": {
+            "description": "Too many requests created (20 per hour per caller); see Retry-After"
           }
         },
         "summary": "Create a service request (OPEN immediately). DIRECT_BOOKING requires serviceItemId + requestedServiceProviderId. PROJECT_TENDER must not specify requestedServiceProviderId.",
@@ -5539,7 +5542,8 @@
             "maxLength": 200
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 5000
           },
           "serviceAddress": {
             "type": "string",

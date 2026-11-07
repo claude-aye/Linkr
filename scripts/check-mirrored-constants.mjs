@@ -103,6 +103,11 @@ const MIRRORS = [
     files: [API_TERMS_VERSION, WEB_LEGAL_PAGES],
   },
   {
+    name: 'DESCRIPTION_MAX',
+    why: 'a description the form accepts must not be a 400 from the API (service-request create)',
+    files: [API_CONSTANTS, REQUEST_FORM, TENDER_RULES],
+  },
+  {
     name: 'PORTFOLIO_MAX_ITEMS',
     why: 'portfolio P1 — the upload screen must stop at the photo the API refuses with 409',
     files: [API_PORTFOLIO, WEB_PORTFOLIO],

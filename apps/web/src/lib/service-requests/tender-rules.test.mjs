@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 
 import {
   DEADLINE_SUBMIT_MARGIN_MINUTES,
+  DESCRIPTION_MAX,
   MAX_ESTIMATED_AMOUNT,
   assembleTender,
   ceilToQuarterHour,
@@ -321,4 +322,12 @@ test('the missing fields are each reported at their own field', () => {
   for (const field of ['category', 'title', 'description', 'address', 'deadline']) {
     assert.ok(result.errors[field], field);
   }
+});
+
+test('a description of exactly DESCRIPTION_MAX passes, one more is refused at the field', () => {
+  const ok = assembleTender(draft({ description: 'a'.repeat(DESCRIPTION_MAX) }), NOW);
+  assert.equal(ok.kind, 'ready');
+  const tooLong = assembleTender(draft({ description: 'a'.repeat(DESCRIPTION_MAX + 1) }), NOW);
+  assert.equal(tooLong.kind, 'invalid');
+  assert.match(tooLong.errors.description, /5000/);
 });
