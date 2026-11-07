@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import { TestDataNotice } from '@/components/trial/test-data-notice';
+
 /**
  * Mints a Stripe Account Link and sends the provider to it.
  *
@@ -147,6 +149,7 @@ export function ConnectLinkAction({
 
   return (
     <div className="flex flex-col items-start gap-1.5">
+      <TestDataNotice kind="connect" className="max-w-md" />
       <button
         type="button"
         onClick={handleClick}

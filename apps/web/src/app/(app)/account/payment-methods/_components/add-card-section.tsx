@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Elements } from '@stripe/react-stripe-js';
 import type { StripeElementsOptions } from '@stripe/stripe-js';
 
+import { TestDataNotice } from '@/components/trial/test-data-notice';
 import { getStripe } from '@/lib/stripe/client';
 
 import { CardForm } from './card-form';
@@ -268,6 +269,8 @@ export function AddCardSection({
                 {error}
               </p>
             ) : options && clientSecret ? (
+              <>
+              <TestDataNotice kind="payment" className="mb-4" />
               <Elements key={clientSecret} stripe={stripePromise} options={options}>
                 <CardForm
                   onCancel={close}
@@ -279,6 +282,7 @@ export function AddCardSection({
                   }}
                 />
               </Elements>
+              </>
             ) : null}
 
             {(error || !stripePromise) && (

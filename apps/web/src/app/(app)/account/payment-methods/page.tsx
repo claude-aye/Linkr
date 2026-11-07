@@ -21,6 +21,7 @@ import {
 
 import { AddCardSection } from './_components/add-card-section';
 import { CardActions } from './_components/card-actions';
+import { TestDataNotice } from '@/components/trial/test-data-notice';
 import { ConfirmDepositAction } from './_components/confirm-deposit-action';
 
 type DepositAwaitingConfirmation =
@@ -115,6 +116,8 @@ export default async function PaymentMethodsPage({
               promises nothing rather than a button that may not be there. */}
           <AddCardSection hasPaymentAwaiting={deposits !== null && deposits.length > 0} />
         </header>
+
+        <TestDataNotice kind="payment" className="mb-6" />
 
         {arrivedFromBalance202 && (
           // Same amber banner as the deposit's 202 on `/requests`, and the same
