@@ -97,7 +97,7 @@ Ces limites ne s'appliquent pas à un préjudice causé par la faute intentionne
 
 **Fin de la version d'essai.** La fin de l'essai sera annoncée sur le site et par courriel. Toutes les données de l'essai seront effacées au plus tard 30 jours après cette date, comme le prévoit la politique de confidentialité.
 
-**Modifications.** Nous pouvons modifier ces conditions. En cas de changement important, nous vous en informerons au moins 30 jours à l'avance par courriel, et vous demanderons d'accepter la nouvelle version. Vous pourrez refuser et fermer votre compte sans frais.
+**Modifications.** Nous pouvons modifier ces conditions. En cas de changement important, nous vous en informerons au moins 30 jours à l'avance par courriel ou par un avis sur le site. Si vous refusez la nouvelle version, vous pourrez fermer votre compte sans frais.
 
 ## 9. Droit applicable, langue et contact
 
