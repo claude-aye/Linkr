@@ -55,6 +55,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${parisienne.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Retirer ce bandeau retire aussi `TestDataNotice` (components/trial). */}
         {/* Hauteur = --trial-banner-h (globals.css) : une seule ligne, à toutes les largeurs. */}
         <p className="flex h-[var(--trial-banner-h)] shrink-0 items-center justify-center overflow-hidden whitespace-nowrap bg-accent px-4 text-xs text-on-accent">
           <span className="sm:hidden">

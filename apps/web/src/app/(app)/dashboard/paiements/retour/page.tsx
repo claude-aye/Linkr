@@ -1,3 +1,4 @@
+import { TestDataNotice } from '@/components/trial/test-data-notice';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { components } from '@linkr/api-client';
@@ -106,6 +107,8 @@ export default async function ConnectReturnPage() {
             situation actuelle.
           </p>
         </header>
+
+        <TestDataNotice kind="connect" className="mb-6" />
 
         <div className="space-y-8">
           {providerId && connect !== undefined ? (
