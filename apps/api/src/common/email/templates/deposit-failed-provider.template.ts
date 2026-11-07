@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -31,8 +32,6 @@ import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 export type DepositFailedProviderEmailVars = {
   /** Provider owner's first name, for the greeting. */
   firstName: string;
-  /** The request title, so the message is recognisable at a glance. */
-  requestTitle: string;
   /**
    * Absolute URL of the provider dashboard, built from WEB_APP_BASE_URL.
    * Carries `?onglet=jobs`: the retry button lives on the « Mes jobs » tab,
@@ -44,8 +43,7 @@ export type DepositFailedProviderEmailVars = {
 type DepositFailedProviderCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
-  intro: (requestTitle: string) => string;
+  intro: string;
   clientNotified: string;
   caution: string;
   cta: string;
@@ -66,9 +64,8 @@ const COPY: Record<Locale, DepositFailedProviderCopy> = {
   'fr-CA': {
     subject: 'Linkr — l’acompte de votre mandat n’est pas sécurisé',
     heading: 'L’acompte n’a pas pu être prélevé',
-    greeting: (firstName) => `Bonjour ${firstName},`,
-    intro: (requestTitle) =>
-      `Le prélèvement de l’acompte pour la demande « ${requestTitle} » n’a pas abouti. Le mandat vous reste attribué.`,
+    intro:
+      "Le prélèvement de l’acompte d’une demande de service n’a pas abouti. Le mandat vous reste attribué.",
     clientNotified:
       'Le client vient d’être invité à mettre à jour son moyen de paiement. Patientez quelques heures avant de tenter une relance depuis votre tableau de bord.',
     caution:
@@ -81,9 +78,8 @@ const COPY: Record<Locale, DepositFailedProviderCopy> = {
   'en-CA': {
     subject: 'Linkr — the deposit on your job is not secured',
     heading: 'The deposit could not be charged',
-    greeting: (firstName) => `Hello ${firstName},`,
-    intro: (requestTitle) =>
-      `The deposit for the request "${requestTitle}" could not be charged. The job is still yours.`,
+    intro:
+      "The deposit for a service request could not be charged. The job is still yours.",
     clientNotified:
       'The client has just been asked to update their payment method. Please wait a few hours before re-attempting the charge from your dashboard.',
     caution:
@@ -97,7 +93,8 @@ const COPY: Record<Locale, DepositFailedProviderCopy> = {
 /**
  * The deposit-failed email, provider half.
  *
- * `requestTitle` is user-supplied text and is escaped like everything else.
+ * No request title is rendered: a title is written by another account and the
+ * address it goes to is never confirmed, so the intro uses a fixed phrase.
  */
 export const depositFailedProviderEmail = (
   vars: DepositFailedProviderEmailVars,
@@ -108,9 +105,9 @@ export const depositFailedProviderEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro,
     '',
     copy.clientNotified,
     '',
@@ -128,8 +125,8 @@ export const depositFailedProviderEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro)}</p>`,
     `<p>${escapeHtml(copy.clientNotified)}</p>`,
     // The money warning is the point of this email — body colour, not muted.
     `<p>${escapeHtml(copy.caution)}</p>`,

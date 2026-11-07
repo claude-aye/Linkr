@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { clipTitle, greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -37,7 +38,6 @@ export type RequestAcceptedEmailVars = {
 type RequestAcceptedCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
   intro: (requestTitle: string) => string;
   cta: string;
   detail: string;
@@ -55,7 +55,6 @@ const COPY: Record<Locale, RequestAcceptedCopy> = {
   'fr-CA': {
     subject: 'Linkr — votre demande a été acceptée',
     heading: 'Votre demande a été acceptée',
-    greeting: (firstName) => `Bonjour ${firstName},`,
     intro: (requestTitle) =>
       `Un prestataire vient d'accepter votre demande « ${requestTitle} ».`,
     cta: 'Voir ma demande',
@@ -68,7 +67,6 @@ const COPY: Record<Locale, RequestAcceptedCopy> = {
   'en-CA': {
     subject: 'Linkr — your request was accepted',
     heading: 'Your request was accepted',
-    greeting: (firstName) => `Hello ${firstName},`,
     intro: (requestTitle) =>
       `A provider just accepted your request "${requestTitle}".`,
     cta: 'View my request',
@@ -92,9 +90,9 @@ export const requestAcceptedEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro(clipTitle(vars.requestTitle)),
     '',
     vars.requestsUrl,
     '',
@@ -110,8 +108,8 @@ export const requestAcceptedEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro(clipTitle(vars.requestTitle)))}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,
     `<p style="color: #71717a;">${escapeHtml(copy.detail)}</p>`,
     // Plenty of clients strip or rewrite buttons; the bare URL is the fallback.

@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -22,8 +23,6 @@ import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 export type QuoteNotSelectedEmailVars = {
   /** Provider owner's first name, for the greeting. */
   firstName: string;
-  /** The request title, so the message is recognisable at a glance. */
-  requestTitle: string;
   /**
    * Absolute URL of the provider dashboard, built from WEB_APP_BASE_URL, on the
    * `?onglet=appels-offres` tab. Quasi-immutable — see
@@ -35,8 +34,7 @@ export type QuoteNotSelectedEmailVars = {
 type QuoteNotSelectedCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
-  intro: (requestTitle: string) => string;
+  intro: string;
   cta: string;
   detail: string;
   fallbackLead: string;
@@ -54,9 +52,7 @@ const COPY: Record<Locale, QuoteNotSelectedCopy> = {
   'fr-CA': {
     subject: 'Linkr — une autre offre a été retenue',
     heading: 'Une autre offre a été retenue',
-    greeting: (firstName) => `Bonjour ${firstName},`,
-    intro: (requestTitle) =>
-      `Le client a retenu une autre offre pour « ${requestTitle} ».`,
+    intro: "Le client a retenu une autre offre pour une demande de service.",
     cta: "Voir les appels d'offres",
     detail:
       "Merci d'avoir répondu. D'autres appels d'offres correspondant à vos métiers vous attendent peut-être.",
@@ -67,9 +63,7 @@ const COPY: Record<Locale, QuoteNotSelectedCopy> = {
   'en-CA': {
     subject: 'Linkr — another offer was selected',
     heading: 'Another offer was selected',
-    greeting: (firstName) => `Hello ${firstName},`,
-    intro: (requestTitle) =>
-      `The client selected another offer for "${requestTitle}".`,
+    intro: "The client selected another offer for a service request.",
     cta: 'View calls for tenders',
     detail:
       'Thank you for responding. Other calls for tenders matching your trades may be waiting for you.',
@@ -81,7 +75,8 @@ const COPY: Record<Locale, QuoteNotSelectedCopy> = {
 /**
  * The quote-not-selected email.
  *
- * `requestTitle` is user-supplied text and is escaped like everything else.
+ * No request title is rendered: a title is written by another account and the
+ * address it goes to is never confirmed, so the intro uses a fixed phrase.
  */
 export const quoteNotSelectedEmail = (
   vars: QuoteNotSelectedEmailVars,
@@ -92,9 +87,9 @@ export const quoteNotSelectedEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro,
     '',
     vars.dashboardUrl,
     '',
@@ -110,8 +105,8 @@ export const quoteNotSelectedEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro)}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,
     `<p style="color: #71717a;">${escapeHtml(copy.detail)}</p>`,
     // Plenty of clients strip or rewrite buttons; the bare URL is the fallback.

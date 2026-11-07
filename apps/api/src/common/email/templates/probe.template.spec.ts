@@ -94,7 +94,6 @@ const TEMPLATE_FIXTURES: {
   },
   'direct-booking': {
     firstName: 'Camille',
-    requestTitle: 'Reparation de robinet',
     dashboardUrl: 'https://linkr.test/dashboard',
   },
   'request-accepted': {
@@ -105,8 +104,6 @@ const TEMPLATE_FIXTURES: {
   'request-declined': {
     firstName: 'Camille',
     requestTitle: 'Reparation de robinet',
-    // Optional on purpose: the default cancellation text is never forwarded.
-    reason: undefined,
     requestsUrl: 'https://linkr.test/requests',
   },
   'job-completed': {
@@ -123,7 +120,6 @@ const TEMPLATE_FIXTURES: {
   },
   'deposit-failed-provider': {
     firstName: 'Camille',
-    requestTitle: 'Reparation de robinet',
     // The tab matters: the retry button only exists on « Mes jobs » (5.3).
     dashboardUrl: 'https://linkr.test/dashboard?onglet=jobs',
   },
@@ -140,12 +136,10 @@ const TEMPLATE_FIXTURES: {
   },
   'quote-accepted': {
     firstName: 'Camille',
-    requestTitle: 'Reparation de robinet',
     dashboardUrl: 'https://linkr.test/dashboard?onglet=jobs',
   },
   'quote-not-selected': {
     firstName: 'Camille',
-    requestTitle: 'Reparation de robinet',
     dashboardUrl: 'https://linkr.test/dashboard?onglet=appels-offres',
   },
 };

@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { clipTitle, greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -44,7 +45,6 @@ export type BalanceFailedClientEmailVars = {
 type BalanceFailedClientCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
   intro: (requestTitle: string) => string;
   consequence: string;
   action: string;
@@ -66,7 +66,6 @@ const COPY: Record<Locale, BalanceFailedClientCopy> = {
   'fr-CA': {
     subject: 'Linkr — le paiement du solde attend votre confirmation',
     heading: 'Le paiement du solde attend votre confirmation',
-    greeting: (firstName) => `Bonjour ${firstName},`,
     intro: (requestTitle) =>
       `Le délai de confirmation des travaux pour votre demande « ${requestTitle} » est écoulé, mais le prélèvement automatique du solde n’a pas abouti : votre banque demande que vous confirmiez ce paiement, ou votre carte a été refusée.`,
     consequence:
@@ -81,7 +80,6 @@ const COPY: Record<Locale, BalanceFailedClientCopy> = {
   'en-CA': {
     subject: 'Linkr — your balance payment awaits your confirmation',
     heading: 'Your balance payment awaits your confirmation',
-    greeting: (firstName) => `Hello ${firstName},`,
     intro: (requestTitle) =>
       `The confirmation period for the work on your request "${requestTitle}" has ended, but the automatic charge of the balance did not go through: your bank wants you to confirm this payment, or your card was declined.`,
     consequence:
@@ -109,9 +107,9 @@ export const balanceFailedClientEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro(clipTitle(vars.requestTitle)),
     '',
     copy.consequence,
     '',
@@ -129,8 +127,8 @@ export const balanceFailedClientEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro(clipTitle(vars.requestTitle)))}</p>`,
     `<p>${escapeHtml(copy.consequence)}</p>`,
     `<p>${escapeHtml(copy.action)}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,

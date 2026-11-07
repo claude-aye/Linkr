@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { clipTitle, greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -35,7 +36,6 @@ export type JobCompletedEmailVars = {
 type JobCompletedCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
   intro: (requestTitle: string) => string;
   deadline: (hours: number) => string;
   cta: string;
@@ -57,7 +57,6 @@ const COPY: Record<Locale, JobCompletedCopy> = {
   'fr-CA': {
     subject: 'Linkr — votre prestataire a terminé le travail',
     heading: 'Le travail est terminé',
-    greeting: (firstName) => `Bonjour ${firstName},`,
     intro: (requestTitle) =>
       `Votre prestataire indique avoir terminé le travail pour votre demande « ${requestTitle} ».`,
     deadline: (hours) =>
@@ -70,7 +69,6 @@ const COPY: Record<Locale, JobCompletedCopy> = {
   'en-CA': {
     subject: 'Linkr — your provider has finished the job',
     heading: 'The job is done',
-    greeting: (firstName) => `Hello ${firstName},`,
     intro: (requestTitle) =>
       `Your provider reports having finished the job for your request "${requestTitle}".`,
     deadline: (hours) =>
@@ -95,9 +93,9 @@ export const jobCompletedEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro(clipTitle(vars.requestTitle)),
     '',
     copy.deadline(vars.autoReleaseHours),
     '',
@@ -113,8 +111,8 @@ export const jobCompletedEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro(clipTitle(vars.requestTitle)))}</p>`,
     // The deadline is the point of this email — body colour, not muted grey.
     `<p>${escapeHtml(copy.deadline(vars.autoReleaseHours))}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,

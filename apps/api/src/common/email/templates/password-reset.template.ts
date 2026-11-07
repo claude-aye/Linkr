@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { clipTitle, greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -19,7 +20,6 @@ export type PasswordResetEmailVars = {
 type PasswordResetCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
   intro: string;
   cta: string;
   /** Rendered with the figure so "60 minutes" is never hard-coded in prose. */
@@ -40,7 +40,6 @@ const COPY: Record<Locale, PasswordResetCopy> = {
   'fr-CA': {
     subject: 'Linkr — réinitialisation de votre mot de passe',
     heading: 'Réinitialisation de votre mot de passe',
-    greeting: (firstName) => `Bonjour ${firstName},`,
     intro:
       'Vous avez demandé à réinitialiser votre mot de passe Linkr. Cliquez sur le lien ci-dessous pour en choisir un nouveau.',
     cta: 'Choisir un nouveau mot de passe',
@@ -55,7 +54,6 @@ const COPY: Record<Locale, PasswordResetCopy> = {
   'en-CA': {
     subject: 'Linkr — reset your password',
     heading: 'Reset your password',
-    greeting: (firstName) => `Hello ${firstName},`,
     intro:
       'You asked to reset your Linkr password. Use the link below to choose a new one.',
     cta: 'Choose a new password',
@@ -91,7 +89,7 @@ export const passwordResetEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
     copy.intro,
     '',
@@ -111,7 +109,7 @@ export const passwordResetEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
     `<p>${escapeHtml(copy.intro)}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,
     `<p style="color: #71717a;">${escapeHtml(copy.expiry(vars.expiresInMinutes))}</p>`,

@@ -18,6 +18,8 @@ const LOCALES: Locale[] = ['fr-CA', 'en-CA'];
 
 type Case = {
   name: string;
+  /** True when the email is addressed to the client who wrote the title. */
+  rendersTitle: boolean;
   url: string;
   render: (locale: Locale) => RenderedEmail;
   /** A phrase each locale must carry, proving the copy is the right email. */
@@ -31,6 +33,7 @@ const TENDERS_URL = 'https://linkr.test/dashboard?onglet=appels-offres';
 const CASES: Case[] = [
   {
     name: 'quote-received',
+    rendersTitle: true,
     url: QUOTES_URL,
     render: (locale) =>
       quoteReceivedEmail(
@@ -47,36 +50,38 @@ const CASES: Case[] = [
   },
   {
     name: 'quote-accepted',
+    rendersTitle: false,
     url: JOBS_URL,
     render: (locale) =>
       quoteAcceptedEmail(
-        { firstName: 'Dana', requestTitle: HOSTILE_TITLE, dashboardUrl: JOBS_URL },
+        { firstName: 'Dana', dashboardUrl: JOBS_URL },
         locale,
       ),
     expected: {
       'fr-CA': {
         subject: 'Linkr — votre devis a été retenu',
-        intro: 'Votre devis pour « ',
+        intro: 'Votre devis a été retenu pour une demande de service.',
       },
-      'en-CA': { subject: 'Linkr — your quote was selected', intro: 'Your quote for "' },
+      'en-CA': { subject: 'Linkr — your quote was selected', intro: 'Your quote was selected for a service request.' },
     },
   },
   {
     name: 'quote-not-selected',
+    rendersTitle: false,
     url: TENDERS_URL,
     render: (locale) =>
       quoteNotSelectedEmail(
-        { firstName: 'Bob', requestTitle: HOSTILE_TITLE, dashboardUrl: TENDERS_URL },
+        { firstName: 'Bob', dashboardUrl: TENDERS_URL },
         locale,
       ),
     expected: {
       'fr-CA': {
         subject: 'Linkr — une autre offre a été retenue',
-        intro: 'Le client a retenu une autre offre pour « ',
+        intro: 'Le client a retenu une autre offre pour une demande de service.',
       },
       'en-CA': {
         subject: 'Linkr — another offer was selected',
-        intro: 'The client selected another offer for "',
+        intro: 'The client selected another offer for a service request.',
       },
     },
   },
@@ -93,8 +98,15 @@ describe.each(CASES)('$name email', (c) => {
     expect(rendered.text).not.toMatch(/<(p|a|h1|html|body)\b/);
   });
 
-  it.each(LOCALES)('escapes a hostile title in the HTML, verbatim in the text (%s)', (locale) => {
+  it.each(LOCALES)('handles a hostile title (%s)', (locale) => {
     const rendered = c.render(locale);
+
+    if (!c.rendersTitle) {
+      // Provider-bound: the title is not rendered at all.
+      expect(rendered.html).not.toContain('img');
+      expect(rendered.text).not.toContain('img');
+      return;
+    }
 
     expect(rendered.html).not.toContain('<img');
     expect(rendered.html).toContain(ESCAPED_TITLE);

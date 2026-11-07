@@ -1144,12 +1144,10 @@ export class ServiceRequestsService {
     const updated = await this.requestRepo.findById(requestId);
     if (!updated) throw new NotFoundException('Service request not found after update');
 
-    // Best-effort, detached, after the update. `dto.reason` and not
-    // `updated.cancellationReason`: the latter holds the default when the
-    // provider wrote nothing, and the email must stay silent in that case
-    // rather than print a sentence that says nothing.
+    // Best-effort, detached, after the update. The provider's free-text reason
+    // is not forwarded to the email (see notifyRequestDeclined).
     this.notificationsService
-      .notifyRequestDeclined(updated, dto.reason?.trim() || undefined)
+      .notifyRequestDeclined(updated)
       .catch((err: unknown) => {
         this.logger.error(
           `notifyRequestDeclined failed for request ${requestId}: ${String(err)}`,

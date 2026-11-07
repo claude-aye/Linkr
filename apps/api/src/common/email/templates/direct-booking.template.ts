@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -17,8 +18,6 @@ import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 export type DirectBookingEmailVars = {
   /** Provider owner's first name, for the greeting. */
   firstName: string;
-  /** The request title, the one detail that makes the message worth opening. */
-  requestTitle: string;
   /** Absolute dashboard URL, built from WEB_APP_BASE_URL. */
   dashboardUrl: string;
 };
@@ -26,8 +25,7 @@ export type DirectBookingEmailVars = {
 type DirectBookingCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
-  intro: (requestTitle: string) => string;
+  intro: string;
   cta: string;
   deadline: string;
   fallbackLead: string;
@@ -44,9 +42,7 @@ const COPY: Record<Locale, DirectBookingCopy> = {
   'fr-CA': {
     subject: 'Linkr — une nouvelle demande vous a été adressée',
     heading: 'Une nouvelle demande vous attend',
-    greeting: (firstName) => `Bonjour ${firstName},`,
-    intro: (requestTitle) =>
-      `Un client vous a choisi directement pour « ${requestTitle} ».`,
+    intro: "Un client vous a choisi directement pour une demande de service.",
     cta: 'Voir la demande',
     deadline:
       'Les détails, la période souhaitée et le prix estimé se trouvent sur votre tableau de bord.',
@@ -57,9 +53,7 @@ const COPY: Record<Locale, DirectBookingCopy> = {
   'en-CA': {
     subject: 'Linkr — a new request was sent to you',
     heading: 'A new request is waiting',
-    greeting: (firstName) => `Hello ${firstName},`,
-    intro: (requestTitle) =>
-      `A client picked you directly for "${requestTitle}".`,
+    intro: "A client picked you directly for a service request.",
     cta: 'View the request',
     deadline:
       'The details, the requested window and the estimated price are on your dashboard.',
@@ -71,8 +65,8 @@ const COPY: Record<Locale, DirectBookingCopy> = {
 /**
  * The direct-booking email.
  *
- * `requestTitle` is user-supplied text and is escaped like everything else —
- * the only reason the habit holds is that it has no exceptions.
+ * No request title is rendered: a title is written by another account and the
+ * address it goes to is never confirmed, so the intro uses a fixed phrase.
  */
 export const directBookingEmail = (
   vars: DirectBookingEmailVars,
@@ -83,9 +77,9 @@ export const directBookingEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro,
     '',
     vars.dashboardUrl,
     '',
@@ -101,8 +95,8 @@ export const directBookingEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro)}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,
     `<p style="color: #71717a;">${escapeHtml(copy.deadline)}</p>`,
     // Plenty of clients strip or rewrite buttons; the bare URL is the fallback.

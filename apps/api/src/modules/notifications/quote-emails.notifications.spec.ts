@@ -130,7 +130,6 @@ describe('notifyQuoteAccepted', () => {
       template: 'quote-accepted',
       vars: {
         firstName: 'Dana',
-        requestTitle: REQUEST.title,
         dashboardUrl: `${BASE_URL}/dashboard?onglet=jobs`,
       },
     });
@@ -168,7 +167,6 @@ describe('notifyQuotesNotSelected', () => {
         expect.objectContaining({
           template: 'quote-not-selected',
           vars: expect.objectContaining({
-            requestTitle: REQUEST.title,
             dashboardUrl: `${BASE_URL}/dashboard?onglet=appels-offres`,
           }),
         }),

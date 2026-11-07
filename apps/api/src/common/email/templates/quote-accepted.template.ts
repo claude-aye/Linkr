@@ -1,4 +1,5 @@
 import { escapeHtml } from './escape';
+import { greet } from './sanitize';
 import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 
 /**
@@ -19,8 +20,6 @@ import { DEFAULT_LOCALE, Locale, RenderedEmail } from './types';
 export type QuoteAcceptedEmailVars = {
   /** Provider owner's first name, for the greeting. */
   firstName: string;
-  /** The request title, so the message is recognisable at a glance. */
-  requestTitle: string;
   /**
    * Absolute URL of the provider dashboard, built from WEB_APP_BASE_URL.
    * Carries `?onglet=jobs`: the request is now ASSIGNED, which is exactly what
@@ -33,8 +32,7 @@ export type QuoteAcceptedEmailVars = {
 type QuoteAcceptedCopy = {
   subject: string;
   heading: string;
-  greeting: (firstName: string) => string;
-  intro: (requestTitle: string) => string;
+  intro: string;
   cta: string;
   detail: string;
   fallbackLead: string;
@@ -51,8 +49,7 @@ const COPY: Record<Locale, QuoteAcceptedCopy> = {
   'fr-CA': {
     subject: 'Linkr — votre devis a été retenu',
     heading: 'Votre devis a été retenu',
-    greeting: (firstName) => `Bonjour ${firstName},`,
-    intro: (requestTitle) => `Votre devis pour « ${requestTitle} » a été retenu.`,
+    intro: "Votre devis a été retenu pour une demande de service.",
     cta: 'Voir mes jobs',
     detail: "Le mandat se trouve désormais dans l'onglet « Mes jobs » de votre espace pro.",
     fallbackLead:
@@ -62,8 +59,7 @@ const COPY: Record<Locale, QuoteAcceptedCopy> = {
   'en-CA': {
     subject: 'Linkr — your quote was selected',
     heading: 'Your quote was selected',
-    greeting: (firstName) => `Hello ${firstName},`,
-    intro: (requestTitle) => `Your quote for "${requestTitle}" was selected.`,
+    intro: "Your quote was selected for a service request.",
     cta: 'View my jobs',
     detail: 'The job is now in the jobs tab of your pro space.',
     fallbackLead: 'If the link does not work, copy this address into your browser:',
@@ -74,7 +70,8 @@ const COPY: Record<Locale, QuoteAcceptedCopy> = {
 /**
  * The quote-accepted email.
  *
- * `requestTitle` is user-supplied text and is escaped like everything else.
+ * No request title is rendered: a title is written by another account and the
+ * address it goes to is never confirmed, so the intro uses a fixed phrase.
  */
 export const quoteAcceptedEmail = (
   vars: QuoteAcceptedEmailVars,
@@ -85,9 +82,9 @@ export const quoteAcceptedEmail = (
   const text = [
     copy.heading,
     '',
-    copy.greeting(vars.firstName),
+    greet(locale, vars.firstName),
     '',
-    copy.intro(vars.requestTitle),
+    copy.intro,
     '',
     vars.dashboardUrl,
     '',
@@ -103,8 +100,8 @@ export const quoteAcceptedEmail = (
     `<html lang="${locale}">`,
     '<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #18181b;">',
     `<h1 style="font-size: 18px;">${escapeHtml(copy.heading)}</h1>`,
-    `<p>${escapeHtml(copy.greeting(vars.firstName))}</p>`,
-    `<p>${escapeHtml(copy.intro(vars.requestTitle))}</p>`,
+    `<p>${escapeHtml(greet(locale, vars.firstName))}</p>`,
+    `<p>${escapeHtml(copy.intro)}</p>`,
     `<p><a href="${safeUrl}" style="display: inline-block; background: #18181b; color: #fafafa; padding: 10px 16px; border-radius: 8px; text-decoration: none;">${escapeHtml(copy.cta)}</a></p>`,
     `<p style="color: #71717a;">${escapeHtml(copy.detail)}</p>`,
     // Plenty of clients strip or rewrite buttons; the bare URL is the fallback.
