@@ -247,7 +247,6 @@ export class NotificationsService {
         template: 'direct-booking',
         vars: {
           firstName: owner.firstName,
-          requestTitle: serviceRequest.title,
           dashboardUrl: `${baseUrl}/dashboard`,
         },
       });
@@ -318,14 +317,12 @@ export class NotificationsService {
    * Same terms as `notifyRequestAccepted`: one lookup on `clientUserId`, no
    * organization case, nothing here may speak for the decline.
    *
-   * `reason` is the provider's own text and is passed ONLY when they wrote one.
-   * The caller must not forward the `'Refusé par le prestataire'` default that
-   * lands in `cancellation_reason` — under a heading that already says the
-   * request was declined, it would be noise dressed as information.
+   * The provider's free-text reason is deliberately NOT forwarded: it is text from
+   * another account, sent to an address nobody has confirmed. The email only says
+   * that the provider replied.
    */
   async notifyRequestDeclined(
     serviceRequest: ServiceRequestRecord,
-    reason?: string,
   ): Promise<void> {
     if (emailTemplateFor('request.declined') === null) {
       return;
@@ -349,7 +346,6 @@ export class NotificationsService {
         vars: {
           firstName: client.firstName,
           requestTitle: serviceRequest.title,
-          reason,
           requestsUrl: `${baseUrl}/requests`,
         },
       });
@@ -505,7 +501,6 @@ export class NotificationsService {
         template: 'deposit-failed-provider',
         vars: {
           firstName: owner.firstName,
-          requestTitle: serviceRequest.title,
           /**
            * ⚠️ THE TAB IS PART OF THE ADDRESS, AND IT IS LOAD-BEARING.
            *
@@ -662,7 +657,6 @@ export class NotificationsService {
         template: 'quote-accepted',
         vars: {
           firstName: owner.firstName,
-          requestTitle: serviceRequest.title,
           // `onglet=jobs`: the request is ASSIGNED now, which the default tab
           // filters out. Quasi-immutable slug — see dashboard-tabs.tsx.
           dashboardUrl: `${baseUrl}/dashboard?onglet=jobs`,
@@ -712,7 +706,6 @@ export class NotificationsService {
           template: 'quote-not-selected',
           vars: {
             firstName: owner.firstName,
-            requestTitle: serviceRequest.title,
             // Toward the next opportunity, not a dead end. Quasi-immutable slug.
             dashboardUrl: `${baseUrl}/dashboard?onglet=appels-offres`,
           },
