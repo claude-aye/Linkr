@@ -121,6 +121,6 @@ Si notre réponse ne vous convient pas, vous pouvez porter plainte auprès de la
 
 **Âge minimum.** Linkr est réservé exclusivement aux personnes de 18 ans et plus ayant la pleine capacité juridique. Nous ne recueillons pas sciemment de renseignements personnels auprès de personnes mineures. Si nous découvrons qu'un compte a été créé par une personne de moins de 18 ans, nous fermerons ce compte sans délai ; ses renseignements seront détruits au plus tard par la purge de fin d'essai.
 
-**Modifications.** Si cette politique change de façon importante, nous vous en informerons par courriel ou sur le site avant l'entrée en vigueur, et vous demanderons au besoin d'accepter la nouvelle version.
+**Modifications.** Si cette politique change de façon importante, nous vous en informerons au moins 30 jours à l'avance, par courriel ou par un avis sur le site.
 
 **Contact.** Ayé Claude BROU, Jr., responsable de la protection des renseignements personnels, Québec (Québec), Canada — [support@linkrapp.com](mailto:support@linkrapp.com).
