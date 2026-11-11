@@ -15,6 +15,9 @@ import { EmailTemplateName } from './templates';
  */
 export const ESSENTIAL_TEMPLATES: ReadonlySet<EmailTemplateName> = new Set<EmailTemplateName>([
   'password-reset',
+  // Mandate L1: essential (priority 1, never counted in the notification
+  // budget), but metered by its OWN daily cap — see `reserveVerification`.
+  'email-verification',
   'deposit-failed-client',
   'balance-failed-client',
 ]);
@@ -38,6 +41,11 @@ const WARN_AT_RATIO = 0.8;
 const KEY_TTL_SECONDS = 2 * 24 * 60 * 60;
 
 const KEY_PREFIX = 'linkr:email-budget:v1:';
+
+export const DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET = 60;
+
+/** Separate key: verification mails never spend the notification budget. */
+const VERIFICATION_KEY_PREFIX = 'linkr:email-verification-budget:v1:';
 
 /**
  * Brevo's daily quota resets at midnight Eastern time, so the budget's day
@@ -87,6 +95,7 @@ export const budgetDay = (instant: Date): string => {
 export class EmailBudgetService {
   private readonly logger = new Logger(EmailBudgetService.name);
   private readonly dailyBudget: number;
+  private readonly verificationDailyBudget: number;
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -96,6 +105,46 @@ export class EmailBudgetService {
       'EMAIL_DAILY_BUDGET',
       DEFAULT_EMAIL_DAILY_BUDGET,
     );
+    this.verificationDailyBudget = configService.get<number>(
+      'EMAIL_VERIFICATION_DAILY_BUDGET',
+      DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET,
+    );
+  }
+
+  /**
+   * Reserves one verification email in today's (Toronto day) verification
+   * budget. False means "cap reached": the caller must refuse BEFORE creating
+   * anything (sign-up answers 503 before the account exists; resend answers 503
+   * before a token exists).
+   *
+   * ⚠️ A RESERVATION IS NEVER GIVEN BACK. If sign-up reserves a slot and then
+   * fails (an address that raced in, a database error), that slot is lost for
+   * the day. Accepted: it can only make the cap trip a little early, never let
+   * more mail through than configured, and it needs no second write.
+   *
+   * ⚠️ FAILS OPEN, like `allow`: a Redis that cannot be reached returns true.
+   * Sign-up then proceeds and the enqueue fails as every other mail does today;
+   * the failure is logged and the user can ask for a resend.
+   */
+  async reserveVerification(): Promise<boolean> {
+    let count: number;
+    try {
+      const key = `${VERIFICATION_KEY_PREFIX}${budgetDay(new Date())}`;
+      count = await this.redis.incr(key);
+      if (count === 1) {
+        await this.redis.expire(key, KEY_TTL_SECONDS);
+      }
+    } catch {
+      return true;
+    }
+
+    if (count > this.verificationDailyBudget) {
+      this.logger.warn(
+        `Email verification budget exhausted (${count}/${this.verificationDailyBudget}) for today (Toronto day)`,
+      );
+      return false;
+    }
+    return true;
   }
 
   /** BullMQ priority for a template — essentials run first. */

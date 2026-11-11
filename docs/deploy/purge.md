@@ -20,7 +20,7 @@ La liste est écrite dans le code (`purge-rules.ts`). L'adresse est comparée **
 ## Garde-fous
 
 - **Simulation par défaut.** Sans `--execute`, le script lit dans une transaction `READ ONLY` annulée : rien ne peut s'écrire, ni en base ni sur le disque.
-- **Rôle dédié `linkr_purge`** : `SELECT` et `DELETE` sur la liste fermée des tables, sauf `user_auth_providers` et `password_reset_tokens`, où il ne lit que `id` et `user_id` (jamais `password_hash` ni `token_hash`) ; `SELECT` seul sur les cinq tables protégées ; rien d'autre. Au démarrage, le script refuse un super-utilisateur, un rôle qui peut écrire dans une table protégée, un rôle qui peut lire `password_hash` ou `token_hash`, ou un rôle sans `DELETE` sur la liste.
+- **Rôle dédié `linkr_purge`** : `SELECT` et `DELETE` sur la liste fermée des tables, sauf `user_auth_providers`, `email_verification_tokens` et `password_reset_tokens`, où il ne lit que `id` et `user_id` (jamais `password_hash`, `token_hash` ni l'adresse d'un jeton de confirmation) ; `SELECT` seul sur les cinq tables protégées ; rien d'autre. Au démarrage, le script refuse un super-utilisateur, un rôle qui peut écrire dans une table protégée, un rôle qui peut lire `password_hash` ou `token_hash`, ou un rôle sans `DELETE` sur la liste.
 - **Liste fermée** des tables modifiables ; au démarrage, son intersection avec `service_categories`, `service_items`, `regulatory_requirements`, `typeorm_migrations`, `spatial_ref_sys` doit être vide.
 - **Une seule transaction** : `lock_timeout = '5s'`, verrou des 20 tables de la liste (`LOCK TABLE … IN SHARE ROW EXCLUSIVE MODE`), plan recalculé, phrase comparée, `DELETE … WHERE id = ANY($1)` table par table avec le nombre de lignes attendu, vérification qu'aucune ligne ne pointe encore vers un identifiant supprimé, vérification des comptes fixes, empreinte du catalogue (nombre de lignes et md5 des cinq tables) identique avant et après. Au moindre écart : `ROLLBACK`, rien n'a changé. Jamais de `TRUNCATE`, jamais d'ordre de schéma.
 - **Phrase tapée** : `PURGER E2E <n> COMPTES <empreinte>`, où `<n>` est le nombre de comptes **supprimés en entier** ; les comptes fixes gardés sont affichés à part (« Comptes fixes gardés : 2 »). L'empreinte couvre tous les comptes visés et chaque ligne visée : si la base change entre la simulation et l'exécution, la phrase ne correspond plus et rien n'est supprimé.
@@ -48,13 +48,21 @@ La liste est écrite dans le code (`purge-rules.ts`). L'adresse est comparée **
 ```sql
 CREATE ROLE linkr_purge LOGIN PASSWORD '<mot de passe généré>';
 GRANT SELECT, DELETE ON TABLE refunds, payments, reviews, notifications, quotes, service_request_attachments, service_request_assignments, service_requests, payment_methods, portfolio_items, verification_documents, professional_services, professional_service_categories, professional_service_zones, stripe_connect_accounts, service_providers, organization_memberships, users TO linkr_purge;
-GRANT DELETE ON TABLE user_auth_providers, password_reset_tokens TO linkr_purge;
+GRANT DELETE ON TABLE user_auth_providers, email_verification_tokens, password_reset_tokens TO linkr_purge;
 GRANT SELECT (id, user_id) ON TABLE user_auth_providers TO linkr_purge;
+GRANT SELECT (id, user_id) ON TABLE email_verification_tokens TO linkr_purge;
 GRANT SELECT (id, user_id) ON TABLE password_reset_tokens TO linkr_purge;
 GRANT SELECT ON TABLE service_categories, service_items, regulatory_requirements, typeorm_migrations, spatial_ref_sys TO linkr_purge;
 ```
 
-   Ce texte est la sortie de `docker compose --profile tools run --rm -T purge --print-role-sql` (aucune connexion à la base) ; un test vérifie que cette page le recopie exactement. **Aucune migration** ne crée ce rôle. Le `DELETE` sur `organization_memberships` ne sert qu'au verrou : le script n'y supprime jamais rien.
+   **Rôle déjà créé avant le mandat L1** (table `email_verification_tokens`) : ajouter seulement, avec le même `psql` :
+
+```sql
+GRANT DELETE ON TABLE email_verification_tokens TO linkr_purge;
+GRANT SELECT (id, user_id) ON TABLE email_verification_tokens TO linkr_purge;
+```
+
+   Sans ces deux lignes, la purge refuse de démarrer (droit `DELETE` manquant). Le premier bloc est la sortie de `docker compose --profile tools run --rm -T purge --print-role-sql` (aucune connexion à la base) ; un test vérifie que cette page le recopie exactement. **Aucune migration** ne crée ce rôle. Le `DELETE` sur `organization_memberships` ne sert qu'au verrou : le script n'y supprime jamais rien.
 3. Ajouter à `/opt/linkr/.env` (déjà `chmod 600`) : `PURGE_DATABASE_URL=postgresql://linkr_purge:<mot de passe>@postgres:5432/linkr`.
 4. Copier `deploy/purge.sh` en `/opt/linkr/purge.sh` (`chmod 755`) et `deploy/compose.yaml` en `/opt/linkr/compose.yaml` (le service `purge` doit y être).
 5. Le dossier des listes, `/opt/linkr/purge-out`, est créé par `purge.sh` en `chmod 700`. Il doit appartenir à l'uid 1000 (utilisateur `node` de l'image) : `sudo chown 1000:1000 /opt/linkr/purge-out` si `purge.sh` le demande. Lancer `purge.sh` avec l'utilisateur propriétaire du dossier (`ubuntu`, à vérifier avec `id -u`). Le dossier est hors du dépôt et hors du volume `uploads`.

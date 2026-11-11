@@ -10,6 +10,7 @@ import { AUTH_RATE_LIMITS } from './auth-rate-limits';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PasswordResetService } from './password-reset.service';
+import { EmailVerificationService } from './email-verification.service';
 
 /**
  * Pins two properties of `POST /auth/login` that NO unit test can reach, because
@@ -59,6 +60,7 @@ describe('AuthController — login rate limiting', () => {
         // Never reached: the strategy rejects before the handler body runs.
         { provide: AuthService, useValue: { login: jest.fn(), signup: jest.fn() } },
         { provide: PasswordResetService, useValue: {} },
+        { provide: EmailVerificationService, useValue: {} },
       ],
     }).compile();
 

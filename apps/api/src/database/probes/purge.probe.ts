@@ -136,6 +136,8 @@ const PAY_BAL = id(652);
 const PAY_LEG = id(653);
 const REF_FIX = id(661);
 const RESET_LEG = id(671);
+const VERIF_LEG = id(672);
+const VERIF_FIX = id(673);
 
 const FIXED_EMAILS = ['e2e-prestataire@linkrapp.com', 'e2e-client@linkrapp.com'];
 const LEGACY_PRO = 'e2e+prestataire-20261102-ab12cd34@gmail.com';
@@ -257,6 +259,14 @@ async function seed(db: Client, storage: string): Promise<void> {
     `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at_utc) VALUES ($1, $2, 'hash-sonde', now() + interval '1 hour')`,
     [RESET_LEG, U_LP],
   );
+  // L1 : un jeton de confirmation sur l'ancien compte (supprimé avec lui) et un
+  // sur le compte fixe (gardé, comme son jeton de réinitialisation le serait).
+  for (const [tid, uid, email] of [[VERIF_LEG, U_LP, 'sonde-verif-ancien'], [VERIF_FIX, U_FC, 'sonde-verif-fixe']]) {
+    await db.query(
+      `INSERT INTO email_verification_tokens (id, user_id, token_hash, email, expires_at_utc) VALUES ($1, $2, $3, $4, now() + interval '1 day')`,
+      [tid, uid, email, email],
+    );
+  }
 
   // Transactions des comptes fixes
   await insertRequest(db, SR_FIX_DONE, U_FC, { requested: P_FIX, assigned: P_FIX, status: 'COMPLETED', title: 'e2e-paiement-20261102T1200Z' });
@@ -441,7 +451,7 @@ async function main(): Promise<void> {
         write = /permission denied/.test(String(err)) ? 'refusé' : String(err);
       }
       check('écriture dans le catalogue refusée au rôle', write, 'refusé');
-      for (const [table, col] of [['user_auth_providers', 'password_hash'], ['password_reset_tokens', 'token_hash']]) {
+      for (const [table, col] of [['user_auth_providers', 'password_hash'], ['password_reset_tokens', 'token_hash'], ['email_verification_tokens', 'token_hash'], ['email_verification_tokens', 'email']]) {
         let read = 'accepté';
         try {
           await db.query(`SELECT ${col} FROM ${table} LIMIT 1`);
@@ -592,6 +602,7 @@ async function main(): Promise<void> {
         professional_service_zones: 1,
         stripe_connect_accounts: 1,
         service_providers: 1,
+        email_verification_tokens: 1,
         password_reset_tokens: 1,
         user_auth_providers: 2,
         users: 2,
@@ -631,6 +642,8 @@ async function main(): Promise<void> {
     ]);
     const fc = await admin.query<{ s: string }>(`SELECT stripe_customer_id AS s FROM users WHERE id = $1`, [U_FC]);
     check('client fixe : identifiant client Stripe gardé', fc.rows[0].s, 'cus_sonde_fixe');
+    const verif = await admin.query<{ id: string }>(`SELECT id FROM email_verification_tokens WHERE id = ANY($1::uuid[])`, [[VERIF_LEG, VERIF_FIX]]);
+    check('L1 : jeton de confirmation de l’ancien compte supprimé, celui du compte fixe gardé', verif.rows.map((r) => r.id), [VERIF_FIX]);
 
     const real = await admin.query<{ k: string }>(
       `SELECT 'user:'||id AS k FROM users WHERE id = ANY($1::uuid[])

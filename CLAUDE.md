@@ -2059,21 +2059,33 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 
 **Arrêt d'urgence sans déploiement (mandat E, Caddy).** Deux drapeaux par fichier dans `/opt/linkr/flags/` (monté en lecture seule dans Caddy) : `signups-closed` (`/signup` et `POST /api/auth/signup` → 503 en français) et `maintenance` (tout en 503). Le matcher `file` de Caddy est évalué à chaque requête : ni redémarrage ni déploiement. Le webhook Stripe est servi avant les drapeaux, donc joignable dans les deux cas. Les `handle` du Caddyfile sont lus dans l'ordre : ne jamais placer le proxy web avant eux. Mode d'emploi, mise en place et ordre des `scp` : `docs/deploy/arret-urgence.md` ; banc : `deploy/tests/arret-urgence.test.sh`. **ZÉRO code applicatif, zéro migration, contrat inchangé.**
 
+**Vérification de l'adresse courriel, côté API (mandat L1).** `users.email_verified_at_utc` est désormais écrit. **L1 ne bloque rien** : aucune garde, aucune revendication dans le JWT (c'est L3), aucun changement web (L2). Migration **`1780560000000-CreateEmailVerificationTokens`** (tête + 10000000), prouvée `up → down → up` sur une base jetable.
+- **Table `email_verification_tokens`**, calquée sur `password_reset_tokens` : seule l'empreinte SHA-256 du jeton (32 octets, base64url dans le courriel), **plus l'adresse pour laquelle il a été émis** (`email`), expiration **24 h**, `consumed_at_utc`, `ON DELETE CASCADE`. `hashToken` déménage dans `auth/token-hash.ts` (ré-exporté par `password-reset.service.ts`), pour éviter un cycle de fichiers avec `AuthService`.
+- **`POST /auth/verify-email`** (public, `{ token }`, 20 / 15 min par IP) : **204**, aucune session, aucun cookie. Consommation **par POST seulement**, en un `UPDATE … FROM users` dont le `WHERE` exige jeton non consommé, non expiré, compte non supprimé **et `users.email = t.email` (égalité exacte, sensible à la casse)** ; puis `email_verified_at_utc = COALESCE(email_verified_at_utc, now())`, même transaction. Tout échec (inconnu, expiré, réutilisé, remplacé, ancienne adresse) : **un seul 400**, `code: EMAIL_VERIFICATION_TOKEN_INVALID`. Un compte déjà vérifié avec un jeton valide : 204, date inchangée.
+- **`POST /auth/verify-email/resend`** (JWT) : utilisateur cherché **par id**, jamais par adresse. Limites : 3 / h par utilisateur (garde `@RateLimit`, clé `user:<sub>`), 5 / jour par utilisateur et 10 / h par IP (`EmailVerificationService.checkResendLimits`, `FixedWindowCounter` en mémoire) ; **429 + `Retry-After`**. Déjà vérifié → `200 { status: 'ALREADY_VERIFIED' }`, rien d'envoyé ; sinon `200 { status: 'SENT' }`, les liens précédents expirés (rotation).
+- **Inscription** : réservation dans le budget **avant** `createWithEmailPassword`, puis envoi **non bloquant** après (une panne est journalisée par id d'utilisateur et nom d'erreur, jamais l'adresse ni le jeton).
+- **Budget dédié** : `email-verification` est **essentiel** (priorité BullMQ 1, jamais compté dans `EMAIL_DAILY_BUDGET`) mais plafonné par **`EMAIL_VERIFICATION_DAILY_BUDGET`** (défaut 60, jour de Toronto, clé `linkr:email-verification-budget:v1:<jour>`). Au plafond : **503** `code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED`, « Les inscriptions sont saturées aujourd'hui, réessayez demain. », **avant** toute création (aucun compte, aucun jeton). Une réservation n'est jamais rendue : une inscription qui échoue après la réservation perd sa place du jour (assumé : le plafond ne peut que tomber un peu plus tôt). Redis injoignable : laisse passer, comme les autres courriels. `EmailModule` exporte désormais `EmailBudgetService`.
+- **Réinitialisation menée à terme** : `email_verified_at_utc = COALESCE(…, now())` dans le même `UPDATE users` que `sessions_invalidated_at_utc`.
+- **`UserPublicDto`** : `emailVerified` (booléen dérivé de la colonne, la date n'est pas exposée) ; chaque champ porte désormais un `@ApiProperty` concret et `GET /auth/me` déclare sa réponse. Signup documente son 503 (le 201 est réaffirmé).
+- **Purge et fermeture de compte (§13 nº 20 et 21)** : la nouvelle table rejoint la liste fermée de la purge (plan, arêtes, `DELETE` + `SELECT (id, user_id)` seulement, `token_hash` et `email` interdits) ; **un rôle `linkr_purge` déjà créé doit recevoir deux `GRANT`** (`docs/deploy/purge.md`), sinon la purge refuse de démarrer. `close-account.sql` consomme les jetons de confirmation au masquage (`PLAN|jetons_confirmation`).
+- **Caddy** : `signups-closed` ne capture que `/signup` et `/api/auth/signup` (correspondance exacte) ; `/verify-email` et `/api/auth/verify-email` ne sont pas touchés. Caddyfile inchangé.
+- **Validé** : jest 842 → 860 (+18, `email-verification.spec.ts`) ; sonde `email-verification.probe.ts` **23/23** (expiré, réutilisé, ancienne adresse, variante de casse, rotation, concurrence, compte supprimé, réinitialisation et `COALESCE`, cascade) ; sonde de purge **62/62** ; banc de fermeture **43/43** et `close-account-sh` 37/37 (conteneur `node:22-bookworm-slim`) ; mutations « adresse retirée » (sonde, 2 rouges) et « plafond retiré » (jest, 2 rouges) ; smoke HTTP sur une API de branche (:5100, Redis db 1, base copiée, Mailpit). Contrat régénéré en démarrant l'app.
+
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
 
 > ⚠️ **CETTE SECTION EST DÉRIVÉE DE `apps/api/src/config/env.validation.ts`. NE PAS LA RÉDIGER À LA MAIN.**
 > La source de vérité est le schéma Joi, jamais ce tableau. Toute modification du schéma
-> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 23 août 2026
-> (47 variables).
+> doit être répercutée ici **dans la même PR**. Vérifié contre le source le 11 novembre 2026
+> (49 variables).
 
 Câblage : `apps/api/src/app.module.ts:28-32` → `ConfigModule.forRoot({ validate, isGlobal: true, envFilePath: '.env' })`.
 Échec : `env.validation.ts:127-130` lève une erreur au démarrage. `abortEarly: false` → **toutes**
 les variables manquantes sont listées d'un coup. `allowUnknown: true` tolère les variables
 inconnues, **pas** les manquantes.
 
-### API (`apps/api/.env`) — 47 variables
+### API (`apps/api/.env`) — 49 variables
 
 **Requises inconditionnellement (14) — l'API refuse de démarrer sans elles :**
 
@@ -2097,7 +2109,7 @@ inconnues, **pas** les manquantes.
 **Conditionnelles (4)** — requises **uniquement si** `STORAGE_DRIVER=s3` :
 `STORAGE_BUCKET` · `STORAGE_REGION` · `STORAGE_ACCESS_KEY_ID` · `STORAGE_SECRET_ACCESS_KEY`
 
-**Optionnelles avec défaut (17) :**
+**Optionnelles avec défaut (19) :**
 
 | Variable | Défaut |
 |---|---|
@@ -2116,6 +2128,8 @@ inconnues, **pas** les manquantes.
 | `PLATFORM_DEFAULT_CURRENCY` | `CAD` |
 | `SMTP_SECURE` | `false` (TLS implicite ; STARTTLS reste possible) |
 | `EMAIL_FROM_NAME` | `Linkr` |
+| `EMAIL_DAILY_BUDGET` | `200` — plafond quotidien (jour de Toronto) des courriels **non essentiels** (C2) |
+| `EMAIL_VERIFICATION_DAILY_BUDGET` | `60` — plafond quotidien (jour de Toronto) des courriels de confirmation d'adresse (L1). Au plafond, l'inscription répond **503 avant de créer le compte**, le renvoi répond 503 sans créer de jeton. Lu au démarrage. |
 | `WEB_APP_BASE_URL` | `http://localhost:3001` — base du lien de réinitialisation |
 | `STRIPE_ENV_LABEL` | `dev` — étiquette `metadata.linkr_env` de chaque objet Stripe créé (client, compte Connect, SetupIntent, PaymentIntent, remboursement). **Exigée en production et refusée si `dev`** (`productionConfigProblems`) : le bac à sable de test est partagé avec le développement. Valeur de l'essai : `trial`. Lue au démarrage. |
 

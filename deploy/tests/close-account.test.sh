@@ -123,6 +123,8 @@ fixture verification_documents "$SRC_VD" "id = '66666666-6666-4666-8666-66666666
 fixture payment_methods "$SRC_PM" "id = '77777777-7777-4777-8777-777777777771', owner_user_id = '$U', owner_organization_id = NULL, stripe_payment_method_id = 'pm_probe_close', deleted_at_utc = NULL"
 fixture stripe_connect_accounts "$SRC_SCA" "id = '88888888-8888-4888-8888-888888888881', service_provider_id = '$SP', stripe_account_id = 'acct_probe_close'"
 
+# Mandat L1 : un lien de confirmation encore valide, consommé à la fermeture.
+q "INSERT INTO email_verification_tokens (user_id, token_hash, email, expires_at_utc) VALUES ('$U', 'probe-close-verif', 'probe-close@linkr.test', now() + interval '1 day')" >/dev/null || ko "fixture email_verification_tokens"
 BEFORE="$(others_hash "$U")"
 
 # ─── T3a : étape 0 lecture seule, puis étape 1 ANNULÉE ─────────────────────
@@ -147,6 +149,8 @@ check    "T3 compte masqué + sessions invalidées" "$(q "SELECT deleted_at_utc 
 check    "T3 prestataire masqué" "$(q "SELECT deleted_at_utc IS NOT NULL FROM service_providers WHERE id = '$SP'")" "t"
 check    "T3 photos masquées" "$(q "SELECT count(*) FROM portfolio_items WHERE service_provider_id = '$SP' AND deleted_at_utc IS NULL")" "0"
 check    "T3 pièce masquée" "$(q "SELECT deleted_at_utc IS NOT NULL FROM verification_documents WHERE id = '66666666-6666-4666-8666-666666666661'")" "t"
+contains "T3 COMMIT : 1 jeton de confirmation consommé" "$out" "PLAN|jetons_confirmation|1"
+check    "T3 lien de confirmation consommé" "$(q "SELECT consumed_at_utc IS NOT NULL FROM email_verification_tokens WHERE token_hash = 'probe-close-verif'")" "t"
 check    "T3 carte masquée" "$(q "SELECT deleted_at_utc IS NOT NULL FROM payment_methods WHERE id = '77777777-7777-4777-8777-777777777771'")" "t"
 check    "T3 aucune ligne détruite" "$(q "SELECT count(*) FROM users WHERE id = '$U'")" "1"
 check    "T3 données des autres comptes intactes" "$(others_hash "$U")" "$BEFORE"

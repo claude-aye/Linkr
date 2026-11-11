@@ -141,8 +141,15 @@ export class PasswordResetTokenRepository {
       // Expels every refresh token issued before now (A-2.10). Inside the same
       // transaction: a password changed without this bound moving would leave
       // whoever took over the account still signed in.
+      //
+      // Mandate L1: a completed reset also proves control of the mailbox the
+      // link was sent to, so it marks the address verified — in this SAME
+      // transaction, and with COALESCE so an earlier verification date is kept.
       await manager.query(
-        `UPDATE users SET sessions_invalidated_at_utc = now() WHERE id = $1`,
+        `UPDATE users
+            SET sessions_invalidated_at_utc = now(),
+                email_verified_at_utc = COALESCE(email_verified_at_utc, now())
+          WHERE id = $1`,
         [userId],
       );
 

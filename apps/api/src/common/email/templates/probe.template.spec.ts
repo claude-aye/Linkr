@@ -87,6 +87,11 @@ const TEMPLATE_FIXTURES: {
   [TName in EmailTemplateName]: EmailTemplateVars<TName>;
 } = {
   probe: { label: 'registry', enqueuedAtUtc: '2026-08-22T14:03:00.000Z' },
+  'email-verification': {
+    firstName: 'Camille',
+    verifyUrl: 'https://linkr.test/verify-email?token=abc',
+    expiresInHours: 24,
+  },
   'password-reset': {
     firstName: 'Camille',
     resetUrl: 'https://linkr.test/reset-password?token=abc',

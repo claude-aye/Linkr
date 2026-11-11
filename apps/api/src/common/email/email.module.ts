@@ -27,6 +27,8 @@ import { SmtpEmailSender } from './senders/smtp.sender';
     EmailService,
     EmailProcessor,
   ],
-  exports: [EmailService],
+  // EmailBudgetService is exported for the email-verification flow (L1),
+  // which reserves its own daily budget BEFORE creating an account.
+  exports: [EmailService, EmailBudgetService],
 })
 export class EmailModule {}
