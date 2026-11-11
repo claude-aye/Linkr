@@ -6,6 +6,8 @@ Pendant l'essai, le compte n'est **pas détruit** : il est **masqué** (suppress
 
 Outil : `deploy/close-account.sh`, avec `deploy/close-account/close-account.sql` et `deploy/close-account/delete-keys.sh`. Lancé **à la main** sur le VPS par l'exploitant, jamais par une tâche planifiée ni par un agent (CLAUDE.md §13 nº 21).
 
+Ce document traite une **demande de la personne**. Pour réagir à un **abus** (suspendre un compte même avec des demandes ouvertes, retirer un avis ou une photo, annuler une demande) : [moderation-sql.md](moderation-sql.md).
+
 ## Installation sur le VPS (une fois, puis à chaque changement de ces fichiers)
 
 ```bash
