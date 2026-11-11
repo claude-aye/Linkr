@@ -11,6 +11,8 @@ Deux drapeaux, un fichier chacun, dans `/opt/linkr/flags/` sur le VPS. Poser ou 
 
 Absent = comportement inchangé. Le dossier `flags/` est monté en lecture seule dans le conteneur : seul l'exploitant, sur l'hôte, pose les drapeaux.
 
+Pour retirer un avis, une photo, suspendre un compte ou annuler une demande après avoir fermé les inscriptions : [moderation-sql.md](moderation-sql.md).
+
 ## Commandes (sur le VPS, depuis `/opt/linkr`)
 
 ```bash

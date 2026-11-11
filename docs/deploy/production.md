@@ -192,4 +192,5 @@ Les uploads se restaurent de la même façon : `age -d … | tar -tzf -` pour li
 ## ⚠️ Avant d'ouvrir aux testeurs
 
 - **PR D2 — à vérifier sur le VPS.** La configuration est en place (« Adresse du client ») ; les deux vérifications « En-tête forgé ignoré » et « Compteurs séparés » doivent passer avant d'ouvrir. Sinon tous les visiteurs partagent un seul compteur sur `login`, `signup`, `forgot-password` et `reset-password`, et le premier qui l'épuise bloque tout le monde.
+- **Réaction à un abus** : créer le rôle `linkr_moderation` (section 1 de [moderation-sql.md](moderation-sql.md)) avant l'arrivée des testeurs. Le même document dit comment fermer les inscriptions en urgence ([arret-urgence.md](arret-urgence.md)).
 - **Sauvegardes** (« Sauvegardes » ci-dessus) : le volume `uploads` (photos du portfolio, `STORAGE_DRIVER=local`) doit être sauvegardé **avec** la base, au même moment : une base restaurée sans ses fichiers référence des photos absentes, et l'inverse laisse des fichiers orphelins. `redis_data` porte les files BullMQ en cours, pas des données durables.
