@@ -42,6 +42,16 @@ Suite de `HANDOFF_2026-11-01_FIN.md`, dont les dettes (§6) restent valables sau
 
 ---
 
+## 2 bis. Situation après le post (ajout du 11 novembre)
+
+- **Le post LinkedIn a été publié le 2026-11-03**, avec le texte du brouillon du §10 du handoff du 5 novembre. L'affirmation « adresse non partagée » de ce handoff est **périmée**.
+- Environ **38 comptes** créés depuis le 2026-11-08, au rythme de 1 à 2 par heure, **sans aucune activité applicative** (0 profil prestataire, 0 demande, 0 avis, 0 photo).
+- Au moins une dizaine d'adresses externes ont reçu un courriel de réinitialisation entre le 9 et le 11 novembre (Brevo), et au moins un lien a été cliqué : il s'agit très probablement de vraies personnes. Aucun autre type de courriel n'est parti vers elles.
+- **Inscriptions fermées le 2026-11-11** (`flags/signups-closed` posé sur le VPS, `/signup` répond 503). **Rien n'a été supprimé.** Réouverture seulement sur décision explicite, après les PR de vérification d'adresse (mandat L, niveau N2 : L1 API et migration, L2 web, L3 garde sur les actions envers des tiers).
+- **Décision d'exploitation du 2026-11-11** : aucun avis n'est envoyé aux inscrits pour la version légale 2026-11-11 (phase de test). C'est une décision d'exploitation, pas un avis juridique. `CLAUDE.md` §13 nº 22 reste la règle écrite : à rouvrir avec l'avis juridique avant la production.
+
+---
+
 ## 3. Décisions
 
 - **Bac à sable Stripe PARTAGÉ avec le développement.** Stripe refuse un second bac à sable sans vérification d'entreprise. Nettoyage de fin d'essai **par identifiants listés**, jamais « Supprimer toutes les données de test ».
@@ -81,6 +91,10 @@ Suite de `HANDOFF_2026-11-01_FIN.md`, dont les dettes (§6) restent valables sau
 **Journaux**
 - Filtrage : jeton de `reset-password` et `lat`/`lng` dans les erreurs Caddy ; `Key (email)=(…)` dans PostgreSQL.
 
+**Authentification**
+- L'inscription ne met pas l'adresse en minuscules, alors que la réinitialisation la met en minuscules : un compte inscrit avec une majuscule ne peut jamais réinitialiser son mot de passe.
+- OAuth Google/Apple : ne relier un compte que si l'adresse locale est vérifiée.
+
 **Exploitation et CI**
 - Nettoyage des anciennes images Docker.
 - `deploy/tests/` absent de la CI.
@@ -95,10 +109,10 @@ Suite de `HANDOFF_2026-11-01_FIN.md`, dont les dettes (§6) restent valables sau
 
 ---
 
-## 6. Avant de publier le post (dans cet ordre)
+## 6. Avant de rouvrir les inscriptions (dans cet ordre)
 
 1. Contrôles de fin de déploiement : droits de `linkr_moderation`, SHA déployé, `linkr_env=trial` visible dans Stripe.
-2. Relecture Brevo (formulations de la politique et de l'ÉFVP).
-3. Confirmer qu'**aucun testeur réel** n'est inscrit.
-4. Publier le brouillon du §10 du `HANDOFF_2026-11-05_PREMIERS_TESTEURS.md`, **sans changement**.
+2. Vérification d'adresse (mandat L, niveau N2) : L1 API et migration, L2 web, L3 garde sur les actions envers des tiers.
+3. Relecture Brevo (formulations de la politique et de l'ÉFVP).
+4. Décision explicite de réouverture des inscriptions.
 5. **Ne pas annoncer de fin d'essai** tant que la purge de fin d'essai n'est pas écrite **et répétée**.
