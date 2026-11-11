@@ -1042,6 +1042,7 @@ export class PaymentsService {
             service_request_id: opts.serviceRequestId,
             payment_id: opts.paymentId,
             payment_type: opts.paymentType,
+            linkr_env: this.stripe.envLabel,
           },
         },
         { idempotencyKey: opts.idempotencyKey },

@@ -132,7 +132,11 @@ export class RefundsService {
           amount: requestedMinor,
           reverse_transfer: true,
           refund_application_fee: true,
-          metadata: { refund_id: refund.id, payment_id: paymentId },
+          metadata: {
+            refund_id: refund.id,
+            payment_id: paymentId,
+            linkr_env: this.stripe.envLabel,
+          },
         },
         { idempotencyKey: `ref_${refund.id}` },
       );

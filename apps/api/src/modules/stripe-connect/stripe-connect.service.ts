@@ -82,6 +82,10 @@ export class StripeConnectService {
             card_payments: { requested: true },
             transfers: { requested: true },
           },
+          metadata: {
+            linkr_env: this.stripe.envLabel,
+            provider_id: provider.id,
+          },
         });
         const created = await this.repo.create({
           serviceProviderId: provider.id,

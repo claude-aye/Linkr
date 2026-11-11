@@ -23,6 +23,7 @@ const prod = {
   WEB_APP_BASE_URL: 'https://app.example.com',
   CONNECT_ONBOARDING_RETURN_URL: 'https://app.example.com/dashboard/paiements/retour',
   CONNECT_ONBOARDING_REFRESH_URL: 'https://app.example.com/dashboard/paiements/reprise',
+  STRIPE_ENV_LABEL: 'trial',
 };
 
 describe('production environment validation', () => {
@@ -37,6 +38,22 @@ describe('production environment validation', () => {
   ])('refuses production without %s (no localhost default)', (name) => {
     const { [name]: _omitted, ...rest } = prod as Record<string, string>;
     expect(() => validate(rest)).toThrow(new RegExp(`${name} must be set explicitly`));
+  });
+
+  it('refuses production without STRIPE_ENV_LABEL', () => {
+    const { STRIPE_ENV_LABEL: _omitted, ...rest } = prod;
+    expect(() => validate(rest)).toThrow(/STRIPE_ENV_LABEL must be set explicitly/);
+  });
+
+  it('refuses STRIPE_ENV_LABEL="dev" (or blank) in production', () => {
+    expect(() => validate({ ...prod, STRIPE_ENV_LABEL: 'dev' })).toThrow(
+      /STRIPE_ENV_LABEL must not be "dev"/,
+    );
+    expect(() => validate({ ...prod, STRIPE_ENV_LABEL: '  ' })).toThrow(/STRIPE_ENV_LABEL/);
+  });
+
+  it('defaults STRIPE_ENV_LABEL to "dev" outside production', () => {
+    expect(validate(base).STRIPE_ENV_LABEL).toBe('dev');
   });
 
   it('refuses LOG_LEVEL=debug in production', () => {

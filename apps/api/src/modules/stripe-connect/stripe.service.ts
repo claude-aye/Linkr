@@ -34,6 +34,14 @@ export type StripePaymentIntent = Extract<
 export class StripeService {
   readonly client: StripeClient;
   private readonly webhookSecret: string;
+  /**
+   * Environment label stamped on every Stripe object we create
+   * (`metadata.linkr_env`). The test-mode sandbox is shared between development
+   * and the trial, so without it nobody can tell whose object is whose when the
+   * trial's Stripe list is cleaned up. Internal identifiers only; never personal
+   * data.
+   */
+  readonly envLabel: string;
 
   constructor(private readonly config: ConfigService) {
     const secretKey = this.config.getOrThrow<string>('STRIPE_SECRET_KEY');
@@ -41,6 +49,7 @@ export class StripeService {
     this.webhookSecret = this.config.getOrThrow<string>(
       'STRIPE_WEBHOOK_SECRET',
     );
+    this.envLabel = this.config.get<string>('STRIPE_ENV_LABEL') ?? 'dev';
   }
 
   /**
