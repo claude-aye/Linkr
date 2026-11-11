@@ -128,7 +128,7 @@ Un `purge-out/<horodatage>-stripe-ids.txt.pending` sans code 5 vient d'un conten
 
 ## Ce qui reste à la main
 
-**Stripe.** La liste contient les `cus_`, `acct_` et `pm_` des seules entités supprimées (pour les comptes fixes, seulement les `pm_` des cartes supprimées : leur `cus_` et leur `acct_` restent).
+**Stripe.** La liste contient les `cus_`, `acct_` et `pm_` des seules entités supprimées (pour les comptes fixes, seulement les `pm_` des cartes supprimées : leur `cus_` et leur `acct_` restent). Supprimer le **client** (`cus_`), ce qui retire ses cartes ; détacher un `pm_` seulement si le client est conservé (comptes fixes).
 
 > Bac à sable Stripe PARTAGÉ avec le développement : NE JAMAIS utiliser « Supprimer toutes les données de test ». Supprimer à la main uniquement ces identifiants.
 

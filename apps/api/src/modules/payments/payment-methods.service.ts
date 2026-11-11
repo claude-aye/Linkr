@@ -76,6 +76,7 @@ export class PaymentMethodsService {
         customer: customerId,
         usage: 'off_session',
         payment_method_types: ['card'],
+        metadata: { user_id: userId, linkr_env: this.stripe.envLabel },
       });
 
       if (!intent.client_secret) {
@@ -199,7 +200,7 @@ export class PaymentMethodsService {
       const customer = await this.stripe.client.customers.create({
         email: user.email,
         name: `${user.firstName} ${user.lastName}`.trim(),
-        metadata: { user_id: userId },
+        metadata: { user_id: userId, linkr_env: this.stripe.envLabel },
       });
       await this.usersRepo.setStripeCustomerId(userId, customer.id);
       this.logger.log(`Created Stripe customer ${customer.id} for user ${userId}`);

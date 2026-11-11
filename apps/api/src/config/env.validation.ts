@@ -196,6 +196,15 @@ const envSchema = Joi.object({
   // auto-releases (3.10c). Required at boot.
   PLATFORM_AUTO_RELEASE_HOURS: Joi.number().integer().min(1).required(),
 
+  /**
+   * Label stamped on every Stripe object we create (`metadata.linkr_env`). The
+   * Stripe test sandbox is shared between development and the trial; the label
+   * is what lets the trial's objects be listed and cleaned apart from the rest.
+   * Production must set it explicitly and not to "dev" (see
+   * `productionConfigProblems`).
+   */
+  STRIPE_ENV_LABEL: Joi.string().trim().min(1).max(40).default('dev'),
+
   // Outbound email (chantier A-1). Host and port are required with no default:
   // an email that quietly goes nowhere has no symptom, so a missing setting
   // must stop the boot rather than surface three days later as a user who
@@ -254,6 +263,16 @@ export function productionConfigProblems(config: Record<string, unknown>): strin
     if (typeof v !== 'string' || v.trim() === '') {
       problems.push(`${name} must be set explicitly when NODE_ENV=production (no localhost default)`);
     }
+  }
+  const label = config.STRIPE_ENV_LABEL;
+  if (typeof label !== 'string' || label.trim() === '') {
+    problems.push(
+      'STRIPE_ENV_LABEL must be set explicitly when NODE_ENV=production (no "dev" default)',
+    );
+  } else if (label.trim() === 'dev') {
+    problems.push(
+      'STRIPE_ENV_LABEL must not be "dev" when NODE_ENV=production (it would mix trial objects with development ones in Stripe)',
+    );
   }
   if (config.LOG_LEVEL === 'debug') {
     problems.push(

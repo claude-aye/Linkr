@@ -81,7 +81,7 @@ Ordre appliqué par le script, toujours le même :
    ```bash
    ./close-account.sh --delete-files /opt/linkr/close-out/<horodatage>-files-remaining.txt
    ```
-5. **Étape 3, Stripe (mode test)**, seulement si l'étape 0 a réussi (la liste n'est écrite qu'après le COMMIT) : `close-out/<horodatage>-<8 premiers caractères>-stripe-ids.txt`, une ligne par identifiant (`customer|cus_…`, `payment_method|pm_…`, `connect_account|acct_…`). Les supprimer **un par un** dans le tableau de bord Stripe, en mode test.
+5. **Étape 3, Stripe (mode test)**, seulement si l'étape 0 a réussi (la liste n'est écrite qu'après le COMMIT) : `close-out/<horodatage>-<8 premiers caractères>-stripe-ids.txt`, une ligne par identifiant (`customer|cus_…`, `payment_method|pm_…`, `connect_account|acct_…`). Les supprimer **un par un** dans le tableau de bord Stripe, en mode test : supprimer le **client** (ce qui retire ses cartes) ; détacher un `pm_` seulement si le client est conservé.
 
    > Bac à sable Stripe PARTAGÉ avec le développement : **JAMAIS** « Supprimer toutes les données de test ».
 

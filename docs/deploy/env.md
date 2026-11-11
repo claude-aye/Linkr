@@ -29,6 +29,7 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | `STRIPE_SECRET_KEY` | oui | exéc. | oui | `sk_test_…` | ⚠️ Clés de **TEST** pendant toute la version d'essai (le bandeau du site dit « paiements en mode test »). |
 | `STRIPE_WEBHOOK_SECRET` | oui | exéc. | oui | `whsec_…` | Celui du point de terminaison du **déploiement**, pas celui de `stripe listen`. Lu une fois au démarrage : redémarrer après changement. |
 | `STRIPE_PUBLISHABLE_KEY` | oui | exéc. | non | `pk_test_…` | Validée, inutilisée par l'API. Même compte Stripe que la clé du web. |
+| `STRIPE_ENV_LABEL` | non en développement (défaut `dev`) ; **oui en production** | exéc. | non | `trial` | Étiquette posée sur chaque objet Stripe créé (`metadata.linkr_env` : client, compte Connect, SetupIntent, PaymentIntent, remboursement). Le bac à sable de test est partagé avec le développement : sans elle, impossible de distinguer les objets de l'essai. En production, absente ou `dev` fait échouer le démarrage. |
 | `STRIPE_CONNECT_CLIENT_ID` | non | — | non | — | Dormante. |
 | `CONNECT_ONBOARDING_RETURN_URL` | **oui en prod** | exéc. | non | `https://linkrapp.com/dashboard/paiements/retour` | Lue au constructeur : redémarrage requis. |
 | `CONNECT_ONBOARDING_REFRESH_URL` | **oui en prod** | exéc. | non | `https://linkrapp.com/dashboard/paiements/reprise` | Idem. |
