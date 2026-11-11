@@ -97,7 +97,7 @@ These limits do not apply to injury caused by Linkr's intentional or gross fault
 
 **End of the trial version.** The end of the trial will be announced on the site and by email. All trial data will be deleted no later than 30 days after that date, as set out in the privacy policy.
 
-**Changes.** We may change these terms. For any significant change, we will inform you by email at least 30 days in advance and ask you to accept the new version. You may refuse and close your account at no cost.
+**Changes.** We may change these terms. For any significant change, we will inform you by email or by a notice on the site at least 30 days in advance. If you refuse the new version, you may close your account at no cost.
 
 ## 9. Governing law, language and contact
 

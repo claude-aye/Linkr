@@ -13,4 +13,4 @@
  * they keep the version they accepted. Asking them to accept the new one is the
  * re-acceptance screen, deferred (CLAUDE.md §6).
  */
-export const CURRENT_TERMS_VERSION = '2026-11-05';
+export const CURRENT_TERMS_VERSION = '2026-11-11';

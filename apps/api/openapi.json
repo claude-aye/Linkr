@@ -4243,9 +4243,9 @@
             "type": "string",
             "description": "Version (civil date YYYY-MM-DD) of the legal texts accepted. Must equal the current version, otherwise 400.",
             "enum": [
-              "2026-11-05"
+              "2026-11-11"
             ],
-            "example": "2026-11-05"
+            "example": "2026-11-11"
           }
         },
         "required": [

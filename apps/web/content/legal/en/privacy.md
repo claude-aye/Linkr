@@ -22,7 +22,7 @@ We collect only the information Linkr needs to operate.
 | **Requests and bookings** | Title and description of the need, preferred dates, indicative budget, address where the service is performed and its geographic position, request status, quotes received | Clients and providers |
 | **Search** | Geographic coordinates sent during a search (used on the spot to measure proximity, not stored in your profile); searches with no results (anonymous aggregate statistic) | Clients |
 | **Payments** | History of deposits and transactions. **No card number** is received or stored by Linkr: card details are entered directly with Stripe | Clients and providers |
-| **Technical data** | Server logs (IP address, date, resource requested), for security, troubleshooting and fraud prevention | Everyone |
+| **Technical data** | No log of each visit is kept. Technical error messages from our servers may contain an IP address or the address of a requested page; they are used for security, troubleshooting and fraud prevention, and are kept with no fixed duration | Everyone |
 
 To get paid, providers submit their identity information (including, where applicable, their social insurance number or business documents) **directly to Stripe**, on its secure pages. Linkr does not receive this information; it only knows whether the account is activated.
 
@@ -34,7 +34,7 @@ We use your information only to:
 - show providers near you and connect clients with providers;
 - verify licences for regulated trades;
 - process deposits and balances through Stripe;
-- send you the emails the service needs (password reset, request updates);
+- send you the emails the service needs (password reset, request updates). During the trial, the number of emails sent per day is limited: some notification emails may not be sent;
 - keep the platform secure, prevent fraud and fix errors;
 - gather feedback on the trial version and improve Linkr.
 
@@ -60,7 +60,7 @@ We rely on the following services to operate Linkr. Each one processes only the 
 | --- | --- | --- |
 | **OVHcloud** | Hosting of the application, the database and backups | Beauharnois (Québec, Canada) |
 | **Stripe** | Payment processing and provider identity verification | United States |
-| **Brevo** | Sending transactional emails, notifications and support replies (SMTP relay) | European Union |
+| **Brevo** | Sending transactional emails, notifications and support replies (SMTP relay) | European Union (according to Brevo); contracting company: Brevo Inc., United States |
 | **Cloudflare** | Forwarding, in transit, of emails sent to support@linkrapp.com (US company, global network) | United States and other countries |
 | **Google (Gmail)** | Support mailbox: storage of messages received and replies sent | United States and other countries |
 | **OpenStreetMap (Nominatim)** | Converting an entered address into geographic coordinates (geocoding), queried by our server | United Kingdom and European Union |
@@ -71,7 +71,7 @@ We rely on the following services to operate Linkr. Each one processes only the 
 1. **Geocoding (Nominatim).** When you enter an address, **our server** queries Nominatim. Your browser never contacts Nominatim: the OpenStreetMap Foundation receives only the text of the address, without your IP address or your identity.
 2. **Map (MapTiler).** When a search returns results, **your browser** downloads the base maps directly from MapTiler. MapTiler therefore receives your **IP address**, your **browser header** (type and version) and the **map tiles of the area displayed**, which reveals the **approximate search area**. It receives neither your name, your email, the address you entered, nor the exact search point. According to its policy, MapTiler may keep the IP address for up to two months for security purposes. The map is loaded only when there are results to show.
 
-**Information communicated outside Québec.** Stripe, Brevo, Cloudflare, Google, OpenStreetMap and MapTiler process information outside Québec. As required by Law 25, a privacy impact assessment is carried out before any such communication, to ensure the information receives adequate protection.
+**Information communicated outside Québec.** Stripe, Brevo (whose contracting company, Brevo Inc., is based in the United States), Cloudflare, Google, OpenStreetMap and MapTiler process information outside Québec. As required by Law 25, a privacy impact assessment is carried out before any such communication, to ensure the information receives adequate protection.
 
 We may also disclose information where required by law (for example, at the request of a judicial authority).
 
@@ -85,21 +85,21 @@ We may also disclose information where required by law (for example, at the requ
 
 ## 7. How long we keep it
 
-- **During the trial**: your information is kept as long as your account exists.
+- **During the trial**: your information is kept during the trial. If you ask us to close your account, it is hidden as soon as your request is processed and closed no later than 30 days after your confirmation (see below); your data is destroyed no later than 30 days after the end of the trial, which will be announced on the site and by email.
 - **At the end of the trial**: the end will be announced on the site and by email. **All trial data will be deleted no later than 30 days after the end.**
-- **At any time, on request**: write to [support@linkrapp.com](mailto:support@linkrapp.com) from your account's email address. We will reply to that address to confirm the request. During the trial, requests are handled by hand. If a service request, a payment or a refund is still in progress, it must first be completed or cancelled through support. Within 30 days of your confirmation, we close your account: you can no longer sign in, and your profile, your services and the reviews you received are no longer displayed. If you are a provider, your portfolio photos and your verification documents are deleted. Your other information then remains in our database, inaccessible to other users, until the end-of-trial purge destroys all of it.
+- **At any time, on request**: write to [support@linkrapp.com](mailto:support@linkrapp.com) from your account's email address. We will reply to that address to confirm the request. During the trial, requests are handled by hand. If a service request, a payment or a refund is still in progress, it must first be completed or cancelled through support. Your account is hidden as soon as your request is processed, and closed no later than 30 days after your confirmation: you can no longer sign in, and your profile, your services and the reviews you received are no longer displayed. If you are a provider, your portfolio photos and your verification documents are deleted. Your other information then remains in our database, inaccessible to other users, until the end-of-trial purge destroys all of it.
 
 **Geocoding cache.** Addresses entered during a search are kept for up to 30 days (24 hours if the search returns no results) in a cache on our server, with no link to your account. This cache avoids querying the geocoding service on every search.
 
 Stripe retains certain payment data under its own legal obligations, even after your Linkr account is deleted.
 
-**Backups.** An encrypted backup of the database and of uploaded files (portfolio photos) is made every night. It is hosted in Beauharnois (Québec) with OVHcloud and kept for 14 days. After the end-of-trial purge, or after a file is deleted when an account is closed, the information concerned may remain in these backups for up to 14 more days, until they are automatically deleted. At the end of the trial, the database and the uploaded files are deleted no later than 16 days after the end, so that everything, backups included, is erased within 30 days. Messages sent to [support@linkrapp.com](mailto:support@linkrapp.com) are deleted within the same period.
+**Backups.** An encrypted backup of the database and of uploaded files (portfolio photos) is made every night. It is hosted in Beauharnois (Québec) with OVHcloud and kept for 14 days. OVHcloud also makes, every day, a full copy of the server's disk: this copy is not encrypted by Linkr, is hosted in Beauharnois, kept for 24 hours and replaced every day. After the end-of-trial purge, or after a file is deleted when an account is closed, the information concerned may remain in these backups for up to 14 more days, until they are automatically deleted. At the end of the trial, the database and the uploaded files are deleted no later than 16 days after the end, so that everything, backups included, is erased within 30 days. Messages sent to [support@linkrapp.com](mailto:support@linkrapp.com) are deleted within the same period.
 
-**What may remain elsewhere.** When we close your account, we also delete by hand, within the same 30 days, your customer record and saved cards in Stripe's test environment and, if you are a provider, your test payout account. Brevo's sending logs may keep your email address for Brevo's own retention period. Our servers' technical logs do not record each visit, but an error message may contain an IP address; they are limited in size and overwritten as they go, with no fixed duration.
+**What may remain elsewhere.** When we close your account, we also delete by hand, within the same 30 days, your customer record and saved cards in Stripe's test environment and, if you are a provider, your test payout account. Brevo's sending logs may keep your email address for Brevo's own retention period. Our servers' technical logs do not record each visit, but an error message may contain an IP address or the address of a requested page; they are limited in size and overwritten as they go, with no fixed duration.
 
 ## 8. Security and incidents
 
-We protect your information with reasonable measures: encrypted connection (HTTPS), irreversibly hashed passwords, cookies inaccessible to scripts, server access limited to the operator, and encrypted daily backups, hosted in Québec.
+We protect your information with reasonable measures: encrypted connection (HTTPS), irreversibly hashed passwords, cookies inaccessible to scripts, server access limited to the operator, and daily backups hosted in Québec, including an encrypted backup kept for 14 days.
 
 If a confidentiality incident presents a risk of serious injury, we will notify the Commission d'accès à l'information and the affected individuals, and we will keep a register of incidents, as required by law.
 
@@ -121,6 +121,6 @@ If our response does not satisfy you, you may file a complaint with the [Commiss
 
 **Minimum age.** Linkr is reserved exclusively for persons aged 18 and over with full legal capacity. We do not knowingly collect personal information from minors. If we discover that an account was created by a person under 18, we will close the account without delay; its information will be destroyed no later than the end-of-trial purge.
 
-**Changes.** If this policy changes significantly, we will inform you by email or on the site before it takes effect and, where necessary, ask you to accept the new version.
+**Changes.** If this policy changes significantly, we will inform you at least 30 days in advance, by email or by a notice on the site.
 
 **Contact.** Ayé Claude BROU, Jr., person in charge of the protection of personal information, Québec City, Québec, Canada — [support@linkrapp.com](mailto:support@linkrapp.com).
