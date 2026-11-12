@@ -116,3 +116,5 @@ Suite de `HANDOFF_2026-11-01_FIN.md`, dont les dettes (§6) restent valables sau
 3. Relecture Brevo (formulations de la politique et de l'ÉFVP).
 4. Décision explicite de réouverture des inscriptions.
 5. **Ne pas annoncer de fin d'essai** tant que la purge de fin d'essai n'est pas écrite **et répétée**.
+
+**Décision du 2026-11-11 (suivi des clics Brevo)** : les liens de vérification et de réinitialisation passent par le redirecteur de suivi de Brevo (clic et adresse complète, jeton compris), non désactivable sur notre plan. Accepté pour l'essai ; à couper avant la production (ÉFVP section 4, dette au §6 de CLAUDE.md).
