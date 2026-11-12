@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   InvalidResetTokenException,
   PasswordResetService,
+  FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS,
   RESET_TOKEN_TTL_MINUTES,
   hashToken,
 } from './password-reset.service';
@@ -16,6 +17,9 @@ const userWithPassword = {
   id: 'user-1',
   email: 'carol@linkr.test',
   firstName: 'Carol',
+  // A verified, long-standing account: outside the fresh-unverified skip.
+  emailVerifiedAtUtc: new Date('2026-01-02T00:00:00Z'),
+  createdAtUtc: new Date('2026-01-01T00:00:00Z'),
   authProviders: [
     { providerType: AuthProviderType.EMAIL_PASSWORD, passwordHash: '$argon2id$x' },
   ],
@@ -182,6 +186,135 @@ describe('PasswordResetService.requestReset', () => {
       expect(written.join('\n')).toContain('user-1');
       expect(written.join('\n')).not.toContain(rawToken);
       expect(written.join('\n')).not.toContain(resetUrl);
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+  });
+});
+
+describe('PasswordResetService.requestReset — fresh unverified account', () => {
+  const NOW = new Date('2026-11-12T12:00:00.000Z');
+  const minutesAgo = (minutes: number) =>
+    new Date(NOW.getTime() - minutes * 60_000);
+
+  const account = (createdAtUtc: Date, emailVerifiedAtUtc: Date | null) => ({
+    ...userWithPassword,
+    createdAtUtc,
+    emailVerifiedAtUtc,
+  });
+
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: NOW,
+      doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'],
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is exactly five minutes', () => {
+    expect(FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS).toBe(5 * 60_000);
+  });
+
+  it('skips silently for an unverified account created 2 minutes ago', async () => {
+    const { service, usersRepository, tokenRepository, emailService } = build();
+    usersRepository.findByEmailWithAuthProviders.mockResolvedValue(
+      account(minutesAgo(2), null),
+    );
+
+    // Resolves like an unknown address: the 202 stays constant.
+    await expect(service.requestReset('carol@linkr.test')).resolves.toBeUndefined();
+
+    expect(tokenRepository.rotateAndInsert).not.toHaveBeenCalled();
+    expect(emailService.send).not.toHaveBeenCalled();
+  });
+
+  it('sends for an unverified account created 6 minutes ago', async () => {
+    const { service, usersRepository, tokenRepository, emailService } = build();
+    usersRepository.findByEmailWithAuthProviders.mockResolvedValue(
+      account(minutesAgo(6), null),
+    );
+
+    await service.requestReset('carol@linkr.test');
+
+    expect(tokenRepository.rotateAndInsert).toHaveBeenCalledTimes(1);
+    expect(emailService.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends at EXACTLY 5 minutes (strict comparison)', async () => {
+    const { service, usersRepository, tokenRepository, emailService } = build();
+    usersRepository.findByEmailWithAuthProviders.mockResolvedValue(
+      account(new Date(NOW.getTime() - FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS), null),
+    );
+
+    await service.requestReset('carol@linkr.test');
+
+    expect(tokenRepository.rotateAndInsert).toHaveBeenCalledTimes(1);
+    expect(emailService.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends for a VERIFIED account created 1 minute ago', async () => {
+    const { service, usersRepository, tokenRepository, emailService } = build();
+    usersRepository.findByEmailWithAuthProviders.mockResolvedValue(
+      account(minutesAgo(1), minutesAgo(0.5)),
+    );
+
+    await service.requestReset('carol@linkr.test');
+
+    expect(tokenRepository.rotateAndInsert).toHaveBeenCalledTimes(1);
+    expect(emailService.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT consume the per-address cap while skipping', async () => {
+    const { service, usersRepository, emailService } = build();
+    const createdAtUtc = NOW;
+    usersRepository.findByEmailWithAuthProviders.mockResolvedValue(
+      account(createdAtUtc, null),
+    );
+
+    // More skipped requests than the cap (5) allows sends, all inside the window.
+    for (let minute = 0; minute < 5; minute += 1) {
+      jest.setSystemTime(new Date(NOW.getTime() + minute * 60_000));
+      await service.requestReset('carol@linkr.test');
+      await service.requestReset('carol@linkr.test');
+    }
+    expect(emailService.send).not.toHaveBeenCalled();
+
+    // Sixth minute: the account is now 6 minutes old, and the cap is untouched.
+    jest.setSystemTime(new Date(NOW.getTime() + 6 * 60_000));
+    await service.requestReset('carol@linkr.test');
+
+    expect(emailService.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs the skip by user id only — no address, no token', async () => {
+    const { service, usersRepository, emailService } = build();
+    usersRepository.findByEmailWithAuthProviders.mockResolvedValue(
+      account(minutesAgo(2), null),
+    );
+
+    const written: string[] = [];
+    const levels = ['log', 'warn', 'error', 'debug', 'verbose'] as const;
+    const spies = levels.map((level) =>
+      jest
+        .spyOn(Logger.prototype, level)
+        .mockImplementation((...args: unknown[]) => {
+          written.push(args.map(String).join(' '));
+        }),
+    );
+
+    try {
+      await service.requestReset('  Carol@Linkr.test ');
+
+      const output = written.join('\n');
+      expect(output).toContain(
+        'Reset email skipped for user user-1: unverified account younger than 5 minutes',
+      );
+      expect(output.toLowerCase()).not.toContain('carol@linkr.test');
+      expect(output).not.toContain('reset-password?token=');
+      expect(emailService.send).not.toHaveBeenCalled();
     } finally {
       spies.forEach((spy) => spy.mockRestore());
     }

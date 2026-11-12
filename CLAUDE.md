@@ -726,6 +726,7 @@ The following domains are **not yet modeled** but expected to be added before th
 - **Journaux PostgreSQL : détail des violations d'unicité** (dette ouverte, même relevé) : une violation d'unicité est journalisée avec sa clé, par exemple `Key (email)=(…)` sur deux inscriptions simultanées de la même adresse. Contredit en partie §13 nº 19 (aucune adresse courriel dans les journaux). **Correctif** : réduire le détail journalisé par PostgreSQL (`log_error_verbosity`, ou interception côté API). ÉFVP section 13.
 - **Pas d'export de données** (dette ouverte, §7.3) : la politique (§9) promet une copie des renseignements dans un format structuré ; aucun endpoint n'existe. Pendant l'essai, extraction SQL à la main.
 - **Le jeton de réinitialisation n'a pas d'adresse figée** (dette ouverte, relevée en L1b) : contrairement à `email_verification_tokens`, `password_reset_tokens` ne retient pas l'adresse à laquelle le lien a été envoyé. Aujourd'hui sans effet (aucune route ne change l'adresse d'un compte), mais le jour où une telle route existe, un lien envoyé à l'ancienne adresse resterait valable 60 minutes **et**, depuis L1, marquerait la nouvelle adresse comme vérifiée. **Correctif** : une colonne `email` et la même condition `users.email = t.email` dans `consumeAndSetPassword`, **avant** toute route de changement d'adresse.
+- **La réinitialisation est ignorée en silence pour un compte non confirmé de moins de 5 minutes** (`FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS`, §11) : contournable en attendant 5 minutes ; la garde de fond est L3.
 ---
 
 ## 7. Quebec Compliance & Internationalization
@@ -2099,6 +2100,13 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
 - **e2e** : les comptes e2e non confirmés verront le bandeau ; aucun sélecteur des tests de fumée ni de `test:paiement` ne le recoupe (relu : textes, rôles et `getByText` ne contiennent aucun de ses mots). Le bandeau est dans le flux, jamais fixe : rien n'est masqué à 320 px.
 - **Validé** : typecheck, lint (0 erreur), `node --test` 277 → 296. Smoke Chromium sur une API de branche (:5100, base jetable migrée, Redis db 1) et un web en dev (:3002), Mailpit réel : inscription → bandeau, 2 renvois « Courriel envoyé. » puis 429 avec délai (limite 3/h), jeton du dernier courriel : ouverture sans clic ne consomme pas, clic → succès, rejeu → lien invalide, session connectée → lien « Aller à l'accueil » et bandeau disparu après confirmation, erreur réseau et 429 simulés ; 320 px sans débordement horizontal. Captures non commitées.
 - **Non joué** : les deux 503 du renvoi et le 503 de l'inscription (couverts par les tests purs seulement, pas déclenchés sur l'API réelle).
+
+**Réinitialisation — compte récent non confirmé (API only, micro-PR 1 sur 2).** Depuis le 2026-11-11, 8 comptes externes sur 16 recevaient un jeton de réinitialisation 1,6 à 5,7 s après `POST /auth/signup` (séquence scriptée). `requestReset` saute désormais en silence un compte **non confirmé** (`email_verified_at_utc` NULL) **créé il y a moins de 5 minutes** : ni jeton, ni rotation, ni courriel. **ZÉRO migration, contrôleur et DTO non touchés, réponse 202 inchangée, contrat inchangé.**
+- **Constante** `FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS = 5 * 60_000` (exportée), comparaison **stricte** : à 5 minutes pile, l'envoi part.
+- **Placée après** les deux retours existants (adresse inconnue, pas de mot de passe) **et avant `maySend`** : un envoi sauté ne consomme pas le plafond par adresse (5/h).
+- **Journal** : `Reset email skipped for user <id>: unverified account younger than 5 minutes`, jamais l'adresse.
+- **Contournable en attendant 5 minutes** : la règle coupe l'automatisme, la garde de fond est L3. Comptes vérifiés, comptes plus anciens, `consumeAndSetPassword` (qui vaut vérification) et plafonds de débit : inchangés.
+- **Validé** : jest 886 → 893 (+7, horloge figée : 2 min sauté, 6 min envoyé, 5 min pile envoyé, confirmé à 1 min envoyé, rafale sautée puis envoi à la 6ᵉ minute, journal sans adresse). Mutations : règle déplacée après `maySend` → 1 rouge ; `<` → `<=` → 1 rouge.
 ---
 
 ## 12. Environment Variables (Mandatory at Boot)
