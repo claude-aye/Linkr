@@ -5,6 +5,7 @@ import { EMAIL_QUEUE, EmailJob } from '../../queue/queue.constants';
 import { EMAIL_SENDER, IEmailSender } from './senders/email-sender.interface';
 import { EMAIL_TEMPLATES, isEmailTemplateName } from './templates';
 import { EmailTemplate, EmailVars } from './templates/types';
+import { safeSmtpReason } from './smtp-reason';
 
 /**
  * Consumes the "email" queue: renders the template, hands the result to the
@@ -68,7 +69,9 @@ export class EmailProcessor extends WorkerHost {
    */
   @OnWorkerEvent('failed')
   onFailed(job: Job<EmailJob> | undefined, error: Error): void {
-    const reason = error?.message ?? 'unknown error';
+    // SMTP reply code only, or the message with addresses removed: a relay
+    // refusal echoes the recipient back, and it must not reach a log (L1b).
+    const reason = safeSmtpReason(error);
 
     if (!job) {
       // BullMQ can emit `failed` with no job attached (a lost lock, say).

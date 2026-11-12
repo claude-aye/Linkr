@@ -42,10 +42,31 @@ const KEY_TTL_SECONDS = 2 * 24 * 60 * 60;
 
 const KEY_PREFIX = 'linkr:email-budget:v1:';
 
-export const DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET = 60;
+/**
+ * Mandate L1b. Defaults chosen so the three caps leave the essentials at least
+ * BREVO_ESSENTIAL_MARGIN sends under Brevo's free plan:
+ *   200 (non-essential) + 40 (sign-up) + 20 (resend) = 260 ≤ 300 − 40.
+ */
+export const DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET = 40;
+export const DEFAULT_EMAIL_VERIFICATION_RESEND_DAILY_BUDGET = 20;
 
-/** Separate key: verification mails never spend the notification budget. */
-const VERIFICATION_KEY_PREFIX = 'linkr:email-verification-budget:v1:';
+/** Brevo free plan: 300 sends per (Eastern) day. */
+export const BREVO_DAILY_QUOTA = 300;
+/** Sends left for the uncapped essentials (reset, payment failures) and retries. */
+export const BREVO_ESSENTIAL_MARGIN = 40;
+
+/**
+ * Separate keys: verification mails never spend the notification budget, and a
+ * resend never spends the sign-up budget (a few people re-clicking "resend"
+ * must not close sign-ups for the day). To reopen a cap reached by mistake:
+ * `DEL linkr:email-verification-budget:v1:<AAAA-MM-JJ>` (docs/deploy/arret-urgence.md),
+ * never FLUSHDB.
+ */
+export const VERIFICATION_KEY_PREFIX = 'linkr:email-verification-budget:v1:';
+export const VERIFICATION_RESEND_KEY_PREFIX =
+  'linkr:email-verification-resend-budget:v1:';
+
+export type VerificationBudgetKind = 'signup' | 'resend';
 
 /**
  * Brevo's daily quota resets at midnight Eastern time, so the budget's day
@@ -96,6 +117,7 @@ export class EmailBudgetService {
   private readonly logger = new Logger(EmailBudgetService.name);
   private readonly dailyBudget: number;
   private readonly verificationDailyBudget: number;
+  private readonly resendDailyBudget: number;
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -109,13 +131,40 @@ export class EmailBudgetService {
       'EMAIL_VERIFICATION_DAILY_BUDGET',
       DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET,
     );
+    this.resendDailyBudget = configService.get<number>(
+      'EMAIL_VERIFICATION_RESEND_DAILY_BUDGET',
+      DEFAULT_EMAIL_VERIFICATION_RESEND_DAILY_BUDGET,
+    );
+    this.warnIfBrevoMarginTooSmall();
   }
 
   /**
-   * Reserves one verification email in today's (Toronto day) verification
-   * budget. False means "cap reached": the caller must refuse BEFORE creating
-   * anything (sign-up answers 503 before the account exists; resend answers 503
-   * before a token exists).
+   * Boot-time WARNING (never a failure): the three caps together must leave
+   * BREVO_ESSENTIAL_MARGIN sends for the uncapped essentials. A configuration
+   * that does not is legal — a paid Brevo plan raises the quota — but should be
+   * seen.
+   */
+  private warnIfBrevoMarginTooSmall(): void {
+    const capped =
+      this.dailyBudget + this.verificationDailyBudget + this.resendDailyBudget;
+    const margin = BREVO_DAILY_QUOTA - capped;
+    if (margin < BREVO_ESSENTIAL_MARGIN) {
+      this.logger.warn(
+        `Email caps leave ${margin} of ${BREVO_DAILY_QUOTA} daily Brevo sends for the uncapped essentials ` +
+          `(EMAIL_DAILY_BUDGET ${this.dailyBudget} + EMAIL_VERIFICATION_DAILY_BUDGET ${this.verificationDailyBudget} ` +
+          `+ EMAIL_VERIFICATION_RESEND_DAILY_BUDGET ${this.resendDailyBudget}); at least ${BREVO_ESSENTIAL_MARGIN} is recommended on the free plan`,
+      );
+    }
+  }
+
+  /**
+   * Reserves one verification email in today's (Toronto day) budget of its
+   * kind — sign-up and resend each have their OWN counter. False means "cap
+   * reached": the caller must refuse BEFORE creating anything (sign-up answers
+   * 503 before the account exists; resend answers 503 before a token exists).
+   *
+   * One WARN per day at 80 % of the sign-up cap (decided by INCR's atomic
+   * return value, like `allow`), without any address.
    *
    * ⚠️ A RESERVATION IS NEVER GIVEN BACK. If sign-up reserves a slot and then
    * fails (an address that raced in, a database error), that slot is lost for
@@ -126,10 +175,14 @@ export class EmailBudgetService {
    * Sign-up then proceeds and the enqueue fails as every other mail does today;
    * the failure is logged and the user can ask for a resend.
    */
-  async reserveVerification(): Promise<boolean> {
+  async reserveVerification(kind: VerificationBudgetKind): Promise<boolean> {
+    const prefix =
+      kind === 'signup' ? VERIFICATION_KEY_PREFIX : VERIFICATION_RESEND_KEY_PREFIX;
+    const cap = kind === 'signup' ? this.verificationDailyBudget : this.resendDailyBudget;
+
     let count: number;
     try {
-      const key = `${VERIFICATION_KEY_PREFIX}${budgetDay(new Date())}`;
+      const key = `${prefix}${budgetDay(new Date())}`;
       count = await this.redis.incr(key);
       if (count === 1) {
         await this.redis.expire(key, KEY_TTL_SECONDS);
@@ -138,9 +191,16 @@ export class EmailBudgetService {
       return true;
     }
 
-    if (count > this.verificationDailyBudget) {
+    if (kind === 'signup' && count === Math.ceil(cap * WARN_AT_RATIO)) {
       this.logger.warn(
-        `Email verification budget exhausted (${count}/${this.verificationDailyBudget}) for today (Toronto day)`,
+        `Email verification (sign-up) budget at ${count}/${cap} for today (Toronto day); ` +
+          'at the cap, sign-ups answer 503',
+      );
+    }
+
+    if (count > cap) {
+      this.logger.warn(
+        `Email verification (${kind}) budget exhausted (${count}/${cap}) for today (Toronto day)`,
       );
       return false;
     }

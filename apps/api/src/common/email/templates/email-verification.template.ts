@@ -30,34 +30,35 @@ type EmailVerificationCopy = {
 /**
  * Fixed copy, no free text from any account beyond the cleaned first name.
  * Vouvoiement. The `ignore` line is the mandate's: someone who did not sign up
- * can simply ignore this mail.
+ * can simply ignore this mail. The intro is the same for a sign-up and a
+ * resend, and gender-neutral (L1b).
  */
 const COPY: Record<Locale, EmailVerificationCopy> = {
   'fr-CA': {
     subject: 'Linkr — confirmez votre adresse courriel',
     heading: 'Confirmez votre adresse courriel',
     intro:
-      "Un compte Linkr vient d'être créé avec cette adresse. Cliquez sur le lien ci-dessous pour confirmer qu'elle vous appartient.",
+      'Pour confirmer que cette adresse est bien celle de votre compte Linkr, cliquez sur le lien ci-dessous.',
     cta: 'Confirmer mon adresse',
     expiry: (hours) =>
       `Ce lien est valide ${hours} heures et ne peut servir qu'une seule fois.`,
     fallbackLead:
       'Si le lien ne fonctionne pas, copiez cette adresse dans votre navigateur :',
     ignore:
-      "Si vous ne vous êtes pas inscrit à Linkr, vous pouvez ignorer ce message : l'adresse ne sera pas confirmée.",
+      "Si vous n'avez pas créé de compte Linkr, vous pouvez ignorer ce message : l'adresse ne sera pas confirmée.",
     signoff: '— Linkr',
   },
   'en-CA': {
     subject: 'Linkr — confirm your email address',
     heading: 'Confirm your email address',
     intro:
-      'A Linkr account was just created with this address. Use the link below to confirm that it belongs to you.',
+      'To confirm that this address belongs to your Linkr account, use the link below.',
     cta: 'Confirm my address',
     expiry: (hours) =>
       `This link is valid for ${hours} hours and can only be used once.`,
     fallbackLead: 'If the link does not work, copy this address into your browser:',
     ignore:
-      'If you did not sign up for Linkr, you can ignore this message — the address will not be confirmed.',
+      'If you did not create a Linkr account, you can ignore this message — the address will not be confirmed.',
     signoff: '— Linkr',
   },
 };

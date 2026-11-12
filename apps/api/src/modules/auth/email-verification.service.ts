@@ -13,6 +13,7 @@ import { ResendVerificationStatus } from './dtos/resend-verification-response.dt
 import { EmailVerificationTokenRepository } from './email-verification-token.repository';
 import {
   EmailVerificationBudgetExhaustedException,
+  EmailVerificationSendFailedException,
   InvalidEmailVerificationTokenException,
 } from './email-verification.exceptions';
 import { hashToken } from './token-hash';
@@ -27,6 +28,27 @@ export const VERIFY_EMAIL_PATH = '/verify-email';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+
+/** Longest wait for BullMQ to accept the job: a stalled Redis must not hang a request. */
+export const ENQUEUE_TIMEOUT_MS = 5000;
+
+class EnqueueTimeoutError extends Error {
+  constructor() {
+    super('enqueue timed out');
+    this.name = 'EnqueueTimeoutError';
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new EnqueueTimeoutError()), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const errorName = (error: unknown): string =>
+  error instanceof Error ? error.name : 'unknown error';
 
 /**
  * Caps on resend. The hourly per-user one is the route guard (`@RateLimit`,
@@ -45,7 +67,7 @@ export const RESEND_LIMITS = {
  * ⚠️ L1 BLOCKS NOTHING. No guard reads `email_verified_at_utc` yet (that is L3)
  * and no claim goes into the JWT. This service only writes the column.
  *
- * ⚠️ NOTHING HERE LOGS AN ADDRESS OR A TOKEN — user ids and outcomes only.
+ * ⚠️ NOTHING HERE LOGS AN ADDRESS OR A TOKEN — user ids and error class only.
  */
 @Injectable()
 export class EmailVerificationService {
@@ -67,33 +89,30 @@ export class EmailVerificationService {
   ) {}
 
   /**
-   * Reserves a slot in today's verification budget, or throws the 503. Called
-   * by sign-up BEFORE the account is created, so a saturated day never leaves
-   * an account that will not receive its link. A reserved slot is never given
-   * back if sign-up then fails (see `EmailBudgetService.reserveVerification`).
+   * Reserves a slot in today's SIGN-UP verification budget, or throws the 503.
+   * Called by sign-up BEFORE the account is created, so a saturated day never
+   * leaves an account that will not receive its link. A reserved slot is never
+   * given back if sign-up then fails (see EmailBudgetService.reserveVerification).
    */
   async reserveForSignup(): Promise<void> {
-    if (!(await this.budget.reserveVerification())) {
+    if (!(await this.budget.reserveVerification('signup'))) {
       throw new EmailVerificationBudgetExhaustedException('signup');
     }
   }
 
   /**
-   * Issues a token and queues the email for a freshly created account. The
-   * slot was reserved by `reserveForSignup`.
-   *
-   * ⚠️ NEVER THROWS: a send failure must not fail the sign-up. It is logged
-   * (user id and error class only) and the user can ask for a resend.
+   * Issues a token and queues the email for a freshly created account, WITHOUT
+   * the caller waiting (L1b): a sign-up must never depend on BullMQ, nor on the
+   * token write. Fire-and-forget; a failure is logged with the user id and the
+   * error class only — never the address, never the token. The user can ask
+   * for a resend.
    */
-  async sendAfterSignup(user: User): Promise<void> {
-    try {
-      await this.issueAndSend(user);
-    } catch (error) {
+  sendAfterSignup(user: User): void {
+    void this.issueAndSend(user).catch((error: unknown) => {
       this.logger.error(
-        `Verification email could not be queued after sign-up for user ${user.id} ` +
-          `(${error instanceof Error ? error.name : 'unknown error'})`,
+        `Verification email could not be queued after sign-up for user ${user.id} (${errorName(error)})`,
       );
-    }
+    });
   }
 
   /**
@@ -128,8 +147,10 @@ export class EmailVerificationService {
 
   /**
    * Resend for the authenticated user. Looked up BY ID — never by address.
-   * Already verified → nothing sent. Otherwise reserve (503 at the cap, no
-   * token created), rotate older tokens away, queue the new link.
+   * Already verified → nothing sent. Otherwise reserve in the RESEND budget
+   * (503 at the cap, no token created), then issue. If the mail cannot be
+   * queued, 503 EMAIL_VERIFICATION_SEND_FAILED — and the previous link still
+   * works, because older tokens are expired only after a queued send.
    */
   async resend(userId: string): Promise<ResendVerificationStatus> {
     const user = await this.usersRepository.findById(userId);
@@ -138,10 +159,17 @@ export class EmailVerificationService {
       // already-verified one: nothing to send, nothing more to say.
       return 'ALREADY_VERIFIED';
     }
-    if (!(await this.budget.reserveVerification())) {
+    if (!(await this.budget.reserveVerification('resend'))) {
       throw new EmailVerificationBudgetExhaustedException('resend');
     }
-    await this.issueAndSend(user);
+    try {
+      await this.issueAndSend(user);
+    } catch (error) {
+      this.logger.error(
+        `Verification resend could not be queued for user ${user.id} (${errorName(error)})`,
+      );
+      throw new EmailVerificationSendFailedException();
+    }
     return 'SENT';
   }
 
@@ -156,6 +184,11 @@ export class EmailVerificationService {
     this.logger.log(`Email verified for user ${userId}`);
   }
 
+  /**
+   * Insert → enqueue (bounded by ENQUEUE_TIMEOUT_MS) → expire the OLDER live
+   * tokens. If the enqueue fails or times out, the NEW token is expired and the
+   * error rethrown: the user keeps the link they already had.
+   */
   private async issueAndSend(user: User): Promise<void> {
     const rawToken = randomBytes(TOKEN_BYTES).toString('base64url');
     const expiresAtUtc = new Date(
@@ -163,23 +196,32 @@ export class EmailVerificationService {
     );
 
     // The token records the address it is sent to (raw, as stored).
-    await this.tokenRepository.rotateAndInsert(
+    const inserted = await this.tokenRepository.insert(
       user.id,
       user.email,
       hashToken(rawToken),
       expiresAtUtc,
     );
 
-    await this.emailService.send({
-      to: user.email,
-      template: 'email-verification',
-      vars: {
-        firstName: user.firstName,
-        verifyUrl: this.buildVerifyUrl(rawToken),
-        expiresInHours: VERIFICATION_TOKEN_TTL_HOURS,
-      },
-    });
+    try {
+      await withTimeout(
+        this.emailService.send({
+          to: user.email,
+          template: 'email-verification',
+          vars: {
+            firstName: user.firstName,
+            verifyUrl: this.buildVerifyUrl(rawToken),
+            expiresInHours: VERIFICATION_TOKEN_TTL_HOURS,
+          },
+        }),
+        ENQUEUE_TIMEOUT_MS,
+      );
+    } catch (error) {
+      await this.tokenRepository.expire(inserted.id).catch(() => undefined);
+      throw error;
+    }
 
+    await this.tokenRepository.expireOlderLive(user.id, inserted);
     this.logger.log(`Verification email queued for user ${user.id}`);
   }
 

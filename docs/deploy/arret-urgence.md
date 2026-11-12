@@ -31,6 +31,19 @@ curl -s -o /dev/null -w '%{http_code}\n' https://linkrapp.com/
 
 ⚠️ **En maintenance, les relais web (`/api/*`) répondent aussi 503** : les utilisateurs connectés voient l'erreur sur leurs actions en cours. Les paiements Stripe déjà engagés se finalisent par le webhook, qui reste servi.
 
+## Rouvrir un plafond de courriels de confirmation atteint (mandat L1)
+
+Quand `EMAIL_VERIFICATION_DAILY_BUDGET` est atteint, `POST /auth/signup` répond 503 (« Les inscriptions sont saturées aujourd'hui ») jusqu'à minuit, heure de Toronto. Un WARN `Email verification (sign-up) budget at …` part à 80 % ; un WARN `… exhausted` au plafond. Pour rouvrir avant minuit, **supprimer la seule clé du jour** :
+
+```bash
+JOUR=$(TZ=America/Toronto date +%F)
+docker compose exec redis redis-cli DEL "linkr:email-verification-budget:v1:$JOUR"
+# plafond du renvoi, si c'est lui :
+docker compose exec redis redis-cli DEL "linkr:email-verification-resend-budget:v1:$JOUR"
+```
+
+⚠️ **Jamais `FLUSHDB` ni `FLUSHALL`** : la même base Redis porte les files BullMQ (courriels en attente, webhooks Stripe) et le cache de géocodage. Rouvrir le plafond consomme le quota Brevo du jour (300 sur le plan gratuit) : vérifier la marge avant (`docs/deploy/env.md`).
+
 ## Première mise en place (à recopier sur le VPS, dans cet ordre)
 
 Le Caddyfile et le compose changent : `deploy.sh` ne les met pas à jour (il ne tire que les images).

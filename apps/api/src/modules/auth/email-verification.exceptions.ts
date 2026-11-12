@@ -4,6 +4,27 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 export const EMAIL_VERIFICATION_TOKEN_INVALID = 'EMAIL_VERIFICATION_TOKEN_INVALID';
 export const EMAIL_VERIFICATION_BUDGET_EXHAUSTED =
   'EMAIL_VERIFICATION_BUDGET_EXHAUSTED';
+export const EMAIL_VERIFICATION_SEND_FAILED = 'EMAIL_VERIFICATION_SEND_FAILED';
+
+/**
+ * 503 — a resend whose mail could not be queued (BullMQ/Redis down, or slower
+ * than ENQUEUE_TIMEOUT_MS). The previous link still works: older tokens are
+ * expired only after a queued send.
+ */
+export class EmailVerificationSendFailedException extends HttpException {
+  constructor() {
+    super(
+      {
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        error: 'Service Unavailable',
+        code: EMAIL_VERIFICATION_SEND_FAILED,
+        message:
+          "Le courriel de confirmation n'a pas pu être envoyé. Réessayez dans quelques minutes ; votre lien précédent reste valable.",
+      },
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+  }
+}
 
 /**
  * 400 — one response for every token failure: unknown, expired, already used,

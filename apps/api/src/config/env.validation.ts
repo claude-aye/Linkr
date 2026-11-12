@@ -234,10 +234,14 @@ const envSchema = Joi.object({
   // payment-failure emails are never counted. 200 leaves room under Brevo's
   // free plan (300/day) for the essentials and for retries.
   EMAIL_DAILY_BUDGET: Joi.number().integer().min(1).default(200),
-  // Mandate L1: daily cap (America/Toronto day) on email-verification mails,
-  // separate from the notification budget above. At the cap, sign-up answers
-  // 503 BEFORE creating the account and resend answers 503 without a token.
-  EMAIL_VERIFICATION_DAILY_BUDGET: Joi.number().integer().min(1).default(60),
+  // Mandate L1/L1b: daily caps (America/Toronto day) on email-verification
+  // mails, separate from the notification budget above and from each other.
+  // Sign-up cap reached → sign-up answers 503 BEFORE creating the account;
+  // resend cap reached → resend answers 503 without a token. Defaults keep
+  // 200 + 40 + 20 = 260 under Brevo's 300 with 40 left for the essentials
+  // (a boot WARNING fires otherwise — EmailBudgetService).
+  EMAIL_VERIFICATION_DAILY_BUDGET: Joi.number().integer().min(1).default(40),
+  EMAIL_VERIFICATION_RESEND_DAILY_BUDGET: Joi.number().integer().min(1).default(20),
 })
   // Credentials go together or not at all. Half-configured auth would connect
   // anonymously and be refused at delivery — a failure that only shows up in a

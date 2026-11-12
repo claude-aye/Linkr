@@ -72,6 +72,18 @@ const verifiedAt = async (ds: DataSource, id: string): Promise<boolean> =>
     await ds.query(`SELECT email_verified_at_utc IS NOT NULL AS v FROM users WHERE id = $1`, [id])
   )[0].v;
 
+/** The service's order: insert, (mail queued), then expire the older live tokens. */
+async function issue(
+  repo: EmailVerificationTokenRepository,
+  userId: string,
+  email: string,
+  tokenHash: string,
+  expiresAtUtc: Date,
+): Promise<void> {
+  const inserted = await repo.insert(userId, email, tokenHash, expiresAtUtc);
+  await repo.expireOlderLive(userId, inserted);
+}
+
 const future = () => new Date(Date.now() + 24 * 3600 * 1000);
 
 async function main(): Promise<void> {
@@ -95,7 +107,7 @@ async function main(): Promise<void> {
     console.log('A. valid token');
     await wipe(ds);
     await seed(ds);
-    await repo.rotateAndInsert(U_A, EMAIL_A, hashToken('tok-a'), future());
+    await issue(repo, U_A, EMAIL_A, hashToken('tok-a'), future());
     check('valid token → user id', await repo.consumeAndVerify(hashToken('tok-a')), U_A);
     check('… account verified', await verifiedAt(ds, U_A), true);
     check('… the other account untouched', await verifiedAt(ds, U_B), false);
@@ -104,7 +116,7 @@ async function main(): Promise<void> {
     check('same token again → null', await repo.consumeAndVerify(hashToken('tok-a')), null);
 
     console.log('C. expired token');
-    await repo.rotateAndInsert(U_B, EMAIL_B, hashToken('tok-exp'), new Date(Date.now() - 1000));
+    await issue(repo, U_B, EMAIL_B, hashToken('tok-exp'), new Date(Date.now() - 1000));
     check('expired → null', await repo.consumeAndVerify(hashToken('tok-exp')), null);
     check('… not verified', await verifiedAt(ds, U_B), false);
 
@@ -112,7 +124,7 @@ async function main(): Promise<void> {
     check('unknown → null', await repo.consumeAndVerify(hashToken('nope')), null);
 
     console.log('E. token issued for a previous address');
-    await repo.rotateAndInsert(U_B, EMAIL_B, hashToken('tok-old'), future());
+    await issue(repo, U_B, EMAIL_B, hashToken('tok-old'), future());
     await ds.query(`UPDATE users SET email = 'probe-verif-b2@linkr.test' WHERE id = $1`, [U_B]);
     check('old-address token → null', await repo.consumeAndVerify(hashToken('tok-old')), null);
     check('… not verified', await verifiedAt(ds, U_B), false);
@@ -126,14 +138,14 @@ async function main(): Promise<void> {
     await ds.query(`UPDATE users SET email = $2 WHERE id = $1`, [U_B, EMAIL_B]);
 
     console.log('F. rotation');
-    await repo.rotateAndInsert(U_B, EMAIL_B, hashToken('tok-r1'), future());
-    await repo.rotateAndInsert(U_B, EMAIL_B, hashToken('tok-r2'), future());
+    await issue(repo, U_B, EMAIL_B, hashToken('tok-r1'), future());
+    await issue(repo, U_B, EMAIL_B, hashToken('tok-r2'), future());
     check('older token after a resend → null', await repo.consumeAndVerify(hashToken('tok-r1')), null);
     check('newest token → user id', await repo.consumeAndVerify(hashToken('tok-r2')), U_B);
 
     console.log('G. already verified + valid token');
     const before = (await ds.query(`SELECT email_verified_at_utc AS d FROM users WHERE id = $1`, [U_A]))[0].d;
-    await repo.rotateAndInsert(U_A, EMAIL_A, hashToken('tok-again'), future());
+    await issue(repo, U_A, EMAIL_A, hashToken('tok-again'), future());
     check('valid token on verified account → user id', await repo.consumeAndVerify(hashToken('tok-again')), U_A);
     const after = (await ds.query(`SELECT email_verified_at_utc AS d FROM users WHERE id = $1`, [U_A]))[0].d;
     check('… verification date unchanged', after.getTime(), before.getTime());
@@ -141,15 +153,37 @@ async function main(): Promise<void> {
     console.log('H. concurrency');
     await wipe(ds);
     await seed(ds);
-    await repo.rotateAndInsert(U_A, EMAIL_A, hashToken('tok-race'), future());
+    await issue(repo, U_A, EMAIL_A, hashToken('tok-race'), future());
     const race = await Promise.all([
       repo.consumeAndVerify(hashToken('tok-race')),
       repo.consumeAndVerify(hashToken('tok-race')),
     ]);
     check('two simultaneous clicks → exactly one success', race.filter((r) => r !== null).length, 1);
 
+    console.log('H2. two racing resends (FOR UPDATE on the user row)');
+    for (let round = 1; round <= 5; round += 1) {
+      await Promise.all([
+        issue(repo, U_B, EMAIL_B, hashToken(`race-${round}-a`), future()),
+        issue(repo, U_B, EMAIL_B, hashToken(`race-${round}-b`), future()),
+      ]);
+      const live = await ds.query(
+        `SELECT count(*)::int AS n FROM email_verification_tokens
+          WHERE user_id = $1 AND consumed_at_utc IS NULL AND expires_at_utc > now()`,
+        [U_B],
+      );
+      check(`round ${round}: exactly one live link left`, live[0].n, 1);
+    }
+
+    console.log('H3. a send that failed keeps the previous link (L1b)');
+    await issue(repo, U_B, EMAIL_B, hashToken('kept-old'), future());
+    const fresh = await repo.insert(U_B, EMAIL_B, hashToken('failed-new'), future());
+    await repo.expire(fresh.id); // what the service does when the enqueue fails
+    check('the never-sent new token is dead', await repo.consumeAndVerify(hashToken('failed-new')), null);
+    check('the previous link still verifies', await repo.consumeAndVerify(hashToken('kept-old')), U_B);
+    await ds.query(`UPDATE users SET email_verified_at_utc = NULL WHERE id = $1`, [U_B]);
+
     console.log('I. soft-deleted account');
-    await repo.rotateAndInsert(U_B, EMAIL_B, hashToken('tok-del'), future());
+    await issue(repo, U_B, EMAIL_B, hashToken('tok-del'), future());
     await ds.query(`UPDATE users SET deleted_at_utc = now() WHERE id = $1`, [U_B]);
     check('soft-deleted → null', await repo.consumeAndVerify(hashToken('tok-del')), null);
     await ds.query(`UPDATE users SET deleted_at_utc = NULL WHERE id = $1`, [U_B]);

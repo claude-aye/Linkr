@@ -203,7 +203,7 @@ export class AuthController {
   @ApiResponse({
     status: 503,
     description:
-      "Today's verification-email budget is spent. Body code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED.",
+      "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
   })
   async resendVerification(
     @CurrentUser() payload: JwtPayload,

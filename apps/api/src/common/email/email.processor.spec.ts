@@ -141,4 +141,28 @@ describe('EmailProcessor logs — no recipient address', () => {
     expect(messages).toHaveLength(2);
     for (const m of messages) expect(m).not.toContain(ADDRESS);
   });
+
+  it('L1b: a relay refusal that echoes an address never puts it in the log', () => {
+    // Nodemailer shape: responseCode + the relay's text in the message.
+    const smtp = Object.assign(
+      new Error(`Can't send mail - all recipients were rejected: 550 5.1.1 <x@y.example>: Recipient address rejected`),
+      { responseCode: 550, code: 'EENVELOPE' },
+    );
+    processor.onFailed(failedJob({ attemptsMade: 3, finishedOn: Date.now() }), smtp);
+    // No reply code: the message is kept, addresses scrubbed.
+    processor.onFailed(
+      failedJob({ attemptsMade: 1, finishedOn: null }),
+      new Error(`rejected <x@y.example> and also ${ADDRESS}`),
+    );
+    processor.onFailed(undefined, new Error('lost lock for <x@y.example>'));
+
+    const messages = allMessages();
+    expect(messages).toHaveLength(3);
+    expect(messages.some((m) => m.includes('SMTP 550 EENVELOPE'))).toBe(true);
+    for (const m of messages) {
+      expect(m).not.toContain('x@y.example');
+      expect(m).not.toContain(ADDRESS);
+      expect(m).not.toMatch(/\S+@\S+/);
+    }
+  });
 });

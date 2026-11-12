@@ -247,7 +247,7 @@ describe('purge e2e — plan', () => {
     expect(isBlocked(plan)).toBe(true);
   });
 
-  it('le plan ne pose aucun verrou ; l’exécution verrouille les 20 tables AVANT de lire le plan', async () => {
+  it('le plan ne pose aucun verrou ; l’exécution verrouille les 21 tables AVANT de lire le plan', async () => {
     const seen: string[] = [];
     const db: Queryable = {
       async query<R>(text: string) {

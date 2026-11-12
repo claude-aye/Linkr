@@ -137,8 +137,9 @@ export class AuthService {
     );
 
     this.logger.log(`New user registered: ${user.id}`);
-    // Never throws: a send failure is logged and the sign-up still succeeds.
-    await this.emailVerification.sendAfterSignup(user);
+    // Not awaited (L1b): the sign-up never waits on the token write or on
+    // BullMQ. A failure is logged (no address, no token) and resend exists.
+    this.emailVerification.sendAfterSignup(user);
     const tokens = this.signTokenPair(user.id, user.email);
     return { ...tokens, user: this.toPublicDto(user) };
   }
