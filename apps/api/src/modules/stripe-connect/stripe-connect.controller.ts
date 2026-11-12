@@ -13,6 +13,10 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { StripeConnectService } from './stripe-connect.service';
 import { ConnectOnboardingResponseDto } from './dto/connect-onboarding-response.dto';
 import { ConnectAccountResponseDto } from './dto/connect-account-response.dto';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 
 /**
  * Provider-facing Stripe Connect endpoints. Authenticated by the global
@@ -25,13 +29,14 @@ export class StripeConnectController {
 
   @Post(':id/connect/onboard')
   @HttpCode(HttpStatus.CREATED)
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Start/resume Stripe Connect (Express) onboarding for an INDIVIDUAL provider you own. ' +
       'Creates the account on first call and returns a single-use Account Link.',
   })
   @ApiResponse({ status: 201, type: ConnectOnboardingResponseDto })
-  @ApiResponse({ status: 403, description: 'You do not own this provider' })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('You do not own this provider') })
   @ApiResponse({ status: 404, description: 'Service provider not found' })
   @ApiResponse({ status: 501, description: 'ORGANIZATION provider onboarding is not implemented' })
   @ApiResponse({ status: 502, description: 'Stripe API call failed (e.g. platform profile incomplete)' })
@@ -79,13 +84,14 @@ export class StripeConnectController {
 
   @Post(':id/connect/refresh-link')
   @HttpCode(HttpStatus.OK)
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Regenerate an Account Link for an owned provider whose Connect account already exists ' +
       '(e.g. after the previous link expired).',
   })
   @ApiResponse({ status: 200, type: ConnectOnboardingResponseDto })
-  @ApiResponse({ status: 403, description: 'You do not own this provider' })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('You do not own this provider') })
   @ApiResponse({ status: 404, description: 'Provider not found, or no Connect account yet' })
   @ApiResponse({ status: 501, description: 'ORGANIZATION provider onboarding is not implemented' })
   @ApiResponse({ status: 502, description: 'Stripe API call failed' })

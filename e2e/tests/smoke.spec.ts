@@ -4,7 +4,9 @@ import { PROVIDER_DISPLAY_NAME, accountEmail, knownAccount, saveAccount } from '
 import {
   closeSession,
   createProviderProfile,
+  EMAIL_NOT_VERIFIED,
   ensureRegistered,
+  failIfEmailNotVerified,
   logIn,
   searchProviderCard,
   sessionFor,
@@ -100,8 +102,12 @@ test('D — déclarer le métier Coiffure', async ({ browser }) => {
 
   // Idempotent : au 2ᵉ lancement le métier est déjà déclaré (409), c'est un succès.
   await expect(
-    page.getByText(/Métier déclaré/).or(page.getByText(/Ce métier est déjà déclaré/)),
+    page
+      .getByText(/Métier déclaré/)
+      .or(page.getByText(/Ce métier est déjà déclaré/))
+      .or(page.getByText(EMAIL_NOT_VERIFIED)),
   ).toBeVisible();
+  await failIfEmailNotVerified(page, 'le compte prestataire');
   await page.reload();
   const row = page
     .getByRole('listitem')

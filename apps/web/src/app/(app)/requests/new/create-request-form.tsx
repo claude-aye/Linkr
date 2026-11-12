@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { components } from '@linkr/api-client';
 import { tooManyCreatedMessage } from '@/lib/http/retry-after';
 import { formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * Client service-request creation form (Phase 3.13-3-front) — the piece that
@@ -466,8 +467,12 @@ export function CreateRequestForm({
 
     if (!response.ok) {
       // Status-only mapping (locked). The user can correct and re-submit.
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      const notVerified = await isEmailNotVerified(response);
       setError(
-        response.status === 429
+        notVerified
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : response.status === 429
           ? tooManyCreatedMessage(response)
           : messageForStatus(response.status),
       );

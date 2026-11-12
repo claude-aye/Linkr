@@ -5,6 +5,29 @@ export const EMAIL_VERIFICATION_TOKEN_INVALID = 'EMAIL_VERIFICATION_TOKEN_INVALI
 export const EMAIL_VERIFICATION_BUDGET_EXHAUSTED =
   'EMAIL_VERIFICATION_BUDGET_EXHAUSTED';
 export const EMAIL_VERIFICATION_SEND_FAILED = 'EMAIL_VERIFICATION_SEND_FAILED';
+/** L3: the caller's address is not confirmed; the web maps this code (states.ts). */
+export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
+
+/**
+ * 403 — L3. The route reaches a third party (a request, a quote, a review, a
+ * public profile, a payment setup) and the caller's address is not confirmed.
+ * Raised by `EmailVerifiedGuard`, BEFORE the handler: the caller learns nothing
+ * about the target resource. English, like every API message; the web shows
+ * its own French text, chosen by `code`.
+ */
+export class EmailNotVerifiedException extends HttpException {
+  constructor() {
+    super(
+      {
+        statusCode: HttpStatus.FORBIDDEN,
+        error: 'Forbidden',
+        code: EMAIL_NOT_VERIFIED,
+        message: 'Confirm your email address to perform this action.',
+      },
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
 
 /**
  * 503 — a resend whose mail could not be queued (BullMQ/Redis down, or slower

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { TestDataNotice } from '@/components/trial/test-data-notice';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * Mints a Stripe Account Link and sends the provider to it.
@@ -117,7 +118,12 @@ export function ConnectLinkAction({
     }
 
     if (!response.ok) {
-      setError(messageForStatus(response.status));
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      setError(
+        (await isEmailNotVerified(response))
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : messageForStatus(response.status),
+      );
       setPending(false);
       return;
     }

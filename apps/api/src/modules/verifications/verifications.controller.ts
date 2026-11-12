@@ -14,6 +14,7 @@ import {
   ApiBody,
   ApiConsumes,
   ApiOperation,
+  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -26,6 +27,10 @@ import {
   MAX_DOCUMENT_SIZE_BYTES,
 } from './constants';
 import { InvalidFileException } from './exceptions/verification-exceptions';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 @ApiTags('verifications')
 @Controller()
@@ -33,6 +38,11 @@ export class VerificationsController {
   constructor(private readonly verificationsService: VerificationsService) {}
 
   @Post('service-providers/:providerId/categories/:pscId/documents')
+  @RequireVerifiedEmail()
+  // Any @ApiResponse REPLACES Swagger's default response: the 201 is restated
+  // exactly as it was generated before, or the contract would lose it.
+  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiOperation({
     summary:
       'Upload a verification document for a regulated provider category (owner only).',

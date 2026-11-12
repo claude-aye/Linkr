@@ -4046,6 +4046,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     ServiceProvidersController_discover: {
@@ -4321,6 +4328,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     ProfessionalServiceCategoriesController_deleteCategory: {
@@ -4412,6 +4426,13 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4558,6 +4579,13 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4758,6 +4786,13 @@ export interface operations {
             };
             /** @description Validation error or inactive/unknown provider */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5611,6 +5646,13 @@ export interface operations {
                     "application/json": components["schemas"]["PaymentMethodResponseDto"];
                 };
             };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description This payment method is already saved */
             409: {
                 headers: {
@@ -5802,7 +5844,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectOnboardingResponseDto"];
                 };
             };
-            /** @description You do not own this provider */
+            /** @description You do not own this provider; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5942,7 +5984,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectOnboardingResponseDto"];
                 };
             };
-            /** @description You do not own this provider */
+            /** @description You do not own this provider; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6030,7 +6072,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description No individual provider profile, not eligible for the category, or the caller published this request */
+            /** @description No individual provider profile, not eligible for the category, or the caller published this request; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6374,7 +6416,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The caller is not the client of this request. */
+            /** @description The caller is not the client of this request; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6583,6 +6625,13 @@ export interface operations {
             };
             /** @description No file, or caption too long. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

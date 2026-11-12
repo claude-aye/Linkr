@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * The card form itself — everything that has to live INSIDE `<Elements>`.
@@ -144,7 +145,12 @@ export function CardForm({ onCancel, onSaved }: CardFormProps) {
     }
 
     if (!response.ok) {
-      setError(saveMessageForStatus(response.status));
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      setError(
+        (await isEmailNotVerified(response))
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : saveMessageForStatus(response.status),
+      );
       setPending(false);
       return;
     }

@@ -1165,6 +1165,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "summary": "Create a service provider (polymorphic). INDIVIDUAL derives user_id from JWT; ORGANIZATION requires organizationId and active OWNER role. GeoJSON Point coordinates are [lng, lat].",
@@ -1533,6 +1536,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "summary": "Add a service category to a provider (owner only). INFORMAL → verification_status=NOT_REQUIRED; REGULATED → PENDING.",
@@ -1681,6 +1687,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "409": {
             "description": "This catalogue item is already offered on this trade, or the trade is not eligible (paused, or verification neither NOT_REQUIRED nor VERIFIED)"
@@ -1885,6 +1894,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "summary": "Upload a verification document for a regulated provider category (owner only).",
@@ -2143,6 +2155,9 @@
           },
           "400": {
             "description": "Validation error or inactive/unknown provider"
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "429": {
             "description": "Too many requests created (20 per hour per caller); see Retry-After"
@@ -3085,6 +3100,9 @@
               }
             }
           },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
+          },
           "409": {
             "description": "This payment method is already saved"
           },
@@ -3301,7 +3319,7 @@
             }
           },
           "403": {
-            "description": "You do not own this provider"
+            "description": "You do not own this provider; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "Service provider not found"
@@ -3427,7 +3445,7 @@
             }
           },
           "403": {
-            "description": "You do not own this provider"
+            "description": "You do not own this provider; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "Provider not found, or no Connect account yet"
@@ -3483,7 +3501,7 @@
             "description": "Validation error or validUntilUtc not in the future"
           },
           "403": {
-            "description": "No individual provider profile, not eligible for the category, or the caller published this request"
+            "description": "No individual provider profile, not eligible for the category, or the caller published this request; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "Service request not found"
@@ -3851,7 +3869,7 @@
             "description": "Malformed body, or a fractional rating."
           },
           "403": {
-            "description": "The caller is not the client of this request."
+            "description": "The caller is not the client of this request; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "Unknown service request."
@@ -4061,6 +4079,9 @@
           },
           "400": {
             "description": "No file, or caption too long."
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "The authenticated user has no provider."

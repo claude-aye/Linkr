@@ -132,6 +132,7 @@ async function ensureAccount(
       fail(`signup failed for ${email}: ${signup.status} ${JSON.stringify(signup.body)}`);
     }
     console.log(`  + account created: ${email}`);
+    await ensureEmailVerified(signup.body.user.id);
     return { token: signup.body.accessToken, userId: signup.body.user.id };
   }
 
@@ -139,7 +140,23 @@ async function ensureAccount(
     fail(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
   }
   console.log(`  = account exists: ${email}`);
+  await ensureEmailVerified(res.body.user.id);
   return { token: res.body.accessToken, userId: res.body.user.id };
+}
+
+/**
+ * L3 — every write this fixture makes on behalf of the account (provider
+ * profile, trade, service, request, documents) is refused with 403
+ * EMAIL_NOT_VERIFIED while the address is unconfirmed. The fixture account
+ * gets its confirmation date in SQL (it cannot read the mail), on ITS OWN row
+ * only, and never overwrites a date already set.
+ */
+async function ensureEmailVerified(userId: string): Promise<void> {
+  await ds.query(
+    `UPDATE users SET email_verified_at_utc = COALESCE(email_verified_at_utc, now()), updated_at_utc = now()
+      WHERE id = $1 AND email_verified_at_utc IS NULL`,
+    [userId],
+  );
 }
 
 /**

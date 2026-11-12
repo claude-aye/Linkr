@@ -8,6 +8,7 @@ import { CREATE_REQUEST_RATE_LIMIT, DESCRIPTION_MAX } from './constants';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
 import { ServiceRequestsController } from './service-requests.controller';
 import { ServiceRequestsService } from './service-requests.service';
+import { UsersRepository } from '../users/users.repository';
 
 /**
  * `POST /service-requests` — budget de création et longueur de la description.
@@ -62,7 +63,16 @@ describe('ServiceRequestsController — create rate limiting', () => {
     currentUser = 'user-a';
     const moduleRef = await Test.createTestingModule({
       controllers: [ServiceRequestsController],
-      providers: [RateLimitGuard, { provide: ServiceRequestsService, useValue: { create } }],
+      providers: [
+        RateLimitGuard,
+        { provide: ServiceRequestsService, useValue: { create } },
+        // L3: POST /service-requests is guarded by EmailVerifiedGuard, which reads the
+        // caller from the database; every caller of this spec is confirmed.
+        {
+          provide: UsersRepository,
+          useValue: { findById: jest.fn(async (id: string) => ({ id, emailVerifiedAtUtc: new Date() })) },
+        },
+      ],
     }).compile();
     app = moduleRef.createNestApplication<NestExpressApplication>();
     app.set('trust proxy', 'loopback');

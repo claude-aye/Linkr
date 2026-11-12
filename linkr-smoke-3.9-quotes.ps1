@@ -167,6 +167,25 @@ function Get-MyQuotes   { param([string]$Token)                     Api-Json -Me
 function Run-QuoteExpiry{ param([string]$Token)                     Api-Json -Method POST -Url "$base/admin/quotes/run-expiry-check" -Token $Token }
 
 # ============================================================================
+#  L3 - writes that reach a third party need a confirmed address
+# ============================================================================
+# alice and bob belong to the human dev database: this script never writes
+# their rows. It checks them and stops with the fix if they are unconfirmed.
+function Assert-EmailVerified { param([string]$Token, [string]$Label)
+  $me = Api-Json -Method GET -Url "$base/auth/me" -Token $Token
+  if (-not ($me.body -and $me.body.emailVerified)) {
+    Write-Host "  STOP  $Label email is not confirmed: L3 refuses its writes with 403 EMAIL_NOT_VERIFIED." -ForegroundColor Red
+    Write-Host "        Confirm the dev accounts first (SQL command in the L3 PR description), then re-run." -ForegroundColor DarkYellow
+    exit 1
+  }
+}
+# Only for an account THIS script has just created (random carol+xxxx address).
+function Confirm-OwnFixture { param([string]$Email)
+  $q = "UPDATE users SET email_verified_at_utc = now(), updated_at_utc = now() WHERE email = '$Email' AND email_verified_at_utc IS NULL;"
+  $q | docker exec -i linkr-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | Out-Null
+}
+
+# ============================================================================
 #  STAGE 0 - Logins (tokens valid 15 min)
 # ============================================================================
 Write-Host "`n=== STAGE 0: logins ===" -ForegroundColor Cyan
@@ -174,6 +193,8 @@ $aliceTok = Login -Email "alice@linkr.test" -Password "Password123!"
 $bobTok   = Login -Email "bob@linkr.test"   -Password "Password123!"
 Assert-True ([bool]$aliceTok) "alice login"
 Assert-True ([bool]$bobTok)   "bob login"
+Assert-EmailVerified -Token $aliceTok -Label "alice"
+Assert-EmailVerified -Token $bobTok -Label "bob"
 
 # ============================================================================
 #  STAGE A - Core quote lifecycle (alice client, bob single provider)
@@ -303,6 +324,7 @@ if ($signup.status -ne 201 -and $signup.status -ne 200) {
 }
 
 if ($stageBok) {
+  Confirm-OwnFixture -Email $carolEmail
   $carolTok = Login -Email $carolEmail -Password "Password123!"
   $prov = New-Provider -Token $carolTok -Lng $lng -Lat $lat -RadiusKm 25 -BusinessName "Carol Coiffure"
   if ($prov.status -ne 201 -and $prov.status -ne 200) {

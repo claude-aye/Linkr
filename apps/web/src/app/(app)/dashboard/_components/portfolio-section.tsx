@@ -22,6 +22,7 @@ import {
   reorderErrorMessage,
   uploadErrorMessage,
 } from '@/lib/portfolio/portfolio-rules';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * The « Portfolio » tab of the Espace pro (P2): add, caption, reorder and
@@ -163,8 +164,12 @@ export function PortfolioSection({ items }: PortfolioSectionProps) {
     }
 
     const code = response.status === 409 ? await readErrorCode(response) : null;
+    // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+    const notVerified = await isEmailNotVerified(response);
     setUploading(false);
-    setUploadError(uploadErrorMessage(response.status, code, LIMITS));
+    setUploadError(
+      notVerified ? EMAIL_NOT_VERIFIED_MESSAGE : uploadErrorMessage(response.status, code, LIMITS),
+    );
     if (response.status === 409) refresh();
   }
 

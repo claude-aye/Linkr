@@ -9,6 +9,7 @@ import {
   parsePrice,
   serviceMessageForStatus,
 } from '@/lib/provider-services/service-rules';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * « Ajouter un service » — the web door to
@@ -156,7 +157,12 @@ export function AddServiceForm({ providerId, pscId, tradeLabel, options }: AddSe
     }
 
     if (!response.ok) {
-      setError(serviceMessageForStatus(response.status));
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      setError(
+        (await isEmailNotVerified(response))
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : serviceMessageForStatus(response.status),
+      );
       setPending(false);
       return;
     }

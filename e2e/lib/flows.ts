@@ -17,6 +17,23 @@ export const GEOCODE_FAILURE =
   'ÉCHEC DE GÉOCODAGE (service externe Nominatim ou son relais), pas forcément un défaut de l’application : ';
 
 
+/**
+ * L3 : message des formulaires quand l'API refuse une action envers des tiers
+ * (403 EMAIL_NOT_VERIFIED). Un compte e2e NEUF n'est pas confirmé : le test ne
+ * peut pas lire le courriel, il faut cliquer le lien à la main une fois.
+ */
+export const EMAIL_NOT_VERIFIED = /Confirmez votre adresse courriel pour effectuer cette action/;
+
+/** Échoue avec une cause claire si la page affiche le message L3. */
+export async function failIfEmailNotVerified(page: Page, who: string): Promise<void> {
+  if (await page.getByText(EMAIL_NOT_VERIFIED).isVisible()) {
+    throw new Error(
+      `COMPTE NON CONFIRMÉ : ${who} n’a pas confirmé son adresse (L3, 403 EMAIL_NOT_VERIFIED). ` +
+        'Ouvrir le courriel de confirmation reçu à l’inscription, cliquer le lien, puis relancer.',
+    );
+  }
+}
+
 /** Message de la page d'inscription sur un 409 (courriel déjà utilisé). */
 const EMAIL_TAKEN = /Un compte existe déjà avec ce courriel/;
 
@@ -160,6 +177,12 @@ export async function createProviderProfile(page: Page, displayName: string): Pr
   await pickCandidateByLabel(candidates.locator('xpath=..').getByRole('button'), PROVIDER_ADDRESS);
   await expect(page.getByText(/Localisé/)).toBeVisible();
   await submit.click();
+  // L3 : un compte non confirmé reste sur le formulaire avec le message dédié.
+  await Promise.race([
+    page.waitForURL(/\/dashboard/, { timeout: 30_000 }),
+    page.getByText(EMAIL_NOT_VERIFIED).waitFor({ timeout: 30_000 }),
+  ]).catch(() => undefined);
+  await failIfEmailNotVerified(page, 'le compte prestataire');
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
 }
 

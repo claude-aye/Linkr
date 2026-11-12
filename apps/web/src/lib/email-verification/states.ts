@@ -64,3 +64,34 @@ export function resendOutcome(status: number, code: string | undefined): ResendO
 /** The signup 503 with a code is its own sentence; everything else keeps the generic mapping. */
 export const SIGNUP_BUDGET_MESSAGE = 'Les inscriptions sont saturées aujourd’hui, réessayez demain.';
 export const SIGNUP_BUDGET_CODE = 'EMAIL_VERIFICATION_BUDGET_EXHAUSTED';
+
+/**
+ * L3 — a 403 whose body carries this code means "confirm your address first".
+ * Read ONLY on the forms of the guarded actions, and only on a 403: everywhere
+ * else the mapping stays by status alone (lock 3.12b). A 403 WITHOUT this code
+ * keeps the form's existing message, strictly.
+ */
+export const EMAIL_NOT_VERIFIED_CODE = 'EMAIL_NOT_VERIFIED';
+export const EMAIL_NOT_VERIFIED_MESSAGE =
+  'Confirmez votre adresse courriel pour effectuer cette action. Le bandeau en haut de la page vous permet de recevoir un nouveau courriel.';
+
+/**
+ * True when the response is the L3 403. Reads a CLONE of the body, and only on
+ * a 403, so the caller can still read it; an unreadable body is not the code.
+ */
+export async function isEmailNotVerified(response: {
+  status: number;
+  clone(): { json(): Promise<unknown> };
+}): Promise<boolean> {
+  if (response.status !== 403) return false;
+  try {
+    const body = await response.clone().json();
+    return (
+      typeof body === 'object' &&
+      body !== null &&
+      (body as { code?: unknown }).code === EMAIL_NOT_VERIFIED_CODE
+    );
+  } catch {
+    return false;
+  }
+}

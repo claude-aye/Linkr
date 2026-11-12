@@ -6,6 +6,7 @@ import { useId, useState } from 'react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import type { MyReview } from '@/lib/reviews/types';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * The client's review of one finished job: write it, see it, retract it.
@@ -173,7 +174,12 @@ export function ReviewSection({
         body: JSON.stringify({ serviceRequestId, rating, comment }),
       });
       if (!response.ok) {
-        setError(writeErrorFor(response.status));
+        // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+        setError(
+          (await isEmailNotVerified(response))
+            ? EMAIL_NOT_VERIFIED_MESSAGE
+            : writeErrorFor(response.status),
+        );
         setPending(false);
         return;
       }

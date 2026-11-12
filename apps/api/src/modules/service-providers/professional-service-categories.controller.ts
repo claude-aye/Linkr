@@ -17,6 +17,10 @@ import { AddProviderCategoryDto } from './dto/add-provider-category.dto';
 import { UpdateProviderCategoryDto } from './dto/update-provider-category.dto';
 import { ProviderCategoryResponseDto } from './dto/provider-category-response.dto';
 import { ProviderServicesService } from './provider-services.service';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 @ApiTags('provider-services')
 @Controller('service-providers/:providerId/categories')
@@ -24,6 +28,11 @@ export class ProfessionalServiceCategoriesController {
   constructor(private readonly providerServicesService: ProviderServicesService) {}
 
   @Post()
+  @RequireVerifiedEmail()
+  // Any @ApiResponse REPLACES Swagger's default response: the 201 is restated
+  // exactly as it was generated before, or the contract would lose it.
+  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiOperation({
     summary:
       'Add a service category to a provider (owner only). ' +
