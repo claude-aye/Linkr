@@ -17,6 +17,9 @@ import { UsersModule } from '../users/users.module';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordResetService } from './password-reset.service';
+import { EmailVerificationToken } from './entities/email-verification-token.entity';
+import { EmailVerificationTokenRepository } from './email-verification-token.repository';
+import { EmailVerificationService } from './email-verification.service';
 
 @Module({
   imports: [
@@ -38,7 +41,7 @@ import { PasswordResetService } from './password-reset.service';
     // A-2: the reset flow's own table, and the A-1 email foundation it consumes.
     // `EmailModule` is non-global by design — this is its first consumer, and the
     // dependency is one-way (email knows nothing of auth), so no cycle.
-    TypeOrmModule.forFeature([PasswordResetToken]),
+    TypeOrmModule.forFeature([PasswordResetToken, EmailVerificationToken]),
     EmailModule,
   ],
   controllers: [AuthController],
@@ -46,6 +49,9 @@ import { PasswordResetService } from './password-reset.service';
     AuthService,
     PasswordResetService,
     PasswordResetTokenRepository,
+    // Mandate L1.
+    EmailVerificationService,
+    EmailVerificationTokenRepository,
     // Module-local provider, exactly like AdminGuard and like DemandSignalsModule
     // does — the codebase's convention for a guard. An undecorated route in this
     // module is untouched by it.

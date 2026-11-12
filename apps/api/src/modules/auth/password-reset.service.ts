@@ -6,6 +6,7 @@ import { FixedWindowCounter } from '../../common/rate-limit/fixed-window-counter
 import { AuthProviderType } from '../users/enums/auth-provider-type.enum';
 import { UsersRepository } from '../users/users.repository';
 import { AuthService } from './auth.service';
+import { hashToken } from './token-hash';
 import {
   NoEmailPasswordProviderError,
   PasswordResetTokenRepository,
@@ -239,11 +240,6 @@ export class PasswordResetService {
   }
 }
 
-/**
- * SHA-256, hex. Not Argon2id, on purpose: a random salt would make lookup by
- * equality impossible, and 32 random bytes have no weak entropy for a slow hash
- * to compensate (A-2.2).
- */
-export function hashToken(rawToken: string): string {
-  return createHash('sha256').update(rawToken).digest('hex');
-}
+// Moved to ./token-hash (shared with email verification); re-exported so
+// existing imports keep working.
+export { hashToken } from './token-hash';

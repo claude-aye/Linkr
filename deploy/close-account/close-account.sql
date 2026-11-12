@@ -168,6 +168,12 @@ SELECT count(*) = 0 AS clear,
      WHERE user_id = :'uid' AND consumed_at_utc IS NULL RETURNING 1)
   SELECT count(*) AS n_tokens FROM x \gset
 
+  -- Mandat L1 : les liens de confirmation d'adresse encore valides cessent de servir.
+  WITH x AS (
+    UPDATE email_verification_tokens SET consumed_at_utc = now()
+     WHERE user_id = :'uid' AND consumed_at_utc IS NULL RETURNING 1)
+  SELECT count(*) AS n_verif_tokens FROM x \gset
+
   WITH x AS (
     UPDATE organization_memberships
        SET left_at_utc = now(), is_active = false, updated_at_utc = now()
@@ -214,6 +220,7 @@ SELECT count(*) = 0 AS clear,
   \endif
 
   \echo PLAN|jetons_reinitialisation|:n_tokens
+  \echo PLAN|jetons_confirmation|:n_verif_tokens
   \echo PLAN|adhesions|:n_memberships
   \echo PLAN|cartes|:n_cards
   \echo PLAN|photos_portfolio|:n_photos

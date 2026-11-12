@@ -75,6 +75,7 @@ function emptyRows(): Record<ModifiableTable, string[]> {
     stripe_connect_accounts: [],
     service_providers: [],
     organization_memberships: [],
+    email_verification_tokens: [],
     password_reset_tokens: [],
     user_auth_providers: [],
     users: [],
@@ -360,6 +361,11 @@ export async function buildPlan(db: Queryable): Promise<PurgePlan> {
     [TF],
   );
   rows.password_reset_tokens = resetTokens.rows.map((r) => r.id);
+  const verificationTokens = await db.query<{ id: string }>(
+    `SELECT id FROM email_verification_tokens WHERE user_id = ANY($1::uuid[])`,
+    [TF],
+  );
+  rows.email_verification_tokens = verificationTokens.rows.map((r) => r.id);
   const authProviders = await db.query<{ id: string }>(
     `SELECT id FROM user_auth_providers WHERE user_id = ANY($1::uuid[])`,
     [TF],

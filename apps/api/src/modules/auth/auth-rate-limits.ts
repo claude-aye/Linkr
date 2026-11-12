@@ -6,7 +6,7 @@ const FIFTEEN_MINUTES = 15 * 60;
 /**
  * Per-caller budgets for the unauthenticated auth routes (chantier B).
  *
- * ⚠️ ALL FOUR ARE BY IP, NEVER BY EMAIL ADDRESS — AND THAT IS A SECURITY
+ * ⚠️ ALL ANONYMOUS ONES ARE BY IP, NEVER BY EMAIL ADDRESS — AND THAT IS A SECURITY
  * PROPERTY, NOT A CONVENIENCE. A 429 that only ever came out for addresses that
  * exist is an enumeration oracle wearing a security control's clothes; and a
  * per-email budget hands anyone the power to lock a specific person out of their
@@ -60,4 +60,18 @@ export const AUTH_RATE_LIMITS = {
    * client from hammering the consume path.
    */
   RESET_PASSWORD: { limit: 10, windowSeconds: FIFTEEN_MINUTES },
+
+  /**
+   * 20/15min, by IP (mandate L1). Same reasoning as RESET_PASSWORD: the token is
+   * 32 random bytes, so this caps noise, not guessing.
+   */
+  VERIFY_EMAIL: { limit: 20, windowSeconds: FIFTEEN_MINUTES },
+
+  /**
+   * 3/h — and the ONE resend route that is authenticated, so the guard keys it
+   * by the JWT subject (`user:<sub>`), not by IP. The daily per-user cap (5) and
+   * the per-IP cap live in `EmailVerificationService.checkResendLimits`, because
+   * the guard meters a route by one caller unit only.
+   */
+  RESEND_VERIFICATION: { limit: 3, windowSeconds: ONE_HOUR },
 } as const satisfies Record<string, RateLimitOptions>;

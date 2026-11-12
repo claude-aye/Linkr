@@ -2,6 +2,7 @@ import { balanceFailedClientEmail } from './balance-failed-client.template';
 import { directBookingEmail } from './direct-booking.template';
 import { depositFailedClientEmail } from './deposit-failed-client.template';
 import { depositFailedProviderEmail } from './deposit-failed-provider.template';
+import { emailVerificationEmail } from './email-verification.template';
 import { jobCompletedEmail } from './job-completed.template';
 import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
@@ -27,6 +28,8 @@ export const EMAIL_TEMPLATES = {
   // (the priority recipient). See the note there.
   'deposit-failed-client': depositFailedClientEmail,
   'deposit-failed-provider': depositFailedProviderEmail,
+  // Mandate L1: sent at sign-up and on resend. Essential, own daily cap.
+  'email-verification': emailVerificationEmail,
   'job-completed': jobCompletedEmail,
   'password-reset': passwordResetEmail,
   probe: probeEmail,
@@ -63,6 +66,7 @@ export type { BalanceFailedClientEmailVars } from './balance-failed-client.templ
 export type { DirectBookingEmailVars } from './direct-booking.template';
 export type { DepositFailedClientEmailVars } from './deposit-failed-client.template';
 export type { DepositFailedProviderEmailVars } from './deposit-failed-provider.template';
+export type { EmailVerificationEmailVars } from './email-verification.template';
 export type { JobCompletedEmailVars } from './job-completed.template';
 export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';

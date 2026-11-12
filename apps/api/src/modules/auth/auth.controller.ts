@@ -6,13 +6,19 @@ import {
   HttpStatus,
   Post,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
+import { RateLimitExceededException } from '../../common/rate-limit/rate-limit.exception';
+import { EmailVerificationService } from './email-verification.service';
+import { VerifyEmailDto } from './dtos/verify-email.dto';
+import { ResendVerificationErrorDto } from './dtos/resend-verification-error.dto';
+import { ResendVerificationResponseDto } from './dtos/resend-verification-response.dto';
 import { AUTH_RATE_LIMITS } from './auth-rate-limits';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { AuthService, TokenPair } from './auth.service';
 import { PasswordResetService } from './password-reset.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -34,6 +40,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly passwordResetService: PasswordResetService,
+    private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
   /**
@@ -46,6 +53,13 @@ export class AuthController {
   @UseGuards(RateLimitGuard)
   @RateLimit(AUTH_RATE_LIMITS.SIGNUP)
   @Post('signup')
+  // Any @ApiResponse replaces Swagger's default, so the 201 is restated.
+  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({
+    status: 503,
+    description:
+      "Today's verification-email budget is spent; no account was created. Body code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED.",
+  })
   signup(@Body() dto: SignupDto): Promise<AuthResponseDto> {
     return this.authService.signup(dto);
   }
@@ -141,6 +155,76 @@ export class AuthController {
     await this.passwordResetService.resetPassword(dto.token, dto.password);
   }
 
+  /**
+   * Confirms the address with the emailed token (mandate L1).
+   *
+   * ⚠️ POST, AND ONLY POST, CONSUMES — same rule as reset (A-2.7): mail scanners
+   * prefetch links, so the emailed URL opens a web PAGE that posts the token.
+   * Public, and it creates NO session and sets NO cookie: proving the mailbox is
+   * not proving the password.
+   *
+   * The address is verified only while the token's address is still the
+   * account's. Every failure is one 400 with code EMAIL_VERIFICATION_TOKEN_INVALID.
+   * A valid token on an already-verified account succeeds and changes nothing.
+   */
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(AUTH_RATE_LIMITS.VERIFY_EMAIL)
+  @Post('verify-email')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Confirm the email address with an emailed token' })
+  @ApiResponse({ status: 204, description: 'Address confirmed (or already confirmed).' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'One response for every token failure — unknown, expired, already used, replaced, or issued for a previous address. Body code: EMAIL_VERIFICATION_TOKEN_INVALID.',
+  })
+  @ApiResponse({ status: 429, description: 'Too many attempts from this IP. Retry-After set.' })
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
+    await this.emailVerificationService.verify(dto.token);
+  }
+
+  /**
+   * Sends a new verification link to the authenticated user (mandate L1).
+   *
+   * The user is looked up BY ID (JWT subject), never by address. Caps: 3/h per
+   * user (guard), 5/day per user and 10/h per IP (service); 429 with
+   * Retry-After. Each resend kills the previous links. Already verified → 200
+   * ALREADY_VERIFIED, nothing sent. Daily verification budget spent → 503 with
+   * code EMAIL_VERIFICATION_BUDGET_EXHAUSTED, no token created.
+   */
+  @UseGuards(RateLimitGuard)
+  @RateLimit(AUTH_RATE_LIMITS.RESEND_VERIFICATION)
+  @Post('verify-email/resend')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send a new email verification link' })
+  @ApiResponse({ status: 200, type: ResendVerificationResponseDto })
+  @ApiResponse({ status: 401, description: 'Not authenticated.' })
+  @ApiResponse({ status: 429, description: 'Resend cap reached. Retry-After set.' })
+  @ApiResponse({
+    status: 503,
+    type: ResendVerificationErrorDto,
+    description:
+      "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
+  })
+  async resendVerification(
+    @CurrentUser() payload: JwtPayload,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ResendVerificationResponseDto> {
+    const verdict = this.emailVerificationService.checkResendLimits(
+      payload.sub,
+      req.ip,
+    );
+    if (!verdict.allowed) {
+      res.header('Retry-After', String(verdict.retryAfterSeconds));
+      throw new RateLimitExceededException();
+    }
+    const status = await this.emailVerificationService.resend(payload.sub);
+    return { status };
+  }
+
+  @ApiResponse({ status: 200, type: UserPublicDto })
   @Get('me')
   me(@CurrentUser() payload: JwtPayload): Promise<UserPublicDto> {
     return this.authService.me(payload.sub);

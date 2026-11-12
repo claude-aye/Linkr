@@ -134,6 +134,7 @@ const REFERENCE_EDGES: Array<[child: string, column: string, parent: ModifiableT
   ['stripe_connect_accounts', 'service_provider_id', 'service_providers'],
   ['service_providers', 'user_id', 'users'],
   ['organization_memberships', 'user_id', 'users'],
+  ['email_verification_tokens', 'user_id', 'users'],
   ['password_reset_tokens', 'user_id', 'users'],
   ['user_auth_providers', 'user_id', 'users'],
   ['service_items', 'suggested_by_user_id', 'users'],

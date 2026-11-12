@@ -222,6 +222,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "503": {
+            "description": "Today's verification-email budget is spent; no account was created. Body code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED."
           }
         },
         "tags": [
@@ -320,13 +323,89 @@
         ]
       }
     },
+    "/auth/verify-email": {
+      "post": {
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Address confirmed (or already confirmed)."
+          },
+          "400": {
+            "description": "One response for every token failure — unknown, expired, already used, replaced, or issued for a previous address. Body code: EMAIL_VERIFICATION_TOKEN_INVALID."
+          },
+          "429": {
+            "description": "Too many attempts from this IP. Retry-After set."
+          }
+        },
+        "summary": "Confirm the email address with an emailed token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/verify-email/resend": {
+      "post": {
+        "operationId": "AuthController_resendVerification",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendVerificationResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated."
+          },
+          "429": {
+            "description": "Resend cap reached. Retry-After set."
+          },
+          "503": {
+            "description": "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendVerificationErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Send a new email verification link",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/auth/me": {
       "get": {
         "operationId": "AuthController_me",
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPublicDto"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -4287,6 +4366,159 @@
         "required": [
           "token",
           "password"
+        ]
+      },
+      "VerifyEmailDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The raw token from the emailed link (base64url). Only its SHA-256 is stored server-side.",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "ResendVerificationStatus": {
+        "type": "string",
+        "enum": [
+          "SENT",
+          "ALREADY_VERIFIED"
+        ],
+        "description": "SENT: a new link was queued (older links stop working). ALREADY_VERIFIED: nothing was sent."
+      },
+      "ResendVerificationResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "SENT: a new link was queued (older links stop working). ALREADY_VERIFIED: nothing was sent.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResendVerificationStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "ResendVerificationErrorCode": {
+        "type": "string",
+        "enum": [
+          "EMAIL_VERIFICATION_BUDGET_EXHAUSTED",
+          "EMAIL_VERIFICATION_SEND_FAILED"
+        ],
+        "description": "EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works."
+      },
+      "ResendVerificationErrorDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 503
+          },
+          "error": {
+            "type": "string",
+            "example": "Service Unavailable"
+          },
+          "code": {
+            "description": "EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResendVerificationErrorCode"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "User-facing French message."
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "code",
+          "message"
+        ]
+      },
+      "VerificationLevel": {
+        "type": "string",
+        "enum": [
+          "NONE",
+          "EMAIL",
+          "PHONE",
+          "IDENTITY"
+        ]
+      },
+      "UserPublicDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "description": "True once the address has been confirmed (link or completed password reset)."
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "languagePreference": {
+            "type": "string"
+          },
+          "countryCode": {
+            "type": "string"
+          },
+          "subdivisionCode": {
+            "type": "string"
+          },
+          "preferredCurrency": {
+            "type": "string"
+          },
+          "verificationLevel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VerificationLevel"
+              }
+            ]
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "emailVerified",
+          "firstName",
+          "lastName",
+          "displayName",
+          "avatarUrl",
+          "languagePreference",
+          "countryCode",
+          "subdivisionCode",
+          "preferredCurrency",
+          "verificationLevel",
+          "createdAtUtc"
         ]
       },
       "CreateOrganizationDto": {

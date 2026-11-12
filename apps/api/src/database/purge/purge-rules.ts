@@ -80,6 +80,7 @@ export const DELETE_ORDER = [
   'stripe_connect_accounts',
   'service_providers',
   'organization_memberships',
+  'email_verification_tokens',
   'password_reset_tokens',
   'user_auth_providers',
   'users',
@@ -297,8 +298,12 @@ export function roleGrantSql(): string {
  * Tables dont le rôle ne lit QUE certaines colonnes (M2) : jamais un haché de
  * mot de passe ni de jeton. La purge n'a besoin que de `id` et `user_id`.
  */
-export const COLUMN_SCOPED_SELECT: Readonly<Record<'user_auth_providers' | 'password_reset_tokens', readonly string[]>> = {
+export const COLUMN_SCOPED_SELECT: Readonly<
+  Record<'user_auth_providers' | 'email_verification_tokens' | 'password_reset_tokens', readonly string[]>
+> = {
   user_auth_providers: ['id', 'user_id'],
+  // L1 : ni le haché du jeton ni l'adresse pour laquelle il a été émis.
+  email_verification_tokens: ['id', 'user_id'],
   password_reset_tokens: ['id', 'user_id'],
 };
 
@@ -306,6 +311,8 @@ export const COLUMN_SCOPED_SELECT: Readonly<Record<'user_auth_providers' | 'pass
 export const FORBIDDEN_COLUMNS: ReadonlyArray<readonly [table: string, column: string]> = [
   ['user_auth_providers', 'password_hash'],
   ['password_reset_tokens', 'token_hash'],
+  ['email_verification_tokens', 'token_hash'],
+  ['email_verification_tokens', 'email'],
 ];
 
 /**

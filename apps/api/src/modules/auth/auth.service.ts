@@ -17,6 +17,7 @@ import { CURRENT_TERMS_VERSION } from './terms-version';
 import { UserPublicDto } from './dtos/user-public.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { TokenType } from './enums/token-type.enum';
+import { EmailVerificationService } from './email-verification.service';
 
 // @nestjs/jwt v11 uses branded StringValue from ms@3 for expiresIn;
 // string values are valid at runtime — cast required to satisfy the compiler.
@@ -35,6 +36,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly usersRepository: UsersRepository,
+    private readonly emailVerification: EmailVerificationService,
   ) {}
 
   async hashPassword(password: string): Promise<string> {
@@ -107,6 +109,11 @@ export class AuthService {
     const existing = await this.usersRepository.findByEmail(dto.email);
     if (existing) throw new ConflictException('Email already registered');
 
+    // Mandate L1: reserve today's verification email BEFORE the account exists.
+    // At the cap this throws the 503 and nothing is created — no account that
+    // would never receive its link.
+    await this.emailVerification.reserveForSignup();
+
     const passwordHash = await this.hashPassword(dto.password);
     const user = await this.usersRepository.createWithEmailPassword(
       {
@@ -130,6 +137,9 @@ export class AuthService {
     );
 
     this.logger.log(`New user registered: ${user.id}`);
+    // Not awaited (L1b): the sign-up never waits on the token write or on
+    // BullMQ. A failure is logged (no address, no token) and resend exists.
+    this.emailVerification.sendAfterSignup(user);
     const tokens = this.signTokenPair(user.id, user.email);
     return { ...tokens, user: this.toPublicDto(user) };
   }

@@ -118,6 +118,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the email address with an emailed token */
+        post: operations["AuthController_verifyEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/verify-email/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a new email verification link */
+        post: operations["AuthController_resendVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/me": {
         parameters: {
             query?: never;
@@ -1704,6 +1738,54 @@ export interface components {
             /** @description The new password. Same constraints as signup. */
             password: string;
         };
+        VerifyEmailDto: {
+            /** @description The raw token from the emailed link (base64url). Only its SHA-256 is stored server-side. */
+            token: string;
+        };
+        /**
+         * @description SENT: a new link was queued (older links stop working). ALREADY_VERIFIED: nothing was sent.
+         * @enum {string}
+         */
+        ResendVerificationStatus: "SENT" | "ALREADY_VERIFIED";
+        ResendVerificationResponseDto: {
+            /** @description SENT: a new link was queued (older links stop working). ALREADY_VERIFIED: nothing was sent. */
+            status: components["schemas"]["ResendVerificationStatus"];
+        };
+        /**
+         * @description EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works.
+         * @enum {string}
+         */
+        ResendVerificationErrorCode: "EMAIL_VERIFICATION_BUDGET_EXHAUSTED" | "EMAIL_VERIFICATION_SEND_FAILED";
+        ResendVerificationErrorDto: {
+            /** @example 503 */
+            statusCode: number;
+            /** @example Service Unavailable */
+            error: string;
+            /** @description EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works. */
+            code: components["schemas"]["ResendVerificationErrorCode"];
+            /** @description User-facing French message. */
+            message: string;
+        };
+        /** @enum {string} */
+        VerificationLevel: "NONE" | "EMAIL" | "PHONE" | "IDENTITY";
+        UserPublicDto: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            /** @description True once the address has been confirmed (link or completed password reset). */
+            emailVerified: boolean;
+            firstName: string;
+            lastName: string;
+            displayName: string | null;
+            avatarUrl: string | null;
+            languagePreference: string;
+            countryCode: string;
+            subdivisionCode: string;
+            preferredCurrency: string;
+            verificationLevel: components["schemas"]["VerificationLevel"];
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
         CreateOrganizationDto: Record<string, never>;
         UpdateOrganizationDto: Record<string, never>;
         AddMemberDto: Record<string, never>;
@@ -3166,6 +3248,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Today's verification-email budget is spent; no account was created. Body code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     AuthController_login: {
@@ -3257,6 +3346,84 @@ export interface operations {
             };
         };
     };
+    AuthController_verifyEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyEmailDto"];
+            };
+        };
+        responses: {
+            /** @description Address confirmed (or already confirmed). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description One response for every token failure — unknown, expired, already used, replaced, or issued for a previous address. Body code: EMAIL_VERIFICATION_TOKEN_INVALID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many attempts from this IP. Retry-After set. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_resendVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResendVerificationResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resend cap reached. Retry-After set. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResendVerificationErrorDto"];
+                };
+            };
+        };
+    };
     AuthController_me: {
         parameters: {
             query?: never;
@@ -3270,7 +3437,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UserPublicDto"];
+                };
             };
         };
     };
