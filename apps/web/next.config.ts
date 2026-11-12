@@ -43,6 +43,11 @@ const nextConfig: NextConfig = {
         source: '/reset-password',
         headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
       },
+      // Same reason: the confirmation token travels in the URL.
+      {
+        source: '/verify-email',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
     ];
   },
 

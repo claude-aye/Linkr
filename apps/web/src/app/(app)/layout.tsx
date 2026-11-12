@@ -1,6 +1,7 @@
 import { LegalFooter } from '@/components/legal/legal-footer';
 import { getShellCapabilities } from '@/lib/nav/capabilities';
 
+import { EmailVerificationBanner } from './_components/email-verification-banner';
 import { Nav } from './nav';
 
 /**
@@ -30,6 +31,9 @@ export default async function AppLayout({
   return (
     <>
       {user ? <Nav isProvider={isProvider} /> : null}
+      {/* L2: only a signed-in user with an unconfirmed address. Server-decided,
+          so there is no flash of the band while data loads. */}
+      {user && !user.emailVerified ? <EmailVerificationBanner /> : null}
       {children}
       <LegalFooter />
     </>

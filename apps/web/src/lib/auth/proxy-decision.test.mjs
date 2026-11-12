@@ -70,3 +70,16 @@ test('auth BFF and always-open paths let through', () => {
   assert.deepEqual(decide('/api/auth/login'), { kind: 'next' });
   assert.deepEqual(decide('/confidentialite', { open: true }), { kind: 'next' });
 });
+
+// --- /verify-email (L2) --------------------------------------------------------
+
+test('/verify-email is public, anonymous or signed in, and never bounced', () => {
+  assert.deepEqual(decide('/verify-email'), { kind: 'next' });
+  assert.deepEqual(decide('/verify-email', { access: true }), { kind: 'next' });
+  assert.deepEqual(decide('/verify-email', { refresh: true }), { kind: 'next' });
+});
+
+test('/verify-email is an exact match: siblings stay protected', () => {
+  assert.deepEqual(decide('/verify-email/x'), { kind: 'deny' });
+  assert.deepEqual(decide('/verify-emails'), { kind: 'deny' });
+});

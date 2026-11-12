@@ -17,7 +17,13 @@
  * would otherwise be bounced to `/login`. Its BFF needs no entry — it falls
  * under `PUBLIC_API_PREFIX`.
  */
-export const PUBLIC_PAGES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+export const PUBLIC_PAGES = [
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+];
 
 /**
  * Public pages that must ALSO be reachable while signed in.
@@ -30,7 +36,13 @@ export const PUBLIC_PAGES = ['/login', '/signup', '/forgot-password', '/reset-pa
  * behave differently depending on whether the reader is signed in somewhere.
  * Revisit the day such a screen exists; until then it is load-bearing.
  */
-export const PUBLIC_PAGES_ALLOWED_WHILE_SIGNED_IN = ['/forgot-password', '/reset-password'];
+export const PUBLIC_PAGES_ALLOWED_WHILE_SIGNED_IN = [
+  '/forgot-password',
+  '/reset-password',
+  // The confirmation link is opened from a mailbox, very often on a device
+  // that is ALREADY signed in: bouncing it to `/` would eat the click.
+  '/verify-email',
+];
 
 export const PUBLIC_API_PREFIX = '/api/auth';
 

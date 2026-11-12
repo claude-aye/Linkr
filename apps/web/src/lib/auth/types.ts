@@ -19,6 +19,8 @@ export type VerificationLevel = 'NONE' | 'EMAIL' | 'PHONE' | 'IDENTITY';
 export interface AuthUser {
   id: string;
   email: string;
+  /** True once the address is confirmed (link or completed password reset). */
+  emailVerified: boolean;
   firstName: string;
   lastName: string;
   displayName: string | null;
