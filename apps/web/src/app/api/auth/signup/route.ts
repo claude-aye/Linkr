@@ -94,6 +94,20 @@ export async function POST(request: Request) {
   }
 
   if (!apiResponse.ok) {
+    // The daily confirmation-email budget is spent: nothing was created. The 503
+    // is relayed WITH its `code` so the page can say what to do (come back
+    // tomorrow) instead of the generic outage sentence. Any other 5xx stays 502.
+    if (apiResponse.status === 503) {
+      const payload = (await apiResponse.json().catch(() => null)) as {
+        code?: unknown;
+      } | null;
+      if (payload?.code === 'EMAIL_VERIFICATION_BUDGET_EXHAUSTED') {
+        return NextResponse.json(
+          { code: 'EMAIL_VERIFICATION_BUDGET_EXHAUSTED' },
+          { status: 503 },
+        );
+      }
+    }
     if (apiResponse.status >= 500) {
       return NextResponse.json(
         { message: 'Service indisponible. Réessaie plus tard.' },

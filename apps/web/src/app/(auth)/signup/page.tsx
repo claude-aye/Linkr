@@ -19,6 +19,10 @@ import { useRouter } from 'next/navigation';
 
 import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
 import {
+  SIGNUP_BUDGET_CODE,
+  SIGNUP_BUDGET_MESSAGE,
+} from '@/lib/email-verification/states';
+import {
   authButtonClass,
   authCardClass,
   authCheckboxClass,
@@ -149,13 +153,24 @@ export default function SignupPage() {
       });
 
       if (!res.ok) {
+        // The confirmation-email budget of the day: its own sentence, read from
+        // the 503's `code` (the status alone cannot tell it from an outage).
+        if (res.status === 503) {
+          const body = (await res.json().catch(() => null)) as { code?: string } | null;
+          if (body?.code === SIGNUP_BUDGET_CODE) {
+            setError({ text: SIGNUP_BUDGET_MESSAGE, withLoginLink: false });
+            return;
+          }
+        }
         setError(errorForStatus(res.status, res));
         return;
       }
 
       // Cookies are now set (httpOnly) — the account is created AND signed in.
       // Land on the authenticated client hub, exactly like a sign-in.
-      router.push('/');
+      // `?courriel=envoye` makes the shell band open with « we sent a
+      // confirmation email » rather than the generic reminder.
+      router.push('/?courriel=envoye');
       router.refresh();
     } catch {
       setError({
