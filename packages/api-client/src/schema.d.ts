@@ -1751,6 +1751,21 @@ export interface components {
             /** @description SENT: a new link was queued (older links stop working). ALREADY_VERIFIED: nothing was sent. */
             status: components["schemas"]["ResendVerificationStatus"];
         };
+        /**
+         * @description EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works.
+         * @enum {string}
+         */
+        ResendVerificationErrorCode: "EMAIL_VERIFICATION_BUDGET_EXHAUSTED" | "EMAIL_VERIFICATION_SEND_FAILED";
+        ResendVerificationErrorDto: {
+            /** @example 503 */
+            statusCode: number;
+            /** @example Service Unavailable */
+            error: string;
+            /** @description EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works. */
+            code: components["schemas"]["ResendVerificationErrorCode"];
+            /** @description User-facing French message. */
+            message: string;
+        };
         /** @enum {string} */
         VerificationLevel: "NONE" | "EMAIL" | "PHONE" | "IDENTITY";
         UserPublicDto: {
@@ -3403,7 +3418,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResendVerificationErrorDto"];
+                };
             };
         };
     };

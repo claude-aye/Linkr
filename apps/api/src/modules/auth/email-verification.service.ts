@@ -188,6 +188,12 @@ export class EmailVerificationService {
    * Insert → enqueue (bounded by ENQUEUE_TIMEOUT_MS) → expire the OLDER live
    * tokens. If the enqueue fails or times out, the NEW token is expired and the
    * error rethrown: the user keeps the link they already had.
+   *
+   * ⚠️ A ROTATION FAILURE AFTER THE ENQUEUE IS NOT A SEND FAILURE (L1d): the
+   * mail is queued, so the caller must not hear "could not be sent". It is
+   * logged (user id and error class only) and swallowed; the older links stay
+   * valid until they expire on their own (24 h), which is the pre-rotation
+   * state, not a leak.
    */
   private async issueAndSend(user: User): Promise<void> {
     const rawToken = randomBytes(TOKEN_BYTES).toString('base64url');
@@ -221,8 +227,14 @@ export class EmailVerificationService {
       throw error;
     }
 
-    await this.tokenRepository.expireOlderLive(user.id, inserted);
     this.logger.log(`Verification email queued for user ${user.id}`);
+    try {
+      await this.tokenRepository.expireOlderLive(user.id, inserted);
+    } catch (error) {
+      this.logger.error(
+        `Verification email queued for user ${user.id}, but older links could not be expired (${errorName(error)})`,
+      );
+    }
   }
 
   private buildVerifyUrl(rawToken: string): string {

@@ -8,9 +8,12 @@
  *
  * So: when the error carries an SMTP reply code (Nodemailer's `responseCode`)
  * only the codes are kept; otherwise the message is kept with every
- * `<…>` group and every address-like token replaced.
+ * `<…>` group, every quoted-local-part address and every address-like token
+ * replaced.
  */
 const ANGLE_GROUP = /<[^>]*>/g;
+/** A quoted local part ("a b"@x.example): the quote stops ADDRESS_LIKE. */
+const QUOTED_LOCAL_ADDRESS = /"[^"]*"@[^\s<>"'(),;:]+/g;
 const ADDRESS_LIKE = /[^\s<>"'(),;:]+@[^\s<>"'(),;:]+/g;
 
 export function safeSmtpReason(error: unknown): string {
@@ -25,5 +28,8 @@ export function safeSmtpReason(error: unknown): string {
   }
 
   const message = typeof e.message === 'string' ? e.message : 'unknown error';
-  return message.replace(ANGLE_GROUP, '<…>').replace(ADDRESS_LIKE, '[adresse]');
+  return message
+    .replace(ANGLE_GROUP, '<…>')
+    .replace(QUOTED_LOCAL_ADDRESS, '[adresse]')
+    .replace(ADDRESS_LIKE, '[adresse]');
 }

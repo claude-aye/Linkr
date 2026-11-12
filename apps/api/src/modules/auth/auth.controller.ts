@@ -13,6 +13,7 @@ import { RateLimit } from '../../common/rate-limit/rate-limit.decorator';
 import { RateLimitExceededException } from '../../common/rate-limit/rate-limit.exception';
 import { EmailVerificationService } from './email-verification.service';
 import { VerifyEmailDto } from './dtos/verify-email.dto';
+import { ResendVerificationErrorDto } from './dtos/resend-verification-error.dto';
 import { ResendVerificationResponseDto } from './dtos/resend-verification-response.dto';
 import { AUTH_RATE_LIMITS } from './auth-rate-limits';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
@@ -202,6 +203,7 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Resend cap reached. Retry-After set.' })
   @ApiResponse({
     status: 503,
+    type: ResendVerificationErrorDto,
     description:
       "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
   })

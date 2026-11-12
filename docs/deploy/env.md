@@ -43,12 +43,9 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | `SMTP_USER` / `SMTP_PASSWORD` | non, mais ensemble | exéc. | oui | — | L'une sans l'autre fait échouer le boot. |
 | `EMAIL_FROM_ADDRESS` | oui | exéc. | non | `no-reply@exemple.ca` | |
 | `EMAIL_FROM_NAME` | non | exéc. | non | `Linkr` | |
-| `EMAIL_DAILY_BUDGET` | non | exéc. | non | `200` | Plafond quotidien (jour en heure de Toronto, aligné sur la remise à zéro du quota Brevo à minuit, heure de l'Est) des courriels **non essentiels** (tout sauf réinitialisation de mot de passe et échecs d'acompte ou de solde). Au-delà, le courriel est abandonné avec un WARN sans adresse. Le plan gratuit de Brevo permet 300 envois par jour : la valeur par défaut laisse 100 envois aux essentiels et aux reprises. Rien à ajouter dans `/opt/linkr/.env` ; relire au passage à un plan payant. |
+| `EMAIL_DAILY_BUDGET` | non | exéc. | non | `200` | Plafond quotidien (jour en heure de Toronto, aligné sur la remise à zéro du quota Brevo à minuit, heure de l'Est) des courriels **non essentiels** (tout sauf réinitialisation de mot de passe et échecs d'acompte ou de solde). Au-delà, le courriel est abandonné avec un WARN sans adresse. Le plan gratuit de Brevo permet 300 envois par jour : avec les deux plafonds de confirmation ci-dessous, la marge laissée aux essentiels non plafonnés et aux reprises est de **40 envois** (calcul sous le tableau). Rien à ajouter dans `/opt/linkr/.env` ; relire au passage à un plan payant. |
 | `EMAIL_VERIFICATION_DAILY_BUDGET` | non | exéc. | non | `40` | Plafond quotidien (jour en heure de Toronto) des courriels de confirmation d'adresse **envoyés à l'inscription** (mandat L1). Essentiels (priorité 1, jamais comptés dans `EMAIL_DAILY_BUDGET`). Au plafond, `POST /auth/signup` répond **503** (code `EMAIL_VERIFICATION_BUDGET_EXHAUSTED`) **avant** de créer le compte. WARN à 80 %, un par jour. Rouvrir avant minuit : `docs/deploy/arret-urgence.md`. Redis injoignable : laisse passer. Entier ≥ 1. |
 | `EMAIL_VERIFICATION_RESEND_DAILY_BUDGET` | non | exéc. | non | `20` | Plafond quotidien (jour de Toronto) des **renvois** de lien de confirmation, compteur distinct : un renvoi ne consomme jamais le plafond d'inscription. Au plafond, le renvoi répond 503 sans créer de jeton. Entier ≥ 1. |
-
-**Calcul Brevo (plan gratuit, 300 envois par jour, jour de l'Est).** `EMAIL_DAILY_BUDGET` (200) + `EMAIL_VERIFICATION_DAILY_BUDGET` (40) + `EMAIL_VERIFICATION_RESEND_DAILY_BUDGET` (20) = **260**, soit **40 envois de marge** pour les courriels essentiels non plafonnés (réinitialisation de mot de passe, échecs d'acompte et de solde) et les reprises. Au démarrage, l'API écrit un **avertissement** (pas un échec) si la somme des trois laisse moins de 40 envois sur 300. Rien à ajouter dans `/opt/linkr/api.env` avec ces valeurs ; à relire au passage à un plan payant.
-
 | `NOMINATIM_USER_AGENT` | oui | exéc. | non | `Linkr/1.0 (support@linkrapp.com)` | Exigé par les conditions de Nominatim. |
 | `NOMINATIM_BASE_URL` / `GEOCODING_PROVIDER` | non | exéc. | non | défauts | Instance auto-hébergée à prévoir avant la production réelle. |
 | `STORAGE_DRIVER` | non (défaut `local`) | exéc. | non | `s3` | `local` écrit sur le disque du conteneur (portfolio, documents). |
@@ -56,6 +53,8 @@ Côté web, `NEXT_PUBLIC_API_URL` absente en production fait échouer `next buil
 | `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | si `s3` | exéc. | `…KEY`/`…SECRET` oui | — | |
 | `STORAGE_ENDPOINT` | non | exéc. | non | — | Fournisseurs compatibles S3. |
 | `GOOGLE_OAUTH_*`, `APPLE_OAUTH_*` | non | — | oui | — | OAuth non exposé dans le web ; ne pas activer (dette §6). |
+
+**Calcul Brevo (plan gratuit, 300 envois par jour, jour de l'Est).** `EMAIL_DAILY_BUDGET` (200) + `EMAIL_VERIFICATION_DAILY_BUDGET` (40) + `EMAIL_VERIFICATION_RESEND_DAILY_BUDGET` (20) = **260**, soit **40 envois de marge** pour les courriels essentiels non plafonnés (réinitialisation de mot de passe, échecs d'acompte et de solde) et les reprises. Au démarrage, l'API écrit un **avertissement** (pas un échec) si la somme des trois laisse moins de 40 envois sur 300. Rien à ajouter dans `/opt/linkr/api.env` avec ces valeurs ; à relire au passage à un plan payant.
 
 ## Web (`apps/web`, `.env.local` ou environnement du build)
 

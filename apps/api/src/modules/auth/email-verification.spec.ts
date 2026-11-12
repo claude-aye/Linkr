@@ -9,14 +9,20 @@ import {
   EMAIL_VERIFICATION_BUDGET_EXHAUSTED,
   EMAIL_VERIFICATION_SEND_FAILED,
   EMAIL_VERIFICATION_TOKEN_INVALID,
+  EmailVerificationBudgetExhaustedException,
+  EmailVerificationSendFailedException,
 } from './email-verification.exceptions';
+import { RESEND_VERIFICATION_ERROR_CODES } from './dtos/resend-verification-error.dto';
 import {
   ENQUEUE_TIMEOUT_MS,
   EmailVerificationService,
   RESEND_LIMITS,
   VERIFY_EMAIL_PATH,
 } from './email-verification.service';
-import { EmailVerificationTokenRepository } from './email-verification-token.repository';
+import {
+  EmailVerificationTokenRepository,
+  isConcurrencyAbort,
+} from './email-verification-token.repository';
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { hashToken } from './token-hash';
 
@@ -360,6 +366,71 @@ describe('L1b — consumeAndVerify rolls back when the account cannot be marked'
   it('users UPDATE touches zero rows → the transaction throws (rollback) and the caller gets null', async () => {
     const { repo } = repoWith([]);
     await expect(repo.consumeAndVerify('h')).resolves.toBeNull();
+  });
+});
+
+describe('L1d — consumeAndVerify lock order and concurrency aborts', () => {
+  function repoWithQuery(query: jest.Mock) {
+    const manager = { query };
+    const dataSource = { transaction: jest.fn(async (fn: (m: typeof manager) => unknown) => fn(manager)) };
+    return new EmailVerificationTokenRepository(dataSource as never);
+  }
+
+  it('locks the users row FIRST, before the token UPDATE (same order as the rotation)', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (/UPDATE email_verification_tokens/.test(sql)) return [[{ user_id: 'user-1', email: EMAIL }], 1];
+      if (/UPDATE users/.test(sql)) return [[{ id: 'user-1' }], 1];
+      return [];
+    });
+    await expect(repoWithQuery(query).consumeAndVerify('h')).resolves.toBe('user-1');
+    const sqls = query.mock.calls.map((c) => c[0] as string);
+    expect(sqls[0]).toMatch(/FROM users u[\s\S]*FOR UPDATE OF u/);
+    expect(sqls[1]).toMatch(/UPDATE email_verification_tokens/);
+    expect(sqls[2]).toMatch(/UPDATE users/);
+  });
+
+  it.each(['40P01', '40001'])('SQLSTATE %s → null (generic 400), never a 500', async (code) => {
+    const abort = Object.assign(new Error('aborted'), { code, driverError: { code } });
+    const query = jest.fn().mockRejectedValue(abort);
+    await expect(repoWithQuery(query).consumeAndVerify('h')).resolves.toBeNull();
+  });
+
+  it('SQLSTATE known only on driverError is still recognised', () => {
+    expect(isConcurrencyAbort({ driverError: { code: '40P01' } })).toBe(true);
+    expect(isConcurrencyAbort({ code: '23505' })).toBe(false);
+    expect(isConcurrencyAbort(null)).toBe(false);
+  });
+
+  it('any other database error is NOT hidden', async () => {
+    const query = jest.fn().mockRejectedValue(Object.assign(new Error('boom'), { code: '08006' }));
+    await expect(repoWithQuery(query).consumeAndVerify('h')).rejects.toThrow('boom');
+  });
+});
+
+describe('L1d — rotation failure after the mail is queued', () => {
+  it('resend answers SENT, logs the rotation failure without address or token', async () => {
+    const { service, tokenRepository, emailService } = build();
+    tokenRepository.expireOlderLive.mockRejectedValue(new TypeError('db gone'));
+    await expect(service.resend('user-1')).resolves.toBe('SENT');
+    expect(emailService.send).toHaveBeenCalledTimes(1);
+    expect(tokenRepository.expire).not.toHaveBeenCalled();
+    const raw = new URL(emailService.send.mock.calls[0][0].vars.verifyUrl).searchParams.get('token')!;
+    const all = logged.join('\n');
+    expect(all).toMatch(/queued for user user-1, but older links could not be expired \(TypeError\)/);
+    expect(all).not.toMatch(/could not be queued/);
+    expect(all).not.toContain(EMAIL);
+    expect(all).not.toContain(raw);
+  });
+});
+
+describe('L1d — documented 503 body of the resend', () => {
+  it('both 503 exceptions carry exactly the documented fields, with a documented code', () => {
+    for (const e of [new EmailVerificationBudgetExhaustedException('resend'), new EmailVerificationSendFailedException()]) {
+      const body = e.getResponse() as Record<string, unknown>;
+      expect(Object.keys(body).sort()).toEqual(['code', 'error', 'message', 'statusCode']);
+      expect(RESEND_VERIFICATION_ERROR_CODES).toContain(body.code);
+      expect(body.statusCode).toBe(503);
+    }
   });
 });
 

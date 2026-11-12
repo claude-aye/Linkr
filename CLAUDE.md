@@ -2080,6 +2080,13 @@ Les échecs de Stripe.js (défi échoué ou abandonné, carte refusée) donnent 
   - Gabarit épicène, valable pour un renvoi ; purge « 21 tables » ; dette du jeton de réinitialisation sans adresse figée (§6) ; ÉFVP : jeton en clair dans Redis, l'AOF et la copie OVH, borné à 24 h.
   - **Déploiement** : recopier `close-account.sql` sur le VPS **après** la migration (il consomme une table qu'elle crée).
   - **Validé** : jest 860 → **871** ; sonde `email-verification.probe.ts` **28/28** (dont 5 rondes de deux renvois concurrents → un seul lien vivant, et « envoi raté → ancien lien gardé ») ; mutations : sans `FOR UPDATE` → 2 liens vivants (sonde) ; sans le garde `UPDATE users` → 1 rouge ; inscription qui attend l'envoi → 2 rouges ; smoke HTTP (:5100, Redis db 1) : inscription 201 en 159 ms, après un renvoi un seul des deux liens confirme, aucun avertissement de marge au démarrage avec les valeurs par défaut.
+- **Corrections de la relecture L1c (L1d, même PR)** :
+  - **Ordre des verrous** : `consumeAndVerify` verrouille d'abord la ligne `users` (`SELECT … FOR UPDATE OF u`, jointure sur le jeton), puis le jeton, comme `insert` et `expireOlderLive`. L'ancien ordre (jeton, puis `users`) formait un cycle avec la rotation d'un renvoi : PostgreSQL tuait un côté (40P01) et `POST /auth/verify-email` répondait 500. Une erreur 40P01 ou 40001 qui survient malgré tout donne `null`, donc le 400 générique (jeton non consommé, réessayable), jamais un 500 (`isConcurrencyAbort`). **Ne pas retirer le `FOR UPDATE` de la rotation** : c'est lui qui garde un seul lien vivant entre deux renvois.
+  - **Rotation ratée après la mise en file** : le renvoi répond `SENT` (le courriel est parti) et journalise « queued …, but older links could not be expired » (id et classe d'erreur seulement). Les anciens liens restent valables jusqu'à leur expiration (24 h).
+  - **Journaux SMTP** : `safeSmtpReason` retire aussi les adresses à partie locale entre guillemets (`"a b"@x.example`).
+  - **Contrat** : les 503 du renvoi documentent leur corps (`ResendVerificationErrorDto` : `statusCode`, `error`, `code` dans `ResendVerificationErrorCode`, `message`). Le 503 de l'inscription n'est pas touché.
+  - `docs/deploy/env.md` : paragraphe « Calcul Brevo » sous le tableau, marge des essentiels corrigée (40).
+  - **Validé** : jest 871 → **886** ; sonde `email-verification.probe.ts` **31/31**, dont H4 : clic sur un ancien lien pendant la rotation d'un renvoi, 20 rondes, aucune erreur, aucune ronde au-delà de 0,9 × `deadlock_timeout`. **Mutation** (ancien ordre remis) : 20 rondes sur 20 en ~1 s, 20 verrous morts comptés par `pg_stat_database`, et 1 rouge jest.
 
 ---
 

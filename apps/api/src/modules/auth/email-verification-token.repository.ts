@@ -10,6 +10,21 @@ import { DataSource } from 'typeorm';
 class AccountNotVerifiableError extends Error {}
 
 /**
+ * SQLSTATE of the two "the database gave up on this transaction" outcomes:
+ * 40P01 deadlock_detected, 40001 serialization_failure. TypeORM's
+ * QueryFailedError copies the driver's `code` onto itself; `driverError` is
+ * read too, defensively.
+ */
+const CONCURRENCY_ABORT_CODES = new Set(['40P01', '40001']);
+
+export function isConcurrencyAbort(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: unknown; driverError?: { code?: unknown } };
+  const code = typeof e.code === 'string' ? e.code : e.driverError?.code;
+  return typeof code === 'string' && CONCURRENCY_ABORT_CODES.has(code);
+}
+
+/**
  * Data access for email verification (mandate L1). Every lookup is by
  * `token_hash` — never "find the user, then compare" — same rule as the reset
  * repository: the equality happens inside an indexed SQL predicate.
@@ -94,11 +109,30 @@ export class EmailVerificationTokenRepository {
    * ⚠️ `.query()` on an UPDATE … RETURNING returns `[rows, affected]`; `[0]` is
    * read explicitly (a bare `.length` is 2 on zero matched rows).
    *
+   * ⚠️ LOCK ORDER (L1d): the `users` row FIRST, then the token — the same order
+   * as `insert` and `expireOlderLive`. Locking the token first (by its UPDATE)
+   * and the user second made a cycle with a concurrent resend's rotation, which
+   * holds the user and waits on the token: PostgreSQL then killed one side
+   * (40P01) and verify-email answered 500. If the database still aborts the
+   * transaction for concurrency (40P01, 40001), the caller gets `null`, hence
+   * the generic 400 — the token was not consumed (rollback), a retry works.
+   *
    * @returns the user id when the token was valid, `null` otherwise.
    */
   async consumeAndVerify(tokenHash: string): Promise<string | null> {
     try {
       return await this.dataSource.transaction(async (manager) => {
+        // Lock only; the result is not read. An unknown token locks nothing,
+        // and the UPDATE below decides.
+        await manager.query(
+          `SELECT u.id
+             FROM users u
+             JOIN email_verification_tokens t ON t.user_id = u.id
+            WHERE t.token_hash = $1
+              FOR UPDATE OF u`,
+          [tokenHash],
+        );
+
         const consumed: unknown = await manager.query(
           `UPDATE email_verification_tokens t
               SET consumed_at_utc = now()
@@ -140,7 +174,7 @@ export class EmailVerificationTokenRepository {
         return row.user_id;
       });
     } catch (error) {
-      if (error instanceof AccountNotVerifiableError) {
+      if (error instanceof AccountNotVerifiableError || isConcurrencyAbort(error)) {
         return null;
       }
       throw error;

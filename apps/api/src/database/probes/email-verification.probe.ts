@@ -86,6 +86,26 @@ async function issue(
 
 const future = () => new Date(Date.now() + 24 * 3600 * 1000);
 
+function parseDuration(value: string): number {
+  const m = /^(\d+)\s*(ms|s|min)?$/.exec(value.trim());
+  if (!m) throw new Error(`Unreadable deadlock_timeout: ${value}`);
+  const n = Number(m[1]);
+  return m[2] === 'min' ? n * 60000 : m[2] === 'ms' ? n : n * 1000;
+}
+
+/** Polls until `n` backends of this database are waiting on a heavyweight lock. */
+async function waitForLockWaiters(ds: DataSource, n: number): Promise<void> {
+  for (let i = 0; i < 200; i += 1) {
+    const rows = await ds.query(
+      `SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+    );
+    if (rows[0].n >= n) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error(`timed out waiting for ${n} lock waiter(s)`);
+}
+
 async function main(): Promise<void> {
   assertScratchDatabase(process.env.DATABASE_URL);
   const ds = new DataSource({
@@ -181,6 +201,58 @@ async function main(): Promise<void> {
     check('the never-sent new token is dead', await repo.consumeAndVerify(hashToken('failed-new')), null);
     check('the previous link still verifies', await repo.consumeAndVerify(hashToken('kept-old')), U_B);
     await ds.query(`UPDATE users SET email_verified_at_utc = NULL WHERE id = $1`, [U_B]);
+
+    console.log('H4. old link clicked during a resend rotation (L1d lock order), 20 rounds');
+    {
+      const deadlockMs = parseDuration(
+        (await ds.query(`SHOW deadlock_timeout`))[0].deadlock_timeout as string,
+      );
+      let slow = 0;
+      let threw = 0;
+      let wrong = 0;
+      for (let round = 1; round <= 20; round += 1) {
+        await ds.query(`UPDATE users SET email_verified_at_utc = NULL WHERE id = $1`, [U_B]);
+        await issue(repo, U_B, EMAIL_B, hashToken(`h4-old-${round}`), future());
+        const fresh = await repo.insert(U_B, EMAIL_B, hashToken(`h4-new-${round}`), future());
+
+        // A third transaction holds the users row so both sides queue behind it
+        // in a known order: the rotation first, then the click.
+        const blocker = ds.createQueryRunner();
+        await blocker.connect();
+        await blocker.startTransaction();
+        await blocker.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [U_B]);
+
+        const rotation = repo.expireOlderLive(U_B, fresh).then(
+          () => 'ok',
+          () => 'threw',
+        );
+        await waitForLockWaiters(ds, 1);
+        const click = repo.consumeAndVerify(hashToken(`h4-old-${round}`)).then(
+          (r) => r,
+          () => 'threw' as const,
+        );
+        await waitForLockWaiters(ds, 2);
+
+        const released = Date.now();
+        await blocker.rollbackTransaction();
+        await blocker.release();
+        const [rot, clk] = await Promise.all([rotation, click]);
+        const elapsed = Date.now() - released;
+        if (process.env.PROBE_DEBUG) console.log(`    round ${round}: ${elapsed} ms`);
+
+        if (rot === 'threw' || clk === 'threw') threw += 1;
+        // A deadlock is only resolved after deadlock_timeout: a fast finish
+        // proves there was none, whichever side PostgreSQL would have killed.
+        if (elapsed >= deadlockMs * 0.9) slow += 1;
+        // The rotation ran first, so the old link is dead → null (generic 400).
+        if (clk !== null) wrong += 1;
+        if ((await repo.consumeAndVerify(hashToken(`h4-new-${round}`))) !== U_B) wrong += 1;
+      }
+      check('no side threw (no 500)', threw, 0);
+      check(`no deadlock (every round finished under ${deadlockMs * 0.9} ms)`, slow, 0);
+      check('old link refused, new link verifies, every round', wrong, 0);
+      await ds.query(`UPDATE users SET email_verified_at_utc = NULL WHERE id = $1`, [U_B]);
+    }
 
     console.log('I. soft-deleted account');
     await issue(repo, U_B, EMAIL_B, hashToken('tok-del'), future());

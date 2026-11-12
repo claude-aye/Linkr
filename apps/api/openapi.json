@@ -376,7 +376,14 @@
             "description": "Resend cap reached. Retry-After set."
           },
           "503": {
-            "description": "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works)."
+            "description": "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendVerificationErrorDto"
+                }
+              }
+            }
           }
         },
         "summary": "Send a new email verification link",
@@ -4396,6 +4403,45 @@
         },
         "required": [
           "status"
+        ]
+      },
+      "ResendVerificationErrorCode": {
+        "type": "string",
+        "enum": [
+          "EMAIL_VERIFICATION_BUDGET_EXHAUSTED",
+          "EMAIL_VERIFICATION_SEND_FAILED"
+        ],
+        "description": "EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works."
+      },
+      "ResendVerificationErrorDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 503
+          },
+          "error": {
+            "type": "string",
+            "example": "Service Unavailable"
+          },
+          "code": {
+            "description": "EMAIL_VERIFICATION_BUDGET_EXHAUSTED: today's resend budget is spent, no token created. EMAIL_VERIFICATION_SEND_FAILED: the mail could not be queued; the previous link still works.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResendVerificationErrorCode"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "User-facing French message."
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "code",
+          "message"
         ]
       },
       "VerificationLevel": {
