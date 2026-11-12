@@ -32,6 +32,19 @@ const SEND_CAP_PER_EMAIL = 5;
 const SEND_CAP_WINDOW_SECONDS = 60 * 60;
 
 /**
+ * An UNVERIFIED account younger than this gets no reset email at all.
+ *
+ * Why: scripted `signup` → `forgot-password` sequences, seconds apart, sent a
+ * reset mail (an "essential" one, outside the daily budget) to an address
+ * nobody had confirmed and that the signer may not own. This cuts that
+ * automation and nothing more: anyone can wait 5 minutes and get the mail. The
+ * real guard is L3 (verified address required), not this window.
+ *
+ * Compared strictly (`<`): at exactly 5 minutes, the mail goes out.
+ */
+export const FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS = 5 * 60_000;
+
+/**
  * The single error every token failure collapses into (A-2.9 / decision 9).
  *
  * Unknown, expired, already consumed, rotated away by a newer request — one
@@ -102,7 +115,9 @@ export class PasswordResetService {
    *
    * ⚠️ RESIDUAL TIMING GAP, ACKNOWLEDGED RATHER THAN PAPERED OVER (A-2.14). The
    * known-account path does more work than the unknown one — a lookup plus a
-   * transaction plus an enqueue — so it takes measurably longer. It is NOT
+   * transaction plus an enqueue — so it takes measurably longer. The skip for a
+   * fresh unverified account is, like the unknown-address path, shorter than
+   * the send path (no transaction, no enqueue). It is NOT
    * masked with a random delay: a random delay averages out over enough samples,
    * so it buys nothing against the attacker who would bother measuring, while
    * costing latency for everyone. A constant-time answer here would mean doing
@@ -136,6 +151,21 @@ export class PasswordResetService {
     if (!hasPassword) {
       this.logger.log(
         `Reset requested for user ${user.id} with no email/password provider — no mail sent`,
+      );
+      return;
+    }
+
+    // Checked BEFORE `maySend`, deliberately: a skipped request must not consume
+    // the per-address send cap, or a burst inside the window would mute the
+    // legitimate request that comes after it.
+    if (
+      user.emailVerifiedAtUtc === null &&
+      Date.now() - user.createdAtUtc.getTime() <
+        FRESH_UNVERIFIED_ACCOUNT_WINDOW_MS
+    ) {
+      // User id only — never the address, and no token exists on this path.
+      this.logger.log(
+        `Reset email skipped for user ${user.id}: unverified account younger than 5 minutes`,
       );
       return;
     }
