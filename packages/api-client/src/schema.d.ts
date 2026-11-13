@@ -1790,7 +1790,6 @@ export interface components {
         UpdateOrganizationDto: Record<string, never>;
         AddMemberDto: Record<string, never>;
         ChangeMemberRoleDto: Record<string, never>;
-        MembershipPublicDto: Record<string, never>;
         PriceRangeDto: Record<string, never>;
         SuggestServiceItemDto: {
             serviceCategoryId: string;
@@ -3687,13 +3686,12 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Role changed. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MembershipPublicDto"];
-                };
+                content?: never;
             };
             /** @description Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {

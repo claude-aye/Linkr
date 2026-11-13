@@ -684,14 +684,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MembershipPublicDto"
-                }
-              }
-            }
+            "description": "Role changed."
           },
           "403": {
             "description": "Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
@@ -4584,10 +4577,6 @@
         "properties": {}
       },
       "ChangeMemberRoleDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "MembershipPublicDto": {
         "type": "object",
         "properties": {}
       },
