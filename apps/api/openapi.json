@@ -485,14 +485,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrganizationPublicDto"
-                }
-              }
-            }
+            "description": "Organization created."
           },
           "403": {
             "description": "Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
@@ -624,14 +617,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MembershipPublicDto"
-                }
-              }
-            }
+            "description": "Member added."
           },
           "403": {
             "description": "Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
@@ -763,7 +749,7 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "Suggestion recorded as PENDING."
           },
           "403": {
             "description": "Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
@@ -4589,10 +4575,6 @@
         "type": "object",
         "properties": {}
       },
-      "OrganizationPublicDto": {
-        "type": "object",
-        "properties": {}
-      },
       "UpdateOrganizationDto": {
         "type": "object",
         "properties": {}
@@ -4601,11 +4583,11 @@
         "type": "object",
         "properties": {}
       },
-      "MembershipPublicDto": {
+      "ChangeMemberRoleDto": {
         "type": "object",
         "properties": {}
       },
-      "ChangeMemberRoleDto": {
+      "MembershipPublicDto": {
         "type": "object",
         "properties": {}
       },

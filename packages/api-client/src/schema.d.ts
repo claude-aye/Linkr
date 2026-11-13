@@ -1787,11 +1787,10 @@ export interface components {
             createdAtUtc: string;
         };
         CreateOrganizationDto: Record<string, never>;
-        OrganizationPublicDto: Record<string, never>;
         UpdateOrganizationDto: Record<string, never>;
         AddMemberDto: Record<string, never>;
-        MembershipPublicDto: Record<string, never>;
         ChangeMemberRoleDto: Record<string, never>;
+        MembershipPublicDto: Record<string, never>;
         PriceRangeDto: Record<string, never>;
         SuggestServiceItemDto: {
             serviceCategoryId: string;
@@ -3526,13 +3525,12 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Organization created. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["OrganizationPublicDto"];
-                };
+                content?: never;
             };
             /** @description Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
@@ -3638,13 +3636,12 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Member added. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MembershipPublicDto"];
-                };
+                content?: never;
             };
             /** @description Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
@@ -3740,6 +3737,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Suggestion recorded as PENDING. */
             201: {
                 headers: {
                     [name: string]: unknown;

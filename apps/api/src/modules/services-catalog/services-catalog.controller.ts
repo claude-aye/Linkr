@@ -41,7 +41,7 @@ export class ServiceItemSuggestionController {
   @Post('suggest')
   @RequireVerifiedEmail()
   @ApiOperation({ summary: 'Suggest a new service item (authenticated pro); always starts as PENDING' })
-  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({ status: 201, description: 'Suggestion recorded as PENDING.' })
   @ApiResponse({ status: 403, description: withEmailNotVerified('Not allowed.') })
   suggestItem(
     @Body() dto: SuggestServiceItemDto,

@@ -33,7 +33,7 @@ export class OrganizationsController {
 
   @Post()
   @RequireVerifiedEmail()
-  @ApiResponse({ status: 201, type: OrganizationPublicDto })
+  @ApiResponse({ status: 201, description: 'Organization created.' })
   @ApiResponse({ status: 403, description: withEmailNotVerified('Not allowed.') })
   create(
     @CurrentUser() user: JwtPayload,

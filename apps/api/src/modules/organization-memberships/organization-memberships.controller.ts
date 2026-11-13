@@ -44,7 +44,7 @@ export class OrganizationMembershipsController {
   @Post()
   @RequireOrgRole(OrganizationRole.OWNER)
   @RequireVerifiedEmail()
-  @ApiResponse({ status: 201, type: MembershipPublicDto })
+  @ApiResponse({ status: 201, description: 'Member added.' })
   @ApiResponse({ status: 403, description: withEmailNotVerified('Not an OWNER of this organization.') })
   addMember(
     @Param('orgId', ParseUUIDPipe) orgId: string,
