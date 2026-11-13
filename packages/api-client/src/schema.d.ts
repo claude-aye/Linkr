@@ -1787,8 +1787,10 @@ export interface components {
             createdAtUtc: string;
         };
         CreateOrganizationDto: Record<string, never>;
+        OrganizationPublicDto: Record<string, never>;
         UpdateOrganizationDto: Record<string, never>;
         AddMemberDto: Record<string, never>;
+        MembershipPublicDto: Record<string, never>;
         ChangeMemberRoleDto: Record<string, never>;
         PriceRangeDto: Record<string, never>;
         SuggestServiceItemDto: {
@@ -3528,6 +3530,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["OrganizationPublicDto"];
+                };
+            };
+            /** @description Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
             };
         };
@@ -3631,6 +3642,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["MembershipPublicDto"];
+                };
+            };
+            /** @description Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
             };
         };
@@ -3674,6 +3694,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["MembershipPublicDto"];
+                };
+            };
+            /** @description Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
             };
         };
@@ -3712,6 +3741,13 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4237,6 +4273,15 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceZoneResponseDto"];
+                };
+            };
+            /** @description Not the owner of this provider; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5455,7 +5500,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Role ↔ kind mismatch or not a participant */
+            /** @description Role ↔ kind mismatch or not a participant; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6494,7 +6539,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The caller does not manage the provider this review is about. */
+            /** @description The caller does not manage the provider this review is about; or the email address is not confirmed (code EMAIL_NOT_VERIFIED). */
             403: {
                 headers: {
                     [name: string]: unknown;

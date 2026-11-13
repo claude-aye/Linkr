@@ -11,6 +11,11 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiResponse } from '@nestjs/swagger';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -27,6 +32,9 @@ export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
   @Post()
+  @RequireVerifiedEmail()
+  @ApiResponse({ status: 201, type: OrganizationPublicDto })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('Not allowed.') })
   create(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateOrganizationDto,

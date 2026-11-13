@@ -485,7 +485,17 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationPublicDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "tags": [
@@ -614,7 +624,17 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipPublicDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "tags": [
@@ -678,7 +698,17 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipPublicDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "tags": [
@@ -734,6 +764,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "403": {
+            "description": "Not allowed; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "summary": "Suggest a new service item (authenticated pro); always starts as PENDING",
@@ -1391,7 +1424,17 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceZoneResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the owner of this provider; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           }
         },
         "summary": "Create a named service zone (owner only). GeoJSON Polygon coordinates are [lng, lat]; rings must be closed.",
@@ -2834,7 +2877,7 @@
             "description": "Invalid file type/size or missing file"
           },
           "403": {
-            "description": "Role ↔ kind mismatch or not a participant"
+            "description": "Role ↔ kind mismatch or not a participant; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "Request not found"
@@ -3940,7 +3983,7 @@
             "description": "Missing or blank reply."
           },
           "403": {
-            "description": "The caller does not manage the provider this review is about."
+            "description": "The caller does not manage the provider this review is about; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."
           },
           "404": {
             "description": "Unknown or retracted review."
@@ -4546,11 +4589,19 @@
         "type": "object",
         "properties": {}
       },
+      "OrganizationPublicDto": {
+        "type": "object",
+        "properties": {}
+      },
       "UpdateOrganizationDto": {
         "type": "object",
         "properties": {}
       },
       "AddMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "MembershipPublicDto": {
         "type": "object",
         "properties": {}
       },

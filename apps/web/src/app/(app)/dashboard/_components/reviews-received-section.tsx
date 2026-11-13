@@ -5,6 +5,7 @@ import { useId, useState } from 'react';
 
 import type { ProviderReview } from '@/lib/reviews/types';
 import { formatDateLong } from '@/lib/dates/format';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * « Avis reçus » — the provider reads their reviews and answers each one ONCE.
@@ -87,7 +88,8 @@ function ReviewRow({ review }: { review: ProviderReview }) {
         body: JSON.stringify({ response: text }),
       });
       if (!res.ok) {
-        setError(errorFor(res.status));
+        // L3b-A: only this 403 is told apart by its `code`; any other 403 keeps its own message.
+        setError((await isEmailNotVerified(res)) ? EMAIL_NOT_VERIFIED_MESSAGE : errorFor(res.status));
         setPending(false);
         return;
       }
