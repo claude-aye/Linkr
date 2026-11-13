@@ -19,7 +19,7 @@ import { REQUIRE_VERIFIED_EMAIL_KEY, RequireVerifiedEmail } from './require-veri
  * - `Public` / `Auth` — reached before or without a session, or to obtain one;
  * - `Admin` — AdminGuard, staff only;
  * - `Own` — the caller's own data, nothing reaches a third party;
- * - `À trancher` — ambiguous case left FREE until a later mandate decides.
+ * - `À trancher` — forbidden, except the single temporary exception below.
  */
 export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   // auth
@@ -37,7 +37,7 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'DELETE /users/me': 'Own: closing the account.',
   'PATCH /notifications/:id/read': 'Own: own notifications.',
   'POST /payment-methods/setup-intent':
-    'À trancher: prerequisite of POST /payment-methods (guarded); D2 forbids any other change in payments.',
+    'À trancher: prerequisite of POST /payment-methods (guarded); D2 forbids any other change in payments. Voir L3b-B.',
   'POST /payment-methods/:id/default': 'Own: choosing among own saved cards.',
   'DELETE /payment-methods/:id': 'Own: removing an own card.',
   'POST /service-providers/:id/connect/sync': 'Own: re-reads own Connect status from Stripe, creates nothing.',
@@ -53,33 +53,31 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'POST /service-requests/:id/balance-confirmation': 'N2: confirming an engaged balance (3-D Secure).',
   'POST /quotes/:id/withdraw': 'N2: withdrawing an own existing quote.',
   'DELETE /reviews/:id': "N2: the author's right to withdraw a review (D-3).",
-  // ambiguous, left free (listed in the PR under « À trancher »)
-  'POST /service-requests/:id/accept': 'À trancher: accepting a request already received (and capturing a deposit).',
-  'POST /quotes/:id/accept': 'À trancher: accepting a quote already received (and capturing a deposit).',
-  'POST /reviews/:id/response': "À trancher: the provider's public reply to a review (D-2).",
-  'POST /service-requests/:id/attachments': 'À trancher: attachment on an own existing request.',
-  'DELETE /service-requests/:id/attachments/:attachmentId': 'À trancher: removing an attachment.',
-  'POST /demand-signals': 'À trancher: anonymous demand signal, reaches no one.',
-  'PATCH /service-providers/:id': 'À trancher: editing an existing public provider profile.',
+  // classified in L3b-A (CLAUDE.md §13 nº 24)
+  'POST /service-requests/:id/accept':
+    'N2: accepting what was already received continues an engaged flow; creation of the request is guarded (D-L3b-1).',
+  'POST /quotes/:id/accept':
+    'N2: accepting what was already received continues an engaged flow; creation of the quote is guarded (D-L3b-1).',
+  'DELETE /service-requests/:id/attachments/:attachmentId': 'Own: edits an own object whose creation is guarded.',
+  'POST /demand-signals':
+    'Own: anonymous demand signal, reaches no one; the web ignores the reply (D-L3b-2). Rate cap is per caller.',
+  'PATCH /service-providers/:id': 'Own: edits an own object whose creation is guarded.',
   'DELETE /service-providers/:id': 'Own: removing own provider profile.',
-  'POST /service-providers/:id/zones': 'À trancher: adding a service zone to an existing profile.',
-  'PATCH /service-providers/:id/zones/:zoneId': 'À trancher: editing a service zone.',
+  'PATCH /service-providers/:id/zones/:zoneId': 'Own: edits an own object whose creation is guarded.',
   'DELETE /service-providers/:id/zones/:zoneId': 'Own: removing a service zone.',
-  'PATCH /service-providers/:providerId/categories/:pscId': 'À trancher: pausing or resuming a trade.',
+  'PATCH /service-providers/:providerId/categories/:pscId':
+    'Own: pausing a trade is a protective gesture; its creation is guarded.',
   'DELETE /service-providers/:providerId/categories/:pscId': 'Own: retiring a trade.',
-  'PATCH /service-providers/:providerId/services/:serviceId': 'À trancher: editing an existing service.',
+  'PATCH /service-providers/:providerId/services/:serviceId': 'Own: edits an own object whose creation is guarded.',
   'DELETE /service-providers/:providerId/services/:serviceId': 'Own: removing a service.',
-  'PUT /service-providers/me/portfolio/order': 'À trancher: reordering existing portfolio photos.',
-  'PATCH /service-providers/me/portfolio/:itemId': 'À trancher: editing an existing photo caption.',
+  'PUT /service-providers/me/portfolio/order': 'Own: edits an own object whose creation is guarded.',
+  'PATCH /service-providers/me/portfolio/:itemId': 'Own: edits an own object whose creation is guarded.',
   'DELETE /service-providers/me/portfolio/:itemId': 'Own: removing a portfolio photo.',
-  'POST /service-items/suggest': 'À trancher: catalogue suggestion, no admin screen reads it.',
-  'POST /organizations': 'À trancher: organizations (B2B), not exposed on the web.',
-  'PATCH /organizations/:id': 'À trancher: organizations (B2B), not exposed on the web.',
-  'DELETE /organizations/:id': 'À trancher: organizations (B2B), not exposed on the web.',
-  'POST /organizations/:orgId/members': 'À trancher: organizations (B2B), not exposed on the web.',
+  'PATCH /organizations/:id': 'Own: edits an own object whose creation is guarded.',
+  'DELETE /organizations/:id': 'Own: removes an own organization whose creation is guarded.',
   'DELETE /organizations/:orgId/members/me': 'Own: leaving an organization.',
-  'PUT /organizations/:orgId/members/:membershipId/role': 'À trancher: organizations (B2B), not exposed on the web.',
-  'DELETE /organizations/:orgId/members/:membershipId': 'À trancher: organizations (B2B), not exposed on the web.',
+  'DELETE /organizations/:orgId/members/:membershipId':
+    'Own: removing a member, also the remedy to an unwanted addition; adding is guarded.',
   // staff
   'POST /admin/payments/:id/refund': 'Admin.',
   'DELETE /admin/portfolio/:itemId': 'Admin.',
@@ -101,8 +99,15 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'POST /admin/verifications/run-expiry-check': 'Admin.',
 };
 
-/** D1 — the writes that reach a third party. Pinned so a removal is noticed too. */
+/** D1 + L3b-A — the writes that create an object or an effect on a third party (18). Pinned so a removal is noticed too. */
 const GUARDED_WRITE_ROUTES = [
+  'POST /reviews/:id/response',
+  'POST /service-requests/:id/attachments',
+  'POST /service-providers/:id/zones',
+  'POST /service-items/suggest',
+  'POST /organizations',
+  'POST /organizations/:orgId/members',
+  'PUT /organizations/:orgId/members/:membershipId/role',
   'POST /service-requests',
   'POST /service-requests/:id/quotes',
   'POST /reviews',
@@ -115,6 +120,9 @@ const GUARDED_WRITE_ROUTES = [
   'POST /service-providers/:id/connect/refresh-link',
   'POST /payment-methods',
 ].sort();
+
+/** Retirée par L3b-B : seule route encore « À trancher » (payments, hors périmètre de L3b-A). */
+const TEMPORARY_A_TRANCHER_EXCEPTIONS = ['POST /payment-methods/setup-intent'];
 
 /** Rule N2 — never guarded: start, complete, confirm, contest, retry a deposit, cancel, decline. */
 const N2_ROUTES = [
@@ -221,6 +229,14 @@ describe('L3 — every write route is classified', () => {
       expect(reason.trim().length).toBeGreaterThan(0);
       expect(reason).not.toMatch(/\n/);
     }
+  });
+
+  it('no reason starts with « À trancher », except the temporary L3b-B exception', () => {
+    const offenders = Object.entries(UNGUARDED_WRITE_ROUTES)
+      .filter(([, reason]) => reason.startsWith('À trancher'))
+      .map(([key]) => key)
+      .sort();
+    expect(offenders).toEqual(TEMPORARY_A_TRANCHER_EXCEPTIONS);
   });
 
   it('rule N2: the follow-up routes are NOT guarded', () => {

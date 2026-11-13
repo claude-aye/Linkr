@@ -11,6 +11,11 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
+import { ApiResponse } from '@nestjs/swagger';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { RequireOrgRole } from './decorators/require-org-role.decorator';
@@ -38,6 +43,9 @@ export class OrganizationMembershipsController {
 
   @Post()
   @RequireOrgRole(OrganizationRole.OWNER)
+  @RequireVerifiedEmail()
+  @ApiResponse({ status: 201, type: MembershipPublicDto })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('Not an OWNER of this organization.') })
   addMember(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Body() dto: AddMemberDto,
@@ -58,6 +66,9 @@ export class OrganizationMembershipsController {
 
   @Put(':membershipId/role')
   @RequireOrgRole(OrganizationRole.OWNER)
+  @RequireVerifiedEmail()
+  @ApiResponse({ status: 200, type: MembershipPublicDto })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('Not an OWNER of this organization.') })
   changeRole(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('membershipId', ParseUUIDPipe) membershipId: string,

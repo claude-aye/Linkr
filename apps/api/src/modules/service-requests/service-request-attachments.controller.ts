@@ -26,6 +26,10 @@ import { ServiceRequestAttachmentResponseDto } from './dto/service-request-attac
 import { ServiceRequestAttachmentsService, UploadedFileInput } from './service-request-attachments.service';
 import { InvalidAttachmentFileException } from './exceptions/attachment-exceptions';
 import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
+import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
   MAX_ATTACHMENT_SIZE_BYTES,
 } from './constants';
@@ -39,6 +43,7 @@ export class ServiceRequestAttachmentsController {
 
   @Post(':id/attachments')
   @HttpCode(HttpStatus.CREATED)
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Upload a photo or video attachment for a service request (multipart). ' +
@@ -61,7 +66,10 @@ export class ServiceRequestAttachmentsController {
   })
   @ApiResponse({ status: 201, type: ServiceRequestAttachmentResponseDto })
   @ApiResponse({ status: 400, description: 'Invalid file type/size or missing file' })
-  @ApiResponse({ status: 403, description: 'Role ↔ kind mismatch or not a participant' })
+  @ApiResponse({
+    status: 403,
+    description: withEmailNotVerified('Role ↔ kind mismatch or not a participant'),
+  })
   @ApiResponse({ status: 404, description: 'Request not found' })
   @ApiResponse({ status: 409, description: 'Request is in a terminal-negative state (CANCELLED/EXPIRED/REFUNDED)' })
   @UseInterceptors(

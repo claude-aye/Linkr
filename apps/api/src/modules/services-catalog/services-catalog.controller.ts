@@ -10,8 +10,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../../common/guards/admin.guard';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 import { ServiceCategory } from './entities/service-category.entity';
 import { ServiceItem } from './entities/service-item.entity';
 import { RegulatoryRequirement } from './entities/regulatory-requirement.entity';
@@ -35,7 +39,10 @@ export class ServiceItemSuggestionController {
   constructor(private readonly catalogService: ServicesCatalogService) {}
 
   @Post('suggest')
+  @RequireVerifiedEmail()
   @ApiOperation({ summary: 'Suggest a new service item (authenticated pro); always starts as PENDING' })
+  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('Not allowed.') })
   suggestItem(
     @Body() dto: SuggestServiceItemDto,
     @CurrentUser() user: JwtPayload,

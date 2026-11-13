@@ -122,6 +122,7 @@ export class ReviewsController {
   @Post(':id/response')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RateLimit({ limit: RESPONSE_LIMIT, windowSeconds: RESPONSE_WINDOW_SECONDS })
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       "Answer a review of one's own provider profile — once (D-2). The reply is published where the review is read; it cannot be edited or removed, and the client does not answer back.",
@@ -130,7 +131,7 @@ export class ReviewsController {
   @ApiResponse({ status: 400, description: 'Missing or blank reply.' })
   @ApiResponse({
     status: 403,
-    description: 'The caller does not manage the provider this review is about.',
+    description: withEmailNotVerified('The caller does not manage the provider this review is about.'),
   })
   @ApiResponse({ status: 404, description: 'Unknown or retracted review.' })
   @ApiResponse({

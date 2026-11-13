@@ -17,6 +17,10 @@ import { CreateServiceZoneDto } from './dto/create-service-zone.dto';
 import { UpdateServiceZoneDto } from './dto/update-service-zone.dto';
 import { ServiceZoneResponseDto } from './dto/service-zone-response.dto';
 import { ServiceProvidersService } from './service-providers.service';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 
 @ApiTags('service-providers')
 @Controller('service-providers/:id/zones')
@@ -24,10 +28,13 @@ export class ServiceZonesController {
   constructor(private readonly providersService: ServiceProvidersService) {}
 
   @Post()
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Create a named service zone (owner only). GeoJSON Polygon coordinates are [lng, lat]; rings must be closed.',
   })
+  @ApiResponse({ status: 201, type: ServiceZoneResponseDto })
+  @ApiResponse({ status: 403, description: withEmailNotVerified('Not the owner of this provider.') })
   create(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) providerId: string,
