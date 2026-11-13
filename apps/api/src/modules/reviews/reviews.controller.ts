@@ -20,6 +20,10 @@ import { MyReviewListDto } from './dto/my-review-list.dto';
 import { RespondToReviewDto } from './dto/respond-to-review.dto';
 import { ReviewResponseDto } from './dto/review-response.dto';
 import { ReviewsService } from './reviews.service';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 
 /**
  * How many reviews one caller may write per window.
@@ -60,13 +64,17 @@ export class ReviewsController {
 
   @Post()
   @RateLimit({ limit: REVIEW_LIMIT, windowSeconds: REVIEW_WINDOW_SECONDS })
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       "Write the client's review of a COMPLETED request. The reviewed provider and the author are resolved server-side from the request — neither is accepted from the body — which is what makes a review unfalsifiable (D-1).",
   })
   @ApiResponse({ status: 201, type: ReviewResponseDto })
   @ApiResponse({ status: 400, description: 'Malformed body, or a fractional rating.' })
-  @ApiResponse({ status: 403, description: 'The caller is not the client of this request.' })
+  @ApiResponse({
+    status: 403,
+    description: withEmailNotVerified('The caller is not the client of this request.'),
+  })
   @ApiResponse({ status: 404, description: 'Unknown service request.' })
   @ApiResponse({
     status: 409,

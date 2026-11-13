@@ -39,6 +39,10 @@ import { ReorderPortfolioDto } from './dto/reorder-portfolio.dto';
 import { UpdatePortfolioCaptionDto } from './dto/update-portfolio-caption.dto';
 import { UploadPortfolioItemDto } from './dto/upload-portfolio-item.dto';
 import { PortfolioService, UploadedPortfolioFile } from './portfolio.service';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 /**
  * Provider portfolio — the owner's `me` routes and the public list.
@@ -65,6 +69,7 @@ export class PortfolioController {
   }
 
   @Post('me/portfolio')
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary: `Add a photo (multipart: file + optional caption). JPEG, PNG or WebP still image, read from the bytes; at most ${PORTFOLIO_MAX_BYTES} bytes and ${PORTFOLIO_MAX_ITEMS} live photos. Re-encoded to WebP (≤ 1600 px, upright, no metadata).`,
   })
@@ -81,6 +86,7 @@ export class PortfolioController {
   })
   @ApiResponse({ status: 201, type: PortfolioItemDto })
   @ApiResponse({ status: 400, description: 'No file, or caption too long.' })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiResponse({ status: 404, description: 'The authenticated user has no provider.' })
   @ApiResponse({
     status: 409,

@@ -8,6 +8,7 @@ import {
   type GeocodeCandidate,
   geocodeAddress,
 } from '@/lib/geocoding/geocode-address';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * « Devenir prestataire » form — the web door to `POST /service-providers`.
@@ -180,7 +181,12 @@ export function CreateProviderForm({ suggestedBusinessName }: CreateProviderForm
     }
 
     if (!response.ok) {
-      setError(errorForStatus(response.status));
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      setError(
+        (await isEmailNotVerified(response))
+          ? { text: EMAIL_NOT_VERIFIED_MESSAGE, withDashboardLink: false }
+          : errorForStatus(response.status),
+      );
       setPending(false);
       return;
     }

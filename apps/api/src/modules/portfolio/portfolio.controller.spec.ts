@@ -64,6 +64,8 @@ describe('Portfolio controllers (wiring)', () => {
       findById: jest.fn().mockImplementation(async (id: string) => ({
         id,
         systemRole: id === 'admin' ? SystemRole.ADMIN : SystemRole.USER,
+        // L3: the upload route is guarded by EmailVerifiedGuard, which reads this.
+        emailVerifiedAtUtc: new Date(),
       })),
     };
 

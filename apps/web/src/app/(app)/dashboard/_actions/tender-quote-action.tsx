@@ -10,6 +10,7 @@ import {
   type QuoteErrors,
   type QuoteField,
 } from '@/lib/service-requests/tender-rules';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * The quote island of a tender card (PR 3 « Appel d'offres ») — the ONLY client
@@ -184,7 +185,11 @@ export function TenderQuoteAction({
         if (res.status === 400) {
           console.error('Quote refused (400):', await res.json().catch(() => null));
         }
-        setServerError({ message: submitMessage(res.status), refresh: res.status === 409 });
+        // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+        const message = (await isEmailNotVerified(res))
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : submitMessage(res.status);
+        setServerError({ message, refresh: res.status === 409 });
         setPending(false);
         return;
       }

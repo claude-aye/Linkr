@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * « Déclarer un métier » — the web door to
@@ -111,7 +112,12 @@ export function AddCategoryForm({ providerId, options }: AddCategoryFormProps) {
     }
 
     if (!response.ok) {
-      setError(messageForStatus(response.status));
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      setError(
+        (await isEmailNotVerified(response))
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : messageForStatus(response.status),
+      );
       setPending(false);
       return;
     }

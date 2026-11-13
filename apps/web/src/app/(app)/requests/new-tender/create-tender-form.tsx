@@ -39,6 +39,7 @@ import {
   relativeDeadlineMs,
   startTooSoonMessage,
 } from '@/lib/service-requests/tender-rules';
+import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
 
 /**
  * « Publier un appel d'offres » — creation form for a `PROJECT_TENDER` (PR 1b).
@@ -454,10 +455,14 @@ export function CreateTenderForm({ categories }: { categories: TenderCategoryOpt
           console.error('POST /api/service-requests (tender) → 400 (unreadable body)');
         }
       }
+      // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
+      const notVerified = await isEmailNotVerified(response);
       setFormError(
-        response.status === 429
-          ? tooManyCreatedMessage(response)
-          : messageForStatus(response.status),
+        notVerified
+          ? EMAIL_NOT_VERIFIED_MESSAGE
+          : response.status === 429
+            ? tooManyCreatedMessage(response)
+            : messageForStatus(response.status),
       );
       setErrorNonce((n) => n + 1);
       setPending(false);

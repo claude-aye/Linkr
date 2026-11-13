@@ -16,6 +16,10 @@ import { PaymentMethodsService } from './payment-methods.service';
 import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 import { PaymentMethodResponseDto } from './dto/payment-method-response.dto';
 import { SetupIntentResponseDto } from './dto/setup-intent-response.dto';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 /**
  * User-owned payment methods. Authenticated by the global JwtAuthGuard; a user
@@ -29,11 +33,14 @@ export class PaymentMethodsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  // L3 (D2): the ONLY change allowed in the payments module.
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Save a Stripe payment method for the current user. Creates the Stripe Customer on first use; the first method saved becomes the default.',
   })
   @ApiResponse({ status: 201, type: PaymentMethodResponseDto })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiResponse({ status: 409, description: 'This payment method is already saved' })
   @ApiResponse({ status: 422, description: 'Unsupported payment method type' })
   @ApiResponse({ status: 502, description: 'Stripe API call failed' })

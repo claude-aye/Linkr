@@ -33,6 +33,10 @@ import { DepositConfirmationResponseDto } from './dto/deposit-confirmation-respo
 import { BalanceConfirmationResponseDto } from './dto/balance-confirmation-response.dto';
 import { CREATE_REQUEST_RATE_LIMIT } from './constants';
 import { ServiceRequestsService } from './service-requests.service';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 // Class-level guard, inert on every route that carries no @RateLimit.
 @UseGuards(RateLimitGuard)
@@ -43,12 +47,14 @@ export class ServiceRequestsController {
 
   @Post()
   @RateLimit(CREATE_REQUEST_RATE_LIMIT)
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Create a service request (OPEN immediately). DIRECT_BOOKING requires serviceItemId + requestedServiceProviderId. PROJECT_TENDER must not specify requestedServiceProviderId.',
   })
   @ApiResponse({ status: 201, type: ServiceRequestResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error or inactive/unknown provider' })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiResponse({ status: 429, description: 'Too many requests created (20 per hour per caller); see Retry-After' })
   create(
     @CurrentUser() user: JwtPayload,

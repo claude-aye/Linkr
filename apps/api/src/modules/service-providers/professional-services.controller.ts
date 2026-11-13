@@ -19,6 +19,10 @@ import { UpdateProfessionalServiceDto } from './dto/update-professional-service.
 import { ProfessionalServiceResponseDto } from './dto/professional-service-response.dto';
 import { ProviderServiceCatalogItemDto } from './dto/provider-service-catalog-item.dto';
 import { ProviderServicesService } from './provider-services.service';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 /**
  * Handles POST /service-providers/:providerId/categories/:pscId/services
@@ -30,10 +34,12 @@ export class PscServicesController {
   constructor(private readonly providerServicesService: ProviderServicesService) {}
 
   @Post()
+  @RequireVerifiedEmail()
   @ApiOperation({ summary: 'Create a service offering within a provider category (owner only).' })
   // Any @ApiResponse REPLACES Swagger's default response: the 201 is restated
   // exactly as it was generated before, or the contract would lose it.
   @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiResponse({
     status: 409,
     description:

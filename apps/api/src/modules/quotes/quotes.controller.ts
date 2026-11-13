@@ -20,6 +20,10 @@ import { QuoteResponseDto } from './dto/quote-response.dto';
 import { QuotesService } from './quotes.service';
 import { ReceivedQuotesService } from './received-quotes.service';
 import { ReceivedQuoteItemDto } from './dto/received-quote-item.dto';
+import {
+  RequireVerifiedEmail,
+  withEmailNotVerified,
+} from '../../common/guards/require-verified-email.decorator';
 
 @ApiTags('quotes')
 @Controller()
@@ -31,6 +35,7 @@ export class QuotesController {
 
   @Post('service-requests/:id/quotes')
   @HttpCode(HttpStatus.CREATED)
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Submit a quote on an OPEN PROJECT_TENDER. Caller must own an individual ' +
@@ -40,8 +45,7 @@ export class QuotesController {
   @ApiResponse({ status: 400, description: 'Validation error or validUntilUtc not in the future' })
   @ApiResponse({
     status: 403,
-    description:
-      'No individual provider profile, not eligible for the category, or the caller published this request',
+    description: withEmailNotVerified('No individual provider profile, not eligible for the category, or the caller published this request'),
   })
   @ApiResponse({ status: 404, description: 'Service request not found' })
   @ApiResponse({

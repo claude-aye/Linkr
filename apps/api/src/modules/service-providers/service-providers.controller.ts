@@ -22,6 +22,10 @@ import { PublicServiceProviderDto } from './dto/public-service-provider.dto';
 import { DiscoverProvidersQueryDto } from './dto/discover-providers-query.dto';
 import { DiscoveredProviderListDto } from './dto/discovered-provider-list.dto';
 import { ServiceProvidersService } from './service-providers.service';
+import {
+  EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION,
+  RequireVerifiedEmail,
+} from '../../common/guards/require-verified-email.decorator';
 
 @ApiTags('service-providers')
 @Controller('service-providers')
@@ -29,6 +33,11 @@ export class ServiceProvidersController {
   constructor(private readonly providersService: ServiceProvidersService) {}
 
   @Post()
+  @RequireVerifiedEmail()
+  // Any @ApiResponse REPLACES Swagger's default response: the 201 is restated
+  // exactly as it was generated before, or the contract would lose it.
+  @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiOperation({
     summary:
       'Create a service provider (polymorphic). INDIVIDUAL derives user_id from JWT; ORGANIZATION requires organizationId and active OWNER role. GeoJSON Point coordinates are [lng, lat].',
