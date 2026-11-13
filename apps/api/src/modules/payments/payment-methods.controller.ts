@@ -59,11 +59,15 @@ export class PaymentMethodsController {
    */
   @Post('setup-intent')
   @HttpCode(HttpStatus.CREATED)
+  // L3b-B: the ONLY change allowed here (CLAUDE.md §11). Without it an
+  // unconfirmed account creates Stripe customers and SetupIntents unthrottled.
+  @RequireVerifiedEmail()
   @ApiOperation({
     summary:
       'Open a SetupIntent to collect and authenticate a card for later off-session charges. Saves nothing — POST /payment-methods does.',
   })
   @ApiResponse({ status: 201, type: SetupIntentResponseDto })
+  @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
   @ApiResponse({ status: 502, description: 'Stripe API call failed' })
   createSetupIntent(
     @CurrentUser() user: JwtPayload,

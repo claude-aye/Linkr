@@ -3179,6 +3179,9 @@
               }
             }
           },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
+          },
           "502": {
             "description": "Stripe API call failed"
           }

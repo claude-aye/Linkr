@@ -19,7 +19,7 @@ import { REQUIRE_VERIFIED_EMAIL_KEY, RequireVerifiedEmail } from './require-veri
  * - `Public` / `Auth` — reached before or without a session, or to obtain one;
  * - `Admin` — AdminGuard, staff only;
  * - `Own` — the caller's own data, nothing reaches a third party;
- * - `À trancher` — forbidden, except the single temporary exception below.
+ * - `À trancher` — forbidden.
  */
 export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   // auth
@@ -36,8 +36,6 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'PATCH /users/me': 'Own: editing own settings.',
   'DELETE /users/me': 'Own: closing the account.',
   'PATCH /notifications/:id/read': 'Own: own notifications.',
-  'POST /payment-methods/setup-intent':
-    'À trancher: prerequisite of POST /payment-methods (guarded); D2 forbids any other change in payments. Voir L3b-B.',
   'POST /payment-methods/:id/default': 'Own: choosing among own saved cards.',
   'DELETE /payment-methods/:id': 'Own: removing an own card.',
   'POST /service-providers/:id/connect/sync': 'Own: re-reads own Connect status from Stripe, creates nothing.',
@@ -99,7 +97,7 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'POST /admin/verifications/run-expiry-check': 'Admin.',
 };
 
-/** D1 + L3b-A — the writes that create an object or an effect on a third party (18). Pinned so a removal is noticed too. */
+/** D1 + L3b-A — the writes that create an object or an effect on a third party (19). Pinned so a removal is noticed too. */
 const GUARDED_WRITE_ROUTES = [
   'POST /reviews/:id/response',
   'POST /service-requests/:id/attachments',
@@ -119,10 +117,8 @@ const GUARDED_WRITE_ROUTES = [
   'POST /service-providers/:id/connect/onboard',
   'POST /service-providers/:id/connect/refresh-link',
   'POST /payment-methods',
+  'POST /payment-methods/setup-intent',
 ].sort();
-
-/** Retirée par L3b-B : seule route encore « À trancher » (payments, hors périmètre de L3b-A). */
-const TEMPORARY_A_TRANCHER_EXCEPTIONS = ['POST /payment-methods/setup-intent'];
 
 /** Rule N2 — never guarded: start, complete, confirm, contest, retry a deposit, cancel, decline. */
 const N2_ROUTES = [
@@ -231,12 +227,12 @@ describe('L3 — every write route is classified', () => {
     }
   });
 
-  it('no reason starts with « À trancher », except the temporary L3b-B exception', () => {
+  it('no reason starts with « À trancher »', () => {
     const offenders = Object.entries(UNGUARDED_WRITE_ROUTES)
       .filter(([, reason]) => reason.startsWith('À trancher'))
       .map(([key]) => key)
       .sort();
-    expect(offenders).toEqual(TEMPORARY_A_TRANCHER_EXCEPTIONS);
+    expect(offenders).toEqual([]);
   });
 
   it('rule N2: the follow-up routes are NOT guarded', () => {
