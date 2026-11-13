@@ -5734,6 +5734,13 @@ export interface operations {
                     "application/json": components["schemas"]["SetupIntentResponseDto"];
                 };
             };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Stripe API call failed */
             502: {
                 headers: {

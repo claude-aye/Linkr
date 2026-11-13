@@ -95,3 +95,16 @@ export async function isEmailNotVerified(response: {
     return false;
   }
 }
+
+/**
+ * L3b-B — message for a failed `POST /payment-methods/setup-intent`. Only the
+ * 403 carrying `EMAIL_NOT_VERIFIED` gets the dedicated message; a 403 without
+ * that code keeps the generic one, and 401 keeps its own.
+ */
+export async function setupIntentErrorMessage(
+  response: { status: number; clone(): { json(): Promise<unknown> } },
+  messages: { generic: string; sessionExpired: string },
+): Promise<string> {
+  if (await isEmailNotVerified(response)) return EMAIL_NOT_VERIFIED_MESSAGE;
+  return response.status === 401 ? messages.sessionExpired : messages.generic;
+}

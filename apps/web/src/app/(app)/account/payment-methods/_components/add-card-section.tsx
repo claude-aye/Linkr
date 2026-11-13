@@ -7,6 +7,7 @@ import { Elements } from '@stripe/react-stripe-js';
 import type { StripeElementsOptions } from '@stripe/stripe-js';
 
 import { TestDataNotice } from '@/components/trial/test-data-notice';
+import { setupIntentErrorMessage } from '@/lib/email-verification/states';
 import { getStripe } from '@/lib/stripe/client';
 
 import { CardForm } from './card-form';
@@ -99,7 +100,12 @@ export function AddCardSection({
     }
 
     if (!response.ok) {
-      setError(response.status === 401 ? SESSION_EXPIRED : SETUP_UNAVAILABLE);
+      setError(
+        await setupIntentErrorMessage(response, {
+          generic: SETUP_UNAVAILABLE,
+          sessionExpired: SESSION_EXPIRED,
+        }),
+      );
       setLoading(false);
       return;
     }
