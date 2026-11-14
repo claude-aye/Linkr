@@ -13,6 +13,10 @@ import { User } from '../users/entities/user.entity';
 import { UsersRepository } from '../users/users.repository';
 import { AuthResponseDto } from './dtos/auth-response.dto';
 import { SignupDto } from './dtos/signup.dto';
+import {
+  EmailDomainNotAllowedException,
+  isSmsGatewayAddress,
+} from './sms-gateway-domains';
 import { CURRENT_TERMS_VERSION } from './terms-version';
 import { UserPublicDto } from './dtos/user-public.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
@@ -104,6 +108,10 @@ export class AuthService {
   }
 
   async signup(dto: SignupDto): Promise<AuthResponseDto> {
+    // D7: a text-message gateway address is refused first — before the lookup
+    // and any write. Nothing is logged about it.
+    if (isSmsGatewayAddress(dto.email)) throw new EmailDomainNotAllowedException();
+
     const existing = await this.usersRepository.findByEmail(dto.email);
     if (existing) throw new ConflictException('Email already registered');
 

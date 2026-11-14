@@ -21,6 +21,8 @@ import { tooManyAttemptsMessage } from '@/lib/http/retry-after';
 import {
   SIGNUP_BUDGET_CODE,
   SIGNUP_BUDGET_MESSAGE,
+  SIGNUP_EMAIL_DOMAIN_CODE,
+  SIGNUP_EMAIL_DOMAIN_MESSAGE,
 } from '@/lib/email-verification/states';
 import {
   authButtonClass,
@@ -93,6 +95,9 @@ export default function SignupPage() {
   const [lastName, setLastName] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [termsError, setTermsError] = useState(false);
+  // D7: the API refused the address as a text-message gateway.
+  const [emailDomainError, setEmailDomainError] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
   const termsRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<FormError | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +105,7 @@ export default function SignupPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setEmailDomainError(false);
 
     const trimmedEmail = email.trim();
     const trimmedFirstName = firstName.trim();
@@ -159,6 +165,15 @@ export default function SignupPage() {
           const body = (await res.json().catch(() => null)) as { code?: string } | null;
           if (body?.code === SIGNUP_BUDGET_CODE) {
             setError({ text: SIGNUP_BUDGET_MESSAGE, withLoginLink: false });
+            return;
+          }
+        }
+        // D7: a gateway address — said under the email field, focus moved there.
+        if (res.status === 400) {
+          const body = (await res.json().catch(() => null)) as { code?: string } | null;
+          if (body?.code === SIGNUP_EMAIL_DOMAIN_CODE) {
+            setEmailDomainError(true);
+            emailRef.current?.focus();
             return;
           }
         }
@@ -243,9 +258,20 @@ export default function SignupPage() {
             autoComplete="email"
             required
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            ref={emailRef}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setEmailDomainError(false);
+            }}
+            aria-invalid={emailDomainError}
+            aria-describedby={emailDomainError ? 'email-error' : undefined}
             className={authFieldClass}
           />
+          {emailDomainError && (
+            <p id="email-error" className={authCheckboxErrorClass}>
+              {SIGNUP_EMAIL_DOMAIN_MESSAGE}
+            </p>
+          )}
         </div>
 
         <div>

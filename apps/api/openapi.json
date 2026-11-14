@@ -222,6 +222,9 @@
         "responses": {
           "201": {
             "description": ""
+          },
+          "400": {
+            "description": "Invalid body, or the address is a text-message gateway (body code: EMAIL_DOMAIN_NOT_ALLOWED); no account was created."
           }
         },
         "tags": [

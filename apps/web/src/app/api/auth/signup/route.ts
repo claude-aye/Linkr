@@ -108,6 +108,16 @@ export async function POST(request: Request) {
         );
       }
     }
+    // D7: the address is a text-message gateway. Relayed WITH its `code` so the
+    // page can say so under the field; any other 400 stays generic below.
+    if (apiResponse.status === 400) {
+      const payload = (await apiResponse.json().catch(() => null)) as {
+        code?: unknown;
+      } | null;
+      if (payload?.code === 'EMAIL_DOMAIN_NOT_ALLOWED') {
+        return NextResponse.json({ code: 'EMAIL_DOMAIN_NOT_ALLOWED' }, { status: 400 });
+      }
+    }
     if (apiResponse.status >= 500) {
       return NextResponse.json(
         { message: 'Service indisponible. Réessaie plus tard.' },
