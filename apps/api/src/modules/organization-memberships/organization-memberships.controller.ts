@@ -44,12 +44,17 @@ export class OrganizationMembershipsController {
   @Post()
   @RequireOrgRole(OrganizationRole.OWNER)
   @RequireVerifiedEmail()
-  @ApiResponse({ status: 201, description: 'Member added.' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiResponse({
+    status: 202,
+    description:
+      'Accepted, empty body. Identical whether the email is unknown, already an active member, or added (as WORKER). Check the result with GET.',
+  })
   @ApiResponse({ status: 403, description: withEmailNotVerified('Not an OWNER of this organization.') })
   addMember(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Body() dto: AddMemberDto,
-  ): Promise<MembershipPublicDto> {
+  ): Promise<void> {
     return this.membershipsService.addMember(orgId, dto);
   }
 

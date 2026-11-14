@@ -3635,8 +3635,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Member added. */
-            201: {
+            /** @description Accepted, empty body. Identical whether the email is unknown, already an active member, or added (as WORKER). Check the result with GET. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
