@@ -55,6 +55,11 @@ export class AuthController {
   @Post('signup')
   // Any @ApiResponse replaces Swagger's default, so the 201 is restated.
   @ApiResponse({ status: 201, description: '' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid body, or the address is a text-message gateway (body code: EMAIL_DOMAIN_NOT_ALLOWED); no account was created.',
+  })
   signup(@Body() dto: SignupDto): Promise<AuthResponseDto> {
     return this.authService.signup(dto);
   }

@@ -76,6 +76,16 @@ export const SIGNUP_BUDGET_MESSAGE = 'Les inscriptions sont saturées aujourd’
 export const SIGNUP_BUDGET_CODE = 'EMAIL_VERIFICATION_BUDGET_EXHAUSTED';
 
 /**
+ * D7 — the signup 400 whose body carries this code: the address is a carrier
+ * text-message gateway. Its own sentence, shown UNDER the email field. The
+ * list of domains lives in the API only (`sms-gateway-domains.ts`): the web
+ * keeps no copy and reacts to the code.
+ */
+export const SIGNUP_EMAIL_DOMAIN_CODE = 'EMAIL_DOMAIN_NOT_ALLOWED';
+export const SIGNUP_EMAIL_DOMAIN_MESSAGE =
+  'Cette adresse ne peut pas recevoir nos courriels. Utilisez une adresse courriel ordinaire.';
+
+/**
  * L3 — a 403 whose body carries this code means "confirm your address first".
  * Read ONLY on the forms of the guarded actions, and only on a 403: everywhere
  * else the mapping stays by status alone (lock 3.12b). A 403 WITHOUT this code

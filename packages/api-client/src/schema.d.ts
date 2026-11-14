@@ -3248,6 +3248,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Invalid body, or the address is a text-message gateway (body code: EMAIL_DOMAIN_NOT_ALLOWED); no account was created. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     AuthController_login: {
