@@ -41,6 +41,6 @@ test('L3: the body is read from a clone — the caller can still read it', async
 test('L3: the message is the agreed copy, in the vouvoiement', () => {
   assert.equal(
     EMAIL_NOT_VERIFIED_MESSAGE,
-    'Confirmez votre adresse courriel pour effectuer cette action. Le bandeau en haut de la page vous permet de recevoir un nouveau courriel.',
+    'Confirmez votre adresse courriel pour effectuer cette action. Utilisez le bouton « Envoyer le courriel de confirmation » du bandeau en haut de la page.',
   );
 });

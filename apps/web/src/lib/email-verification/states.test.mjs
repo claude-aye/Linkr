@@ -16,7 +16,7 @@ test('the invalid-link copy reveals nothing about the token', () => {
 });
 
 test('resend: SENT and ALREADY_VERIFIED', () => {
-  assert.equal(resendOutcome(200, 'SENT').message, 'Courriel envoyé.');
+  assert.equal(resendOutcome(200, 'SENT').message, 'Courriel envoyé, vérifiez votre boîte.');
   assert.equal(resendOutcome(200, 'ALREADY_VERIFIED').kind, 'already-verified');
 });
 

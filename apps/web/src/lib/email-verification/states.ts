@@ -30,6 +30,16 @@ export const NETWORK_MESSAGE =
 export const NO_TOKEN_MESSAGE =
   'Ce lien est incomplet. Connectez-vous et demandez un nouveau courriel de confirmation.';
 
+/**
+ * Mandate A: sign-up sends nothing; the band's button sends the first email.
+ * Shared by the band and by `EmailNotVerifiedNotice`.
+ */
+export const BANNER_LEAD = 'Votre adresse courriel n’est pas confirmée.';
+export const SENT_MESSAGE = 'Courriel envoyé, vérifiez votre boîte.';
+export const RESEND_BUTTON_LABEL = 'Envoyer le courriel de confirmation';
+export const RESEND_BUTTON_PENDING_LABEL = 'Envoi en cours…';
+export const RESEND_BUTTON_SENT_LABEL = 'Renvoyer le courriel';
+
 export type ResendOutcome =
   | { kind: 'sent'; message: string }
   | { kind: 'already-verified'; message: string }
@@ -44,7 +54,7 @@ export function resendOutcome(status: number, code: string | undefined): ResendO
     if (code === 'ALREADY_VERIFIED') {
       return { kind: 'already-verified', message: 'Votre adresse est déjà confirmée.' };
     }
-    return { kind: 'sent', message: 'Courriel envoyé.' };
+    return { kind: 'sent', message: SENT_MESSAGE };
   }
   if (status === 429) return { kind: 'rate-limited' };
   if (status === 401) {
@@ -72,8 +82,17 @@ export const SIGNUP_BUDGET_CODE = 'EMAIL_VERIFICATION_BUDGET_EXHAUSTED';
  * keeps the form's existing message, strictly.
  */
 export const EMAIL_NOT_VERIFIED_CODE = 'EMAIL_NOT_VERIFIED';
+/**
+ * Mandate A: the message points to the shell band, whose button sends the
+ * email; the forms get no button of their own. The band is rendered by
+ * `(app)/layout.tsx` on every page of the guarded forms. The one place it is
+ * covered (the add-card modal) shows `EmailNotVerifiedNotice` instead, with
+ * EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE.
+ */
 export const EMAIL_NOT_VERIFIED_MESSAGE =
-  'Confirmez votre adresse courriel pour effectuer cette action. Le bandeau en haut de la page vous permet de recevoir un nouveau courriel.';
+  'Confirmez votre adresse courriel pour effectuer cette action. Utilisez le bouton « Envoyer le courriel de confirmation » du bandeau en haut de la page.';
+export const EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE =
+  'Confirmez votre adresse courriel pour enregistrer une carte.';
 
 /**
  * True when the response is the L3 403. Reads a CLONE of the body, and only on

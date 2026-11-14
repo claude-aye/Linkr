@@ -168,9 +168,9 @@ export default function SignupPage() {
 
       // Cookies are now set (httpOnly) — the account is created AND signed in.
       // Land on the authenticated client hub, exactly like a sign-in.
-      // `?courriel=envoye` makes the shell band open with « we sent a
-      // confirmation email » rather than the generic reminder.
-      router.push('/?courriel=envoye');
+      // Mandate A: sign-up sends no email. The shell band offers the button
+      // that sends the confirmation email.
+      router.push('/');
       router.refresh();
     } catch {
       setError({

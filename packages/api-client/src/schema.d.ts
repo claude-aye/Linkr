@@ -3248,13 +3248,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Today's verification-email budget is spent; no account was created. Body code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
     AuthController_login: {
@@ -3413,7 +3406,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works). */
+            /** @description Today's verification budget (or its resend sub-cap) is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works). */
             503: {
                 headers: {
                     [name: string]: unknown;

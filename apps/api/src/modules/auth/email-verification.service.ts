@@ -64,6 +64,12 @@ export const RESEND_LIMITS = {
 /**
  * Email verification (mandate L1). Issues, sends and consumes tokens.
  *
+ * ⚠️ SIGN-UP SENDS NOTHING (mandate A, 2026-11-13). A scripted wave of sign-ups
+ * with third parties' addresses had made the automatic confirmation mail the
+ * spam. The first mail is now asked for by the user, with the button of the
+ * shell band, through `resend` — which works for an account that never had a
+ * token. Do not put a send back into `AuthService.signup`.
+ *
  * ⚠️ L1 BLOCKS NOTHING. No guard reads `email_verified_at_utc` yet (that is L3)
  * and no claim goes into the JWT. This service only writes the column.
  *
@@ -87,33 +93,6 @@ export class EmailVerificationService {
     private readonly budget: EmailBudgetService,
     private readonly configService: ConfigService,
   ) {}
-
-  /**
-   * Reserves a slot in today's SIGN-UP verification budget, or throws the 503.
-   * Called by sign-up BEFORE the account is created, so a saturated day never
-   * leaves an account that will not receive its link. A reserved slot is never
-   * given back if sign-up then fails (see EmailBudgetService.reserveVerification).
-   */
-  async reserveForSignup(): Promise<void> {
-    if (!(await this.budget.reserveVerification('signup'))) {
-      throw new EmailVerificationBudgetExhaustedException('signup');
-    }
-  }
-
-  /**
-   * Issues a token and queues the email for a freshly created account, WITHOUT
-   * the caller waiting (L1b): a sign-up must never depend on BullMQ, nor on the
-   * token write. Fire-and-forget; a failure is logged with the user id and the
-   * error class only — never the address, never the token. The user can ask
-   * for a resend.
-   */
-  sendAfterSignup(user: User): void {
-    void this.issueAndSend(user).catch((error: unknown) => {
-      this.logger.error(
-        `Verification email could not be queued after sign-up for user ${user.id} (${errorName(error)})`,
-      );
-    });
-  }
 
   /**
    * Daily per-user and hourly per-IP caps on resend. Counts attempts (like the
@@ -146,9 +125,10 @@ export class EmailVerificationService {
   }
 
   /**
-   * Resend for the authenticated user. Looked up BY ID — never by address.
-   * Already verified → nothing sent. Otherwise reserve in the RESEND budget
-   * (503 at the cap, no token created), then issue. If the mail cannot be
+   * Send (first or again) for the authenticated user. Looked up BY ID — never
+   * by address. Already verified → nothing sent. Otherwise reserve in the
+   * verification budget (first send of the day, or resend sub-cap; 503 at the
+   * cap, no token created), then issue. If the mail cannot be
    * queued, 503 EMAIL_VERIFICATION_SEND_FAILED — and the previous link still
    * works, because older tokens are expired only after a queued send.
    */
@@ -159,8 +139,8 @@ export class EmailVerificationService {
       // already-verified one: nothing to send, nothing more to say.
       return 'ALREADY_VERIFIED';
     }
-    if (!(await this.budget.reserveVerification('resend'))) {
-      throw new EmailVerificationBudgetExhaustedException('resend');
+    if (!(await this.budget.reserveVerification(user.id))) {
+      throw new EmailVerificationBudgetExhaustedException();
     }
     try {
       await this.issueAndSend(user);
