@@ -27,7 +27,7 @@ Le rôle **propriétaire** (`$POSTGRES_USER`, depuis le conteneur `postgres`). C
 
 ## 1. Lecture préalable (lecture seule)
 
-Remplacer le préfixe si besoin. La sortie ne contient aucune adresse.
+Remplacer `<préfixe>` par les premiers caractères de l'identifiant du compte à promouvoir ; l'identifiant complet à utiliser ensuite est celui que cette requête affiche. La sortie ne contient aucune adresse.
 
 ```bash
 cd /opt/linkr
@@ -39,7 +39,7 @@ SELECT id,
        email_verified_at_utc IS NOT NULL AS confirme,
        deleted_at_utc IS NOT NULL AS supprime
   FROM users
- WHERE id::text LIKE 'ac415ccd%';
+ WHERE id::text LIKE '<préfixe>%';
 SELECT count(*) AS admins_vivants FROM users
  WHERE system_role = 'ADMIN' AND deleted_at_utc IS NULL;
 ROLLBACK;
