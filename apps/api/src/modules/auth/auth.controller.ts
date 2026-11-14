@@ -55,11 +55,6 @@ export class AuthController {
   @Post('signup')
   // Any @ApiResponse replaces Swagger's default, so the 201 is restated.
   @ApiResponse({ status: 201, description: '' })
-  @ApiResponse({
-    status: 503,
-    description:
-      "Today's verification-email budget is spent; no account was created. Body code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED.",
-  })
   signup(@Body() dto: SignupDto): Promise<AuthResponseDto> {
     return this.authService.signup(dto);
   }
@@ -185,13 +180,15 @@ export class AuthController {
   }
 
   /**
-   * Sends a new verification link to the authenticated user (mandate L1).
+   * Sends a verification link to the authenticated user (mandate L1). Since
+   * mandate A this is also the FIRST send: sign-up sends nothing.
    *
    * The user is looked up BY ID (JWT subject), never by address. Caps: 3/h per
    * user (guard), 5/day per user and 10/h per IP (service); 429 with
-   * Retry-After. Each resend kills the previous links. Already verified → 200
-   * ALREADY_VERIFIED, nothing sent. Daily verification budget spent → 503 with
-   * code EMAIL_VERIFICATION_BUDGET_EXHAUSTED, no token created.
+   * Retry-After. Each send kills the previous links. Already verified → 200
+   * ALREADY_VERIFIED, nothing sent. Daily verification budget (or its resend
+   * sub-cap) spent → 503 with code EMAIL_VERIFICATION_BUDGET_EXHAUSTED, no
+   * token created.
    */
   @UseGuards(RateLimitGuard)
   @RateLimit(AUTH_RATE_LIMITS.RESEND_VERIFICATION)
@@ -205,7 +202,7 @@ export class AuthController {
     status: 503,
     type: ResendVerificationErrorDto,
     description:
-      "Today's resend budget is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
+      "Today's verification budget (or its resend sub-cap) is spent (code EMAIL_VERIFICATION_BUDGET_EXHAUSTED), or the mail could not be queued (code EMAIL_VERIFICATION_SEND_FAILED; the previous link still works).",
   })
   async resendVerification(
     @CurrentUser() payload: JwtPayload,

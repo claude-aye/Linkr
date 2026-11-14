@@ -35,7 +35,6 @@ function build(sessionsInvalidatedAtUtc: Date, payload: Partial<JwtPayload> = {}
     jwtService as never,
     configService as never,
     usersRepository as never,
-    {} as never,
   );
 }
 

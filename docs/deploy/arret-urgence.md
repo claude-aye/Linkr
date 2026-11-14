@@ -31,15 +31,19 @@ curl -s -o /dev/null -w '%{http_code}\n' https://linkrapp.com/
 
 ⚠️ **En maintenance, les relais web (`/api/*`) répondent aussi 503** : les utilisateurs connectés voient l'erreur sur leurs actions en cours. Les paiements Stripe déjà engagés se finalisent par le webhook, qui reste servi.
 
-## Rouvrir un plafond de courriels de confirmation atteint (mandat L1)
+## Rouvrir un plafond de courriels de confirmation atteint (mandats L1 et A)
 
-Quand `EMAIL_VERIFICATION_DAILY_BUDGET` est atteint, `POST /auth/signup` répond 503 (« Les inscriptions sont saturées aujourd'hui ») jusqu'à minuit, heure de Toronto. Un WARN `Email verification (sign-up) budget at …` part à 80 % ; un WARN `… exhausted` au plafond. Pour rouvrir avant minuit, **supprimer la seule clé du jour** :
+Depuis le mandat A, l'inscription n'envoie **aucun** courriel : le courriel de confirmation part au clic sur le bouton du bandeau (`POST /auth/verify-email/resend`). Un seul plafond quotidien, `EMAIL_VERIFICATION_DAILY_BUDGET` (60), couvre tous ces envois ; à l'intérieur, les renvois (tout envoi qui n'est pas le premier du jour pour ce compte) sont limités à `EMAIL_VERIFICATION_RESEND_DAILY_BUDGET` (20). Au plafond, le bouton répond 503 (« Les envois sont saturés aujourd'hui ») jusqu'à minuit, heure de Toronto ; l'inscription, elle, n'est plus bloquée.
+
+Journaux à surveiller : `ALERT: 31 email verification sends before noon` (plus de 30 envois avant midi, heure de Toronto : souvent un script ; un par jour au plus), `Email verification budget at 48/60` (80 %), `… budget exhausted` et `… resend budget exhausted` (plafonds atteints, un par jour chacun). En cas d'alerte, regarder les inscriptions récentes (`docs/deploy/moderation-sql.md`) et, si besoin, fermer les inscriptions (drapeau `signups-closed` ci-dessus).
+
+Pour rouvrir avant minuit, **supprimer la clé du jour** :
 
 ```bash
 JOUR=$(TZ=America/Toronto date +%F)
-docker compose exec redis redis-cli DEL "linkr:email-verification-budget:v1:$JOUR"
-# plafond du renvoi, si c'est lui :
-docker compose exec redis redis-cli DEL "linkr:email-verification-resend-budget:v1:$JOUR"
+docker compose exec redis redis-cli DEL "linkr:email-verification-budget:v2:$JOUR"
+# sous-plafond des renvois, si c'est lui :
+docker compose exec redis redis-cli DEL "linkr:email-verification-resend-budget:v2:$JOUR"
 ```
 
 ⚠️ **Jamais `FLUSHDB` ni `FLUSHALL`** : la même base Redis porte les files BullMQ (courriels en attente, webhooks Stripe) et le cache de géocodage. Rouvrir le plafond consomme le quota Brevo du jour (300 sur le plan gratuit) : vérifier la marge avant (`docs/deploy/env.md`).

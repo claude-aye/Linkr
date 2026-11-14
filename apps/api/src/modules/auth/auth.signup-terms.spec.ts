@@ -120,7 +120,6 @@ describe('AuthService.signup — records the acceptance (PR L2)', () => {
       jwtService as never,
       configService as never,
       usersRepository as never,
-      { reserveForSignup: jest.fn().mockResolvedValue(undefined), sendAfterSignup: jest.fn().mockResolvedValue(undefined) } as never,
     );
     // Argon2 is not what is under test, and it is slow.
     jest.spyOn(service, 'hashPassword').mockResolvedValue('hash');

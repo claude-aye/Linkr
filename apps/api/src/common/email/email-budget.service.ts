@@ -43,11 +43,15 @@ const KEY_TTL_SECONDS = 2 * 24 * 60 * 60;
 const KEY_PREFIX = 'linkr:email-budget:v1:';
 
 /**
- * Mandate L1b. Defaults chosen so the three caps leave the essentials at least
- * BREVO_ESSENTIAL_MARGIN sends under Brevo's free plan:
- *   200 (non-essential) + 40 (sign-up) + 20 (resend) = 260 ≤ 300 − 40.
+ * Mandate A (option B, 2026-11-13). Sign-up sends nothing any more: every
+ * verification mail is asked for by a click. ONE global cap covers them all,
+ * and inside it resends (any send that is not the account's first of the
+ * Toronto day) may take at most EMAIL_VERIFICATION_RESEND_DAILY_BUDGET. So at
+ * least (60 - 20) first sends always remain for accounts that have not had one
+ * today, whatever a script does with resends.
+ *   200 (non-essential) + 60 (verification) = 260, leaving 40 of Brevo's 300.
  */
-export const DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET = 40;
+export const DEFAULT_EMAIL_VERIFICATION_DAILY_BUDGET = 60;
 export const DEFAULT_EMAIL_VERIFICATION_RESEND_DAILY_BUDGET = 20;
 
 /** Brevo free plan: 300 sends per (Eastern) day. */
@@ -56,17 +60,26 @@ export const BREVO_DAILY_QUOTA = 300;
 export const BREVO_ESSENTIAL_MARGIN = 40;
 
 /**
- * Separate keys: verification mails never spend the notification budget, and a
- * resend never spends the sign-up budget (a few people re-clicking "resend"
- * must not close sign-ups for the day). To reopen a cap reached by mistake:
- * `DEL linkr:email-verification-budget:v1:<AAAA-MM-JJ>` (docs/deploy/arret-urgence.md),
- * never FLUSHDB.
+ * Early alert: more than this many verification sends before noon (Toronto)
+ * means the day's cap will likely be reached, most often by a script. One
+ * WARN, at the first send past the threshold, only if it happens before noon.
  */
-export const VERIFICATION_KEY_PREFIX = 'linkr:email-verification-budget:v1:';
-export const VERIFICATION_RESEND_KEY_PREFIX =
-  'linkr:email-verification-resend-budget:v1:';
+export const VERIFICATION_EARLY_ALERT_THRESHOLD = 30;
+export const VERIFICATION_EARLY_ALERT_HOUR = 12;
 
-export type VerificationBudgetKind = 'signup' | 'resend';
+/**
+ * Keys (v2: the counters changed meaning with mandate A, so today's v1 counts
+ * are not mixed in). The total counts every verification send; the resend key
+ * counts the non-first ones; the first-send marker holds a user id (never an
+ * address) for the Toronto day. To reopen a cap reached by mistake:
+ * `DEL linkr:email-verification-budget:v2:<AAAA-MM-JJ>` and, if needed, the
+ * resend key of the same day (docs/deploy/arret-urgence.md), never FLUSHDB.
+ */
+export const VERIFICATION_KEY_PREFIX = 'linkr:email-verification-budget:v2:';
+export const VERIFICATION_RESEND_KEY_PREFIX =
+  'linkr:email-verification-resend-budget:v2:';
+export const VERIFICATION_FIRST_SEND_KEY_PREFIX =
+  'linkr:email-verification-first-send:v1:';
 
 /**
  * Brevo's daily quota resets at midnight Eastern time, so the budget's day
@@ -76,6 +89,16 @@ export type VerificationBudgetKind = 'signup' | 'resend';
  * Brevo day.
  */
 export const BUDGET_TIME_ZONE = 'America/Toronto';
+
+const HOUR_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: BUDGET_TIME_ZONE,
+  hour: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Hour 0-23 of the instant, on the Toronto clock. */
+export const budgetHour = (instant: Date): number =>
+  Number(HOUR_FORMAT.formatToParts(instant).find((p) => p.type === 'hour')?.value);
 
 const DAY_FORMAT = new Intl.DateTimeFormat('en-CA', {
   timeZone: BUDGET_TIME_ZONE,
@@ -145,66 +168,100 @@ export class EmailBudgetService {
    * seen.
    */
   private warnIfBrevoMarginTooSmall(): void {
-    const capped =
-      this.dailyBudget + this.verificationDailyBudget + this.resendDailyBudget;
+    // The resend cap lives INSIDE the verification cap, so it is not added.
+    const capped = this.dailyBudget + this.verificationDailyBudget;
     const margin = BREVO_DAILY_QUOTA - capped;
     if (margin < BREVO_ESSENTIAL_MARGIN) {
       this.logger.warn(
         `Email caps leave ${margin} of ${BREVO_DAILY_QUOTA} daily Brevo sends for the uncapped essentials ` +
-          `(EMAIL_DAILY_BUDGET ${this.dailyBudget} + EMAIL_VERIFICATION_DAILY_BUDGET ${this.verificationDailyBudget} ` +
-          `+ EMAIL_VERIFICATION_RESEND_DAILY_BUDGET ${this.resendDailyBudget}); at least ${BREVO_ESSENTIAL_MARGIN} is recommended on the free plan`,
+          `(EMAIL_DAILY_BUDGET ${this.dailyBudget} + EMAIL_VERIFICATION_DAILY_BUDGET ${this.verificationDailyBudget}); ` +
+          `at least ${BREVO_ESSENTIAL_MARGIN} is recommended on the free plan`,
       );
     }
   }
 
   /**
-   * Reserves one verification email in today's (Toronto day) budget of its
-   * kind — sign-up and resend each have their OWN counter. False means "cap
-   * reached": the caller must refuse BEFORE creating anything (sign-up answers
-   * 503 before the account exists; resend answers 503 before a token exists).
+   * Reserves one verification email for `userId` in today's (Toronto day)
+   * budget. False means "cap reached": the caller answers 503 BEFORE a token
+   * exists.
    *
-   * One WARN per day at 80 % of the sign-up cap (decided by INCR's atomic
-   * return value, like `allow`), without any address.
+   * 1. First send of the day for this account (SET NX on a per-user marker)?
+   *    It only spends the global cap.
+   * 2. Otherwise it is a resend: it spends the resend sub-cap first, then the
+   *    global cap. Resends can never take more than the sub-cap, so the rest of
+   *    the global cap stays for first sends.
+   * A refused FIRST send gives its marker back, so the next try is still a
+   * first send. Counters are never given back (attempts, like `allow`).
    *
-   * ⚠️ A RESERVATION IS NEVER GIVEN BACK. If sign-up reserves a slot and then
-   * fails (an address that raced in, a database error), that slot is lost for
-   * the day. Accepted: it can only make the cap trip a little early, never let
-   * more mail through than configured, and it needs no second write.
+   * One WARN per day at 80 % of the global cap, and one ALERT if the global
+   * count passes VERIFICATION_EARLY_ALERT_THRESHOLD before noon (Toronto).
+   * Both are decided by INCR's atomic return value, so each fires at most once.
+   * Logs carry counters only: never an address, never a user id.
    *
-   * ⚠️ FAILS OPEN, like `allow`: a Redis that cannot be reached returns true.
-   * Sign-up then proceeds and the enqueue fails as every other mail does today;
-   * the failure is logged and the user can ask for a resend.
+   * FAILS OPEN, like `allow`: a Redis that cannot be reached returns true; the
+   * enqueue then fails the same way every mail does, and the caller says so.
    */
-  async reserveVerification(kind: VerificationBudgetKind): Promise<boolean> {
-    const prefix =
-      kind === 'signup' ? VERIFICATION_KEY_PREFIX : VERIFICATION_RESEND_KEY_PREFIX;
-    const cap = kind === 'signup' ? this.verificationDailyBudget : this.resendDailyBudget;
+  async reserveVerification(userId: string): Promise<boolean> {
+    const day = budgetDay(new Date());
+    const firstKey = `${VERIFICATION_FIRST_SEND_KEY_PREFIX}${day}:${userId}`;
 
+    let isFirst: boolean;
     let count: number;
     try {
-      const key = `${prefix}${budgetDay(new Date())}`;
-      count = await this.redis.incr(key);
-      if (count === 1) {
-        await this.redis.expire(key, KEY_TTL_SECONDS);
+      isFirst = (await this.redis.set(firstKey, '1', 'EX', KEY_TTL_SECONDS, 'NX')) === 'OK';
+
+      if (!isFirst) {
+        const resends = await this.incrWithTtl(`${VERIFICATION_RESEND_KEY_PREFIX}${day}`);
+        if (resends > this.resendDailyBudget) {
+          if (resends === this.resendDailyBudget + 1) {
+            this.logger.warn(
+              `Email verification resend budget exhausted (${resends}/${this.resendDailyBudget}) for today (Toronto day)`,
+            );
+          }
+          return false;
+        }
+      }
+
+      count = await this.incrWithTtl(`${VERIFICATION_KEY_PREFIX}${day}`);
+      if (count > this.verificationDailyBudget && isFirst) {
+        await this.redis.del(firstKey);
       }
     } catch {
       return true;
     }
 
-    if (kind === 'signup' && count === Math.ceil(cap * WARN_AT_RATIO)) {
+    const cap = this.verificationDailyBudget;
+    if (count === Math.ceil(cap * WARN_AT_RATIO)) {
       this.logger.warn(
-        `Email verification (sign-up) budget at ${count}/${cap} for today (Toronto day); ` +
-          'at the cap, sign-ups answer 503',
+        `Email verification budget at ${count}/${cap} for today (Toronto day); at the cap, sending answers 503`,
       );
     }
-
-    if (count > cap) {
+    if (
+      count === VERIFICATION_EARLY_ALERT_THRESHOLD + 1 &&
+      budgetHour(new Date()) < VERIFICATION_EARLY_ALERT_HOUR
+    ) {
       this.logger.warn(
-        `Email verification (${kind}) budget exhausted (${count}/${cap}) for today (Toronto day)`,
+        `ALERT: ${count} email verification sends before noon (Toronto day), cap ${cap}; ` +
+          'check for scripted sign-ups (docs/deploy/arret-urgence.md)',
       );
+    }
+    if (count > cap) {
+      if (count === cap + 1) {
+        this.logger.warn(
+          `Email verification budget exhausted (${count}/${cap}) for today (Toronto day)`,
+        );
+      }
       return false;
     }
     return true;
+  }
+
+  private async incrWithTtl(key: string): Promise<number> {
+    const count = await this.redis.incr(key);
+    if (count === 1) {
+      await this.redis.expire(key, KEY_TTL_SECONDS);
+    }
+    return count;
   }
 
   /** BullMQ priority for a template — essentials run first. */

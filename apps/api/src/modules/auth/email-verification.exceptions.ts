@@ -70,21 +70,19 @@ export class InvalidEmailVerificationTokenException extends HttpException {
 }
 
 /**
- * 503 — today's verification-email budget (EMAIL_VERIFICATION_DAILY_BUDGET,
- * Toronto day) is spent. Raised BEFORE anything is created: no account on
- * sign-up, no token on resend. French and user-facing: the front shows it.
+ * 503 — today's verification-email budget (EMAIL_VERIFICATION_DAILY_BUDGET, or
+ * its resend sub-cap; Toronto day) is spent. Raised BEFORE a token is created.
+ * Since mandate A only the send route raises it: sign-up sends nothing.
  */
 export class EmailVerificationBudgetExhaustedException extends HttpException {
-  constructor(context: 'signup' | 'resend') {
+  constructor() {
     super(
       {
         statusCode: HttpStatus.SERVICE_UNAVAILABLE,
         error: 'Service Unavailable',
         code: EMAIL_VERIFICATION_BUDGET_EXHAUSTED,
         message:
-          context === 'signup'
-            ? "Les inscriptions sont saturées aujourd'hui, réessayez demain."
-            : "Les envois de courriels de confirmation sont saturés aujourd'hui, réessayez demain.",
+          "Les envois de courriels de confirmation sont saturés aujourd'hui, réessayez demain.",
       },
       HttpStatus.SERVICE_UNAVAILABLE,
     );

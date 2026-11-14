@@ -1,7 +1,10 @@
 import { HttpException, Logger } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import type Redis from 'ioredis';
 import { EmailBudgetService } from '../../common/email/email-budget.service';
+import { EmailService } from '../../common/email/email.service';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { SignupDto } from './dtos/signup.dto';
@@ -58,6 +61,7 @@ const config = (values: Record<string, unknown> = {}) =>
 
 const fakeRedis = (opts: { down?: boolean } = {}) => {
   const counters = new Map<string, number>();
+  const markers = new Set<string>();
   const redis = {
     incr: jest.fn(async (key: string) => {
       if (opts.down) throw new Error('down');
@@ -66,8 +70,15 @@ const fakeRedis = (opts: { down?: boolean } = {}) => {
       return next;
     }),
     expire: jest.fn(async () => 1),
+    set: jest.fn(async (key: string, _v: string, _ex: string, _ttl: number, _nx: string) => {
+      if (opts.down) throw new Error('down');
+      if (markers.has(key)) return null;
+      markers.add(key);
+      return 'OK';
+    }),
+    del: jest.fn(async (key: string) => (markers.delete(key) ? 1 : 0)),
   };
-  return { redis: redis as unknown as Redis, counters };
+  return { redis: redis as unknown as Redis, counters, markers };
 };
 
 function build(opts: {
@@ -179,6 +190,20 @@ describe('resend', () => {
     expect(a).not.toBe(b);
   });
 
+  it('reserves in the budget with the account id (first send vs resend is decided there)', async () => {
+    const { service, budget } = build();
+    await service.resend('user-1');
+    expect(budget.reserveVerification).toHaveBeenCalledWith('user-1');
+  });
+
+  it('works for an account that never had a token (the FIRST send, since mandate A)', async () => {
+    const { service, tokenRepository, emailService } = build();
+    tokenRepository.expireOlderLive.mockResolvedValue(undefined);
+    await expect(service.resend('user-1')).resolves.toBe('SENT');
+    expect(tokenRepository.insert).toHaveBeenCalledTimes(1);
+    expect(emailService.send).toHaveBeenCalledTimes(1);
+  });
+
   it('budget spent → 503 with the stable code, and NO token created', async () => {
     const { service, tokenRepository, emailService } = build({ budgetAllows: false });
     const error = await service.resend('user-1').catch((e: unknown) => e);
@@ -239,7 +264,7 @@ describe('signup', () => {
     preferredCurrency: 'CAD',
   } as unknown as SignupDto;
 
-  function buildSignup(verification: EmailVerificationService) {
+  function buildSignup() {
     const createWithEmailPassword = jest
       .fn()
       .mockImplementation(async (data) => ({ id: 'user-1', ...data, emailVerifiedAtUtc: null }));
@@ -251,52 +276,28 @@ describe('signup', () => {
       { sign: jest.fn().mockReturnValue('signed') } as never,
       { getOrThrow: jest.fn().mockReturnValue('secret'), get: jest.fn() } as never,
       usersRepository as never,
-      verification,
     );
     jest.spyOn(service, 'hashPassword').mockResolvedValue('hash');
     return { service, createWithEmailPassword };
   }
 
-  it('budget spent → 503 BEFORE the account is created', async () => {
-    const { service: verification } = build({ budgetAllows: false });
-    const { service, createWithEmailPassword } = buildSignup(verification);
-    const error = await service.signup(body).catch((e: unknown) => e);
-    expect((error as HttpException).getStatus()).toBe(503);
-    expect(codeOf(error)).toBe(EMAIL_VERIFICATION_BUDGET_EXHAUSTED);
-    expect(createWithEmailPassword).not.toHaveBeenCalled();
-  });
-
-  it('sends the verification mail after creating the account, and exposes emailVerified=false', async () => {
-    const { service: verification, emailService } = build();
-    const { service } = buildSignup(verification);
+  it('MANDATE A: creates the account and queues NO email, issues NO token', async () => {
+    const sendSpy = jest.spyOn(EmailService.prototype, 'send');
+    const issue = jest.spyOn(EmailVerificationService.prototype, 'resend');
+    const reserve = jest.spyOn(EmailBudgetService.prototype, 'reserveVerification');
+    const { service, createWithEmailPassword } = buildSignup();
     const response = await service.signup(body);
     await flush();
-    expect(emailService.send).toHaveBeenCalledTimes(1);
+    expect(createWithEmailPassword).toHaveBeenCalledTimes(1);
     expect(response.user.emailVerified).toBe(false);
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(issue).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
   });
 
-  it('a send failure does NOT fail the sign-up, and the log carries neither address nor token', async () => {
-    const send = jest.fn().mockRejectedValue(new Error(`SMTP refused ${EMAIL}`));
-    const { service: verification } = build({ send });
-    const { service } = buildSignup(verification);
-    await expect(service.signup(body)).resolves.toHaveProperty('accessToken');
-    await flush();
-    const sentUrl = send.mock.calls[0][0].vars.verifyUrl as string;
-    const raw = new URL(sentUrl).searchParams.get('token')!;
-    expect(logged.some((l) => l.includes('could not be queued'))).toBe(true);
-    expect(logged.join('\n')).not.toContain(EMAIL);
-    expect(logged.join('\n')).not.toContain(raw);
-  });
-
-  it('L1b: an enqueue that NEVER answers does not hold the sign-up', async () => {
-    const send = jest.fn(() => new Promise<void>(() => undefined));
-    const { service: verification } = build({ send });
-    const { service } = buildSignup(verification);
-    const result = await Promise.race([
-      service.signup(body).then(() => 'answered'),
-      new Promise((resolve) => setTimeout(() => resolve('hung'), 500)),
-    ]);
-    expect(result).toBe('answered');
+  it('MANDATE A: AuthService has no path to a mail (no email or verification dependency)', () => {
+    const source = readFileSync(join(__dirname, 'auth.service.ts'), 'utf-8');
+    expect(source).not.toMatch(/EmailVerificationService|EmailService|sendAfterSignup|reserveForSignup/);
   });
 });
 
@@ -425,7 +426,7 @@ describe('L1d — rotation failure after the mail is queued', () => {
 
 describe('L1d — documented 503 body of the resend', () => {
   it('both 503 exceptions carry exactly the documented fields, with a documented code', () => {
-    for (const e of [new EmailVerificationBudgetExhaustedException('resend'), new EmailVerificationSendFailedException()]) {
+    for (const e of [new EmailVerificationBudgetExhaustedException(), new EmailVerificationSendFailedException()]) {
       const body = e.getResponse() as Record<string, unknown>;
       expect(Object.keys(body).sort()).toEqual(['code', 'error', 'message', 'statusCode']);
       expect(RESEND_VERIFICATION_ERROR_CODES).toContain(body.code);
@@ -434,33 +435,102 @@ describe('L1d — documented 503 body of the resend', () => {
   });
 });
 
-describe('L1b — budgets', () => {
-  it('resend has its OWN counter: it never spends the sign-up budget', async () => {
+describe('Mandate A — one verification cap, resends capped inside it', () => {
+  it('first send of the day per account spends only the global cap', async () => {
     const { redis, counters } = fakeRedis();
-    const budget = new EmailBudgetService(
-      redis,
-      config({ EMAIL_VERIFICATION_DAILY_BUDGET: 1, EMAIL_VERIFICATION_RESEND_DAILY_BUDGET: 2 }),
-    );
-    expect(await budget.reserveVerification('resend')).toBe(true);
-    expect(await budget.reserveVerification('resend')).toBe(true);
-    expect(await budget.reserveVerification('resend')).toBe(false);
-    expect(await budget.reserveVerification('signup')).toBe(true);
-    expect([...counters.keys()].sort()).toEqual([
-      expect.stringMatching(/^linkr:email-verification-budget:v1:/),
-      expect.stringMatching(/^linkr:email-verification-resend-budget:v1:/),
+    const budget = new EmailBudgetService(redis, config());
+    expect(await budget.reserveVerification('user-1')).toBe(true);
+    expect(await budget.reserveVerification('user-2')).toBe(true);
+    expect([...counters.entries()]).toEqual([
+      [expect.stringMatching(/^linkr:email-verification-budget:v2:\d{4}-\d{2}-\d{2}$/), 2],
     ]);
   });
 
-  it('one WARN per day at 80 % of the sign-up cap, without any address', async () => {
+  it('a second send for the same account is a resend: it spends the sub-cap AND the global cap', async () => {
+    const { redis, counters } = fakeRedis();
+    const budget = new EmailBudgetService(redis, config());
+    await budget.reserveVerification('user-1');
+    await budget.reserveVerification('user-1');
+    const byPrefix = (p: string) => [...counters].find(([k]) => k.startsWith(p))?.[1];
+    expect(byPrefix('linkr:email-verification-budget:v2:')).toBe(2);
+    expect(byPrefix('linkr:email-verification-resend-budget:v2:')).toBe(1);
+  });
+
+  it('resends stop at the sub-cap, and first sends still pass after that', async () => {
+    const { redis } = fakeRedis();
+    const budget = new EmailBudgetService(
+      redis,
+      config({ EMAIL_VERIFICATION_DAILY_BUDGET: 10, EMAIL_VERIFICATION_RESEND_DAILY_BUDGET: 2 }),
+    );
+    expect(await budget.reserveVerification('script')).toBe(true); // first
+    expect(await budget.reserveVerification('script')).toBe(true); // resend 1
+    expect(await budget.reserveVerification('script')).toBe(true); // resend 2
+    expect(await budget.reserveVerification('script')).toBe(false); // resend 3: sub-cap
+    expect(await budget.reserveVerification('script')).toBe(false);
+    // A real tester's first send is untouched by the script's resends.
+    expect(await budget.reserveVerification('tester')).toBe(true);
+  });
+
+  it('defaults: 20 resends at most, so 40 of the 60 always stay for first sends', async () => {
+    const { redis } = fakeRedis();
+    const budget = new EmailBudgetService(redis, config());
+    await budget.reserveVerification('script');
+    let resends = 0;
+    for (let i = 0; i < 100; i += 1) if (await budget.reserveVerification('script')) resends += 1;
+    expect(resends).toBe(20);
+    let firsts = 0;
+    for (let i = 0; i < 100; i += 1) if (await budget.reserveVerification(`u${i}`)) firsts += 1;
+    expect(firsts).toBe(60 - 1 - 20);
+  });
+
+  it('at the global cap a FIRST send is refused and gets its marker back (the retry is still a first send)', async () => {
+    const { redis, markers } = fakeRedis();
+    const budget = new EmailBudgetService(redis, config({ EMAIL_VERIFICATION_DAILY_BUDGET: 1 }));
+    expect(await budget.reserveVerification('a')).toBe(true);
+    expect(await budget.reserveVerification('b')).toBe(false);
+    expect([...markers].some((k) => k.endsWith(':b'))).toBe(false);
+  });
+
+  it('fails open when Redis is down', async () => {
+    const budget = new EmailBudgetService(fakeRedis({ down: true }).redis, config());
+    expect(await budget.reserveVerification('user-1')).toBe(true);
+  });
+
+  it('one WARN per day at 80 % of the cap, without any address or user id', async () => {
     const { redis } = fakeRedis();
     const budget = new EmailBudgetService(redis, config({ EMAIL_VERIFICATION_DAILY_BUDGET: 10 }));
     logged.length = 0;
-    for (let i = 0; i < 9; i += 1) await budget.reserveVerification('signup');
+    for (let i = 0; i < 9; i += 1) await budget.reserveVerification(`secret-user-${i}`);
     expect(logged.filter((l) => l.includes('budget at 8/10'))).toHaveLength(1);
-    expect(logged.join('\n')).not.toMatch(/@/);
+    expect(logged.join('\n')).not.toMatch(/@|secret-user/);
   });
 
-  it('boot: no warning with the defaults (200 + 40 + 20 leaves 40 of 300)', () => {
+  describe('early alert: more than 30 sends before noon (Toronto)', () => {
+    afterEach(() => jest.useRealTimers());
+    const run = async (iso: string, sends: number) => {
+      jest.useFakeTimers({ now: new Date(iso), doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+      const { redis } = fakeRedis();
+      const budget = new EmailBudgetService(redis, config());
+      logged.length = 0;
+      for (let i = 0; i < sends; i += 1) await budget.reserveVerification(`u${i}`);
+      return logged.filter((l) => l.startsWith('ALERT')).length;
+    };
+    // 2026-11-13: Toronto is UTC-5.
+    it('31st send at 10:00 Toronto → exactly one ALERT', async () => {
+      expect(await run('2026-11-13T15:00:00Z', 40)).toBe(1);
+    });
+    it('30 sends before noon → no ALERT', async () => {
+      expect(await run('2026-11-13T15:00:00Z', 30)).toBe(0);
+    });
+    it('31st send at 12:00 Toronto (noon) → no ALERT', async () => {
+      expect(await run('2026-11-13T17:00:00Z', 40)).toBe(0);
+    });
+    it('the hour is the Toronto one, not UTC (02:00Z = 21:00 the day before)', async () => {
+      expect(await run('2026-11-14T02:00:00Z', 40)).toBe(0);
+    });
+  });
+
+  it('boot: no warning with the defaults (200 + 60 leaves 40 of 300)', () => {
     logged.length = 0;
     new EmailBudgetService(fakeRedis().redis, config());
     expect(logged.filter((l) => l.includes('Email caps leave'))).toHaveLength(0);
@@ -469,7 +539,7 @@ describe('L1b — budgets', () => {
   it('boot: a WARNING (not a failure) when the caps leave fewer than 40 sends', () => {
     logged.length = 0;
     expect(
-      () => new EmailBudgetService(fakeRedis().redis, config({ EMAIL_VERIFICATION_DAILY_BUDGET: 60 })),
+      () => new EmailBudgetService(fakeRedis().redis, config({ EMAIL_VERIFICATION_DAILY_BUDGET: 80 })),
     ).not.toThrow();
     expect(logged.filter((l) => l.includes('Email caps leave 20 of 300'))).toHaveLength(1);
   });
@@ -488,19 +558,8 @@ describe('logs', () => {
   });
 });
 
-describe('EmailBudgetService — verification budget', () => {
-  it('has its own cap and key; at the cap it refuses', async () => {
-    const { redis, counters } = fakeRedis();
-    const budget = new EmailBudgetService(redis, config({ EMAIL_VERIFICATION_DAILY_BUDGET: 2 }));
-    expect(await budget.reserveVerification("signup")).toBe(true);
-    expect(await budget.reserveVerification("signup")).toBe(true);
-    expect(await budget.reserveVerification("signup")).toBe(false);
-    const keys = [...counters.keys()];
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^linkr:email-verification-budget:v1:\d{4}-\d{2}-\d{2}$/);
-  });
-
-  it('is essential: not blocked or counted by an exhausted notification budget, priority 1', async () => {
+describe('EmailBudgetService — verification is essential', () => {
+  it('is not blocked or counted by an exhausted notification budget, priority 1', async () => {
     const { redis, counters } = fakeRedis();
     const budget = new EmailBudgetService(redis, config({ EMAIL_DAILY_BUDGET: 1 }));
     await budget.allow('direct-booking');
@@ -508,12 +567,6 @@ describe('EmailBudgetService — verification budget', () => {
     expect(await budget.allow('email-verification')).toBe(true);
     expect([...counters.values()]).toEqual([2]);
     expect(budget.priorityFor('email-verification')).toBe(1);
-  });
-
-  it('fails open when Redis is down, like the other mails', async () => {
-    const { redis } = fakeRedis({ down: true });
-    const budget = new EmailBudgetService(redis, config());
-    expect(await budget.reserveVerification("signup")).toBe(true);
   });
 });
 

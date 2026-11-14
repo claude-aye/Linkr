@@ -2,7 +2,11 @@
 
 import { useRef, useState } from 'react';
 import { PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
-import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
+import { EmailNotVerifiedNotice } from '@/components/email-verification/resend-verification';
+import {
+  EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE,
+  isEmailNotVerified,
+} from '@/lib/email-verification/states';
 
 /**
  * The card form itself — everything that has to live INSIDE `<Elements>`.
@@ -79,6 +83,8 @@ export function CardForm({ onCancel, onSaved }: CardFormProps) {
   const [ready, setReady] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // L3 403 inside the modal, which covers the shell band: the notice carries the button.
+  const [notVerified, setNotVerified] = useState(false);
 
   /**
    * ⚠️ A CONFIRMED SETUPINTENT CANNOT BE CONFIRMED TWICE. If the card
@@ -146,11 +152,12 @@ export function CardForm({ onCancel, onSaved }: CardFormProps) {
 
     if (!response.ok) {
       // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
-      setError(
-        (await isEmailNotVerified(response))
-          ? EMAIL_NOT_VERIFIED_MESSAGE
-          : saveMessageForStatus(response.status),
-      );
+      if (await isEmailNotVerified(response)) {
+        setNotVerified(true);
+        setError(null);
+      } else {
+        setError(saveMessageForStatus(response.status));
+      }
       setPending(false);
       return;
     }
@@ -161,6 +168,8 @@ export function CardForm({ onCancel, onSaved }: CardFormProps) {
   return (
     <form onSubmit={handleSubmit} className="mt-4">
       <PaymentElement options={PAYMENT_ELEMENT_OPTIONS} onReady={() => setReady(true)} />
+
+      {notVerified && <EmailNotVerifiedNotice text={EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE} />}
 
       {error && (
         <p

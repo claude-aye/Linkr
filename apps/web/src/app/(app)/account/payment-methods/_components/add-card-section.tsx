@@ -7,7 +7,12 @@ import { Elements } from '@stripe/react-stripe-js';
 import type { StripeElementsOptions } from '@stripe/stripe-js';
 
 import { TestDataNotice } from '@/components/trial/test-data-notice';
-import { setupIntentErrorMessage } from '@/lib/email-verification/states';
+import { EmailNotVerifiedNotice } from '@/components/email-verification/resend-verification';
+import {
+  EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE,
+  isEmailNotVerified,
+  setupIntentErrorMessage,
+} from '@/lib/email-verification/states';
 import { getStripe } from '@/lib/stripe/client';
 
 import { CardForm } from './card-form';
@@ -65,6 +70,8 @@ export function AddCardSection({
   const [loading, setLoading] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // L3 403: this modal covers the shell band, so it carries the send button.
+  const [notVerified, setNotVerified] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -78,6 +85,7 @@ export function AddCardSection({
     setIsOpen(false);
     setClientSecret(null);
     setError(null);
+    setNotVerified(false);
     setLoading(false);
     // The platform restores focus for a native <dialog>; here we do it by hand.
     triggerRef.current?.focus();
@@ -100,6 +108,12 @@ export function AddCardSection({
     }
 
     if (!response.ok) {
+      if (await isEmailNotVerified(response)) {
+        setNotVerified(true);
+        setError(EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE);
+        setLoading(false);
+        return;
+      }
       setError(
         await setupIntentErrorMessage(response, {
           generic: SETUP_UNAVAILABLE,
@@ -267,6 +281,8 @@ export function AddCardSection({
               <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
                 Préparation du formulaire…
               </p>
+            ) : notVerified ? (
+              <EmailNotVerifiedNotice text={EMAIL_NOT_VERIFIED_IN_DIALOG_MESSAGE} />
             ) : error ? (
               <p
                 role="alert"
