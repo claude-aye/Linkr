@@ -616,8 +616,8 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Member added."
+          "202": {
+            "description": "Accepted, empty body. Identical whether the email is unknown, already an active member, or added (as WORKER). Check the result with GET."
           },
           "403": {
             "description": "Not an OWNER of this organization; or the email address is not confirmed (code EMAIL_NOT_VERIFIED)."

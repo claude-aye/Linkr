@@ -24,26 +24,30 @@ export class OrganizationMembershipsService {
     return memberships.map((m) => this.toDto(m));
   }
 
-  async addMember(
-    orgId: string,
-    dto: AddMemberDto,
-  ): Promise<MembershipPublicDto> {
+  /**
+   * Neutral by design: unknown email, already-active member and successful add
+   * are indistinguishable to the caller (no return value, no exception, no
+   * error-level log). The OWNER checks the outcome with `listMembers`.
+   * Timing difference between the paths is NOT masked (same choice as
+   * forgot-password).
+   */
+  async addMember(orgId: string, dto: AddMemberDto): Promise<void> {
     const user = await this.usersRepository.findByEmail(dto.email);
-    if (!user) throw new NotFoundException('No Linkr account found for that email');
+    if (!user) return;
 
     const existing = await this.membershipRepo.findActiveByOrgAndUser(
       orgId,
       user.id,
     );
-    if (existing)
-      throw new ConflictException('User is already an active member of this organization');
+    if (existing) return;
 
-    const membership = await this.membershipRepo.create(
-      orgId,
-      user.id,
-      OrganizationRole.WORKER,
-    );
-    return this.toDto({ ...membership, user });
+    try {
+      await this.membershipRepo.create(orgId, user.id, OrganizationRole.WORKER);
+    } catch (err) {
+      // Concurrent add: the partial unique index already holds the membership.
+      if ((err as { code?: string }).code === '23505') return;
+      throw err;
+    }
   }
 
   async changeRole(
