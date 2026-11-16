@@ -86,6 +86,15 @@ describe('escapeHtml', () => {
 const TEMPLATE_FIXTURES: {
   [TName in EmailTemplateName]: EmailTemplateVars<TName>;
 } = {
+  'ops-alert': {
+    trigger: 'saturation',
+    count: 61,
+    cap: 60,
+    resends: 20,
+    resendCap: 20,
+    torontoTime: '15 nov. 2026, 10 h 30',
+    environment: 'production',
+  },
   probe: { label: 'registry', enqueuedAtUtc: '2026-08-22T14:03:00.000Z' },
   'email-verification': {
     firstName: 'Camille',

@@ -4,6 +4,7 @@ import { depositFailedClientEmail } from './deposit-failed-client.template';
 import { depositFailedProviderEmail } from './deposit-failed-provider.template';
 import { emailVerificationEmail } from './email-verification.template';
 import { jobCompletedEmail } from './job-completed.template';
+import { opsAlertEmail } from './ops-alert.template';
 import { passwordResetEmail } from './password-reset.template';
 import { probeEmail } from './probe.template';
 import { quoteAcceptedEmail } from './quote-accepted.template';
@@ -31,6 +32,8 @@ export const EMAIL_TEMPLATES = {
   // Mandate L1: sent at sign-up and on resend. Essential, own daily cap.
   'email-verification': emailVerificationEmail,
   'job-completed': jobCompletedEmail,
+  // Mandate J: operator quota alert, queued by OpsAlertService only.
+  'ops-alert': opsAlertEmail,
   'password-reset': passwordResetEmail,
   probe: probeEmail,
   // The call-for-tenders trio (PR 5): one to the client per submitted quote,
@@ -68,6 +71,7 @@ export type { DepositFailedClientEmailVars } from './deposit-failed-client.templ
 export type { DepositFailedProviderEmailVars } from './deposit-failed-provider.template';
 export type { EmailVerificationEmailVars } from './email-verification.template';
 export type { JobCompletedEmailVars } from './job-completed.template';
+export type { OpsAlertEmailVars } from './ops-alert.template';
 export type { PasswordResetEmailVars } from './password-reset.template';
 export type { ProbeEmailVars } from './probe.template';
 export type { QuoteAcceptedEmailVars } from './quote-accepted.template';
