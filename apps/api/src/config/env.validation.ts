@@ -230,6 +230,12 @@ const envSchema = Joi.object({
     .email({ tlds: { allow: false } })
     .required(),
   EMAIL_FROM_NAME: Joi.string().default('Linkr'),
+  // Operator address for quota alerts (mandate J). Empty or absent = no alert
+  // email (the WARN log lines stay). Never logged.
+  OPS_ALERT_EMAIL: Joi.string()
+    .email({ tlds: { allow: false } })
+    .allow('')
+    .optional(),
   // Daily cap (America/Toronto day) on NON-essential emails; password-reset and the two
   // payment-failure emails are never counted. 200 leaves room under Brevo's
   // free plan (300/day) for the essentials and for retries.

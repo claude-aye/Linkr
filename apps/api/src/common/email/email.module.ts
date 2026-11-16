@@ -4,6 +4,7 @@ import { RedisModule } from '../redis/redis.module';
 import { EmailBudgetService } from './email-budget.service';
 import { EmailProcessor } from './email.processor';
 import { EmailService } from './email.service';
+import { OpsAlertService } from './ops-alert.service';
 import { EMAIL_SENDER } from './senders/email-sender.interface';
 import { SmtpEmailSender } from './senders/smtp.sender';
 
@@ -24,6 +25,7 @@ import { SmtpEmailSender } from './senders/smtp.sender';
   providers: [
     { provide: EMAIL_SENDER, useClass: SmtpEmailSender },
     EmailBudgetService,
+    OpsAlertService,
     EmailService,
     EmailProcessor,
   ],

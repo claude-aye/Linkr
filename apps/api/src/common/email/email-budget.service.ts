@@ -1,7 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { OpsAlertService } from './ops-alert.service';
 import { EmailTemplateName } from './templates';
 
 /**
@@ -100,6 +101,12 @@ const HOUR_FORMAT = new Intl.DateTimeFormat('en-CA', {
 export const budgetHour = (instant: Date): number =>
   Number(HOUR_FORMAT.formatToParts(instant).find((p) => p.type === 'hour')?.value);
 
+const TIME_FORMAT = new Intl.DateTimeFormat('fr-CA', {
+  timeZone: BUDGET_TIME_ZONE,
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
 const DAY_FORMAT = new Intl.DateTimeFormat('en-CA', {
   timeZone: BUDGET_TIME_ZONE,
   year: 'numeric',
@@ -145,6 +152,9 @@ export class EmailBudgetService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     configService: ConfigService,
+    // Mandate J. Optional so budget-only tests need no queue; always present
+    // under Nest (EmailModule provides it).
+    @Optional() private readonly opsAlert?: OpsAlertService,
   ) {
     this.dailyBudget = configService.get<number>(
       'EMAIL_DAILY_BUDGET',
@@ -244,16 +254,52 @@ export class EmailBudgetService {
         `ALERT: ${count} email verification sends before noon (Toronto day), cap ${cap}; ` +
           'check for scripted sign-ups (docs/deploy/arret-urgence.md)',
       );
+      this.notifyOps('noon-threshold', count, day);
     }
     if (count > cap) {
       if (count === cap + 1) {
         this.logger.warn(
           `Email verification budget exhausted (${count}/${cap}) for today (Toronto day)`,
         );
+        this.notifyOps('saturation', count, day);
       }
       return false;
     }
     return true;
+  }
+
+  /**
+   * Fire-and-forget operator alert (mandate J). Never awaited, never throws:
+   * the resend answer must not depend on it. Carries counters only.
+   */
+  private notifyOps(
+    trigger: 'noon-threshold' | 'saturation',
+    count: number,
+    day: string,
+  ): void {
+    const ops = this.opsAlert;
+    if (!ops) return;
+    const now = new Date();
+    void (async () => {
+      let resends: number | null = null;
+      try {
+        const raw = await this.redis.get(`${VERIFICATION_RESEND_KEY_PREFIX}${day}`);
+        resends = raw === null ? 0 : Number(raw);
+        if (Number.isNaN(resends)) resends = null;
+      } catch {
+        resends = null;
+      }
+      await ops.alert({
+        trigger,
+        count,
+        cap: this.verificationDailyBudget,
+        resends,
+        resendCap: this.resendDailyBudget,
+        torontoTime: TIME_FORMAT.format(now),
+        environment: process.env.NODE_ENV ?? 'unknown',
+        day,
+      });
+    })().catch(() => undefined);
   }
 
   private async incrWithTtl(key: string): Promise<number> {
