@@ -4330,6 +4330,322 @@
           "admin"
         ]
       }
+    },
+    "/service-providers/me/calendar": {
+      "get": {
+        "operationId": "CalendarController_getMine",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "Start of the window (inclusive)",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "End of the window (exclusive)",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCalendarDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, inverted or too wide window."
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          }
+        },
+        "summary": "The authenticated provider's calendar over a window: appointments (read live from the service requests), blocked periods, published weekly hours and feed status. 404 if the user has no provider.",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/service-providers/me/calendar/weekly-hours": {
+      "put": {
+        "operationId": "CalendarController_saveWeeklyHours",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWeeklyHoursDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyHoursDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body."
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          },
+          "422": {
+            "description": "Not a valid schedule. Body carries a code: WEEKLY_HOURS_BAD_RANGE, _OFF_GRID, _TOO_MANY_RANGES or _OVERLAP."
+          },
+          "429": {
+            "description": "Too many updates."
+          }
+        },
+        "summary": "Replace the published weekly opening hours as a whole (wall time of the calendar's zone, quarter-hours, at most 4 ranges per weekday, no overlap). An empty array unpublishes them.",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/service-providers/me/calendar/time-off": {
+      "post": {
+        "operationId": "CalendarController_addTimeOff",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTimeOffDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeOffDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body, or label too long."
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          },
+          "409": {
+            "description": "Already 50 upcoming periods. Body carries code TIME_OFF_LIMIT_REACHED."
+          },
+          "422": {
+            "description": "The period ends before it starts, is already over, or is too long."
+          },
+          "429": {
+            "description": "Too many additions."
+          }
+        },
+        "summary": "Block a period (no appointment offered during it). It must not be over already, nor exceed 366 days; at most 50 periods not over yet. The label is private.",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/service-providers/me/calendar/time-off/{timeOffId}": {
+      "delete": {
+        "operationId": "CalendarController_removeTimeOff",
+        "parameters": [
+          {
+            "name": "timeOffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "No such live period of yours."
+          }
+        },
+        "summary": "Remove one of your blocked periods (soft delete).",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/service-providers/me/calendar/feed": {
+      "post": {
+        "operationId": "CalendarController_createFeed",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarFeedDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Email address not confirmed (code EMAIL_NOT_VERIFIED)."
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          },
+          "429": {
+            "description": "Too many links generated."
+          }
+        },
+        "summary": "Generate the iCal subscription link (Outlook, Google Calendar, Apple Calendar…). The token is returned ONCE and stored hashed; calling again replaces it and revokes the previous link.",
+        "tags": [
+          "calendar"
+        ]
+      },
+      "delete": {
+        "operationId": "CalendarController_revokeFeed",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          }
+        },
+        "summary": "Revoke the iCal subscription link. Idempotent.",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/service-providers/me/calendar/export": {
+      "get": {
+        "operationId": "CalendarController_exportMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The iCalendar document."
+          },
+          "404": {
+            "description": "The authenticated user has no provider."
+          }
+        },
+        "summary": "The provider's calendar as an .ics file, for a one-off import. Same content as the feed: appointments named after the catalogue trade and service, blocked periods — no client name, title or address.",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/service-providers/{id}/availability": {
+      "get": {
+        "operationId": "CalendarController_availability",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 28,
+              "default": 14,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAvailabilityDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or `days` out of bounds."
+          },
+          "404": {
+            "description": "Provider not visible."
+          }
+        },
+        "summary": "A provider's availability over the coming days: published weekly hours and the FREE time left (blocked periods and timed appointments removed, booking lead time applied). Free time only — never why an hour is taken. 404 when the provider is not visible.",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/calendar/feed/{token}": {
+      "get": {
+        "operationId": "CalendarFeedController_feed",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The iCalendar document."
+          },
+          "404": {
+            "description": "No such feed."
+          },
+          "429": {
+            "description": "Too many reads from this address."
+          }
+        },
+        "summary": "The iCal feed behind a subscription link. One 404 for every failure (malformed, unknown or revoked token, provider or account gone). No client name, title or address.",
+        "tags": [
+          "calendar"
+        ]
+      }
     }
   },
   "info": {
@@ -7578,6 +7894,397 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "WeeklyRangeDto": {
+        "type": "object",
+        "properties": {
+          "weekday": {
+            "type": "number",
+            "description": "ISO weekday: 1 = Monday … 7 = Sunday",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "startMinute": {
+            "type": "number",
+            "description": "Minutes after local midnight",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "endMinute": {
+            "type": "number",
+            "description": "Minutes after local midnight; 1440 = until midnight",
+            "minimum": 1,
+            "maximum": 1440
+          }
+        },
+        "required": [
+          "weekday",
+          "startMinute",
+          "endMinute"
+        ]
+      },
+      "CalendarEventKind": {
+        "type": "string",
+        "enum": [
+          "JOB",
+          "PENDING_REQUEST"
+        ]
+      },
+      "CalendarEventTiming": {
+        "type": "string",
+        "enum": [
+          "TIMED",
+          "ALL_DAY",
+          "UNSCHEDULED"
+        ]
+      },
+      "CalendarEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the underlying service request"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CalendarEventKind"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestStatus"
+              }
+            ]
+          },
+          "requestType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRequestType"
+              }
+            ]
+          },
+          "timing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CalendarEventTiming"
+              }
+            ]
+          },
+          "startAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "TIMED only"
+          },
+          "endAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "TIMED only"
+          },
+          "date": {
+            "type": "string",
+            "nullable": true,
+            "description": "ALL_DAY only: the civil day, YYYY-MM-DD",
+            "example": "2026-11-20"
+          },
+          "windowEndAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "End of the window the client offered (direct booking), for information"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Announced duration, when one is known (listed service or accepted quote)"
+          },
+          "title": {
+            "type": "string"
+          },
+          "serviceAddress": {
+            "type": "string"
+          },
+          "clientDisplayName": {
+            "type": "string",
+            "description": "Display name of the client",
+            "example": "Marie Tremblay"
+          },
+          "serviceCategoryNameTranslations": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "fr-CA": "Coiffure",
+              "en-CA": "Hairdressing"
+            }
+          },
+          "serviceItemNameTranslations": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "requestType",
+          "timing",
+          "startAtUtc",
+          "endAtUtc",
+          "date",
+          "windowEndAtUtc",
+          "durationMinutes",
+          "title",
+          "serviceAddress",
+          "clientDisplayName",
+          "serviceCategoryNameTranslations",
+          "serviceItemNameTranslations"
+        ]
+      },
+      "TimeOffDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startsAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "startsAtUtc",
+          "endsAtUtc",
+          "label"
+        ]
+      },
+      "ProviderCalendarDto": {
+        "type": "object",
+        "properties": {
+          "timeZone": {
+            "type": "string",
+            "example": "America/Toronto"
+          },
+          "weeklyHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyRangeDto"
+            }
+          },
+          "events": {
+            "description": "Dated appointments touching the window (timed or day-long), in order",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventDto"
+            }
+          },
+          "unscheduled": {
+            "description": "Jobs still to do that nothing dates yet — whatever the window",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventDto"
+            }
+          },
+          "timeOff": {
+            "description": "Blocked periods overlapping the window",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeOffDto"
+            }
+          },
+          "upcomingTimeOff": {
+            "description": "Every blocked period not over yet — the management list",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeOffDto"
+            }
+          },
+          "feedEnabled": {
+            "type": "boolean",
+            "description": "Whether an iCal feed link is active"
+          },
+          "feedCreatedAtUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "timeZone",
+          "weeklyHours",
+          "events",
+          "unscheduled",
+          "timeOff",
+          "upcomingTimeOff",
+          "feedEnabled",
+          "feedCreatedAtUtc"
+        ]
+      },
+      "UpdateWeeklyHoursDto": {
+        "type": "object",
+        "properties": {
+          "weeklyHours": {
+            "description": "The WHOLE weekly schedule (it replaces the previous one). An empty array unpublishes it.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyRangeDto"
+            }
+          }
+        },
+        "required": [
+          "weeklyHours"
+        ]
+      },
+      "WeeklyHoursDto": {
+        "type": "object",
+        "properties": {
+          "timeZone": {
+            "type": "string",
+            "description": "IANA time zone the hours are expressed in",
+            "example": "America/Toronto"
+          },
+          "weeklyHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyRangeDto"
+            }
+          }
+        },
+        "required": [
+          "timeZone",
+          "weeklyHours"
+        ]
+      },
+      "CreateTimeOffDto": {
+        "type": "object",
+        "properties": {
+          "startsAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 80,
+            "description": "Private note of the provider. Never shown to clients."
+          }
+        },
+        "required": [
+          "startsAtUtc",
+          "endsAtUtc"
+        ]
+      },
+      "CalendarFeedDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The secret token. Shown once."
+          },
+          "path": {
+            "type": "string",
+            "description": "Feed path RELATIVE to the web origin (the API itself is not reachable from the Internet).",
+            "example": "/calendrier/flux/3q2-7wEhk0P…"
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "token",
+          "path",
+          "createdAtUtc"
+        ]
+      },
+      "AvailabilitySlotDto": {
+        "type": "object",
+        "properties": {
+          "startAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "startAtUtc",
+          "endAtUtc"
+        ]
+      },
+      "AvailabilityDayDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Civil day in the provider's time zone",
+            "example": "2026-11-20"
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilitySlotDto"
+            }
+          }
+        },
+        "required": [
+          "date",
+          "slots"
+        ]
+      },
+      "ProviderAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "timeZone": {
+            "type": "string",
+            "example": "America/Toronto"
+          },
+          "published": {
+            "type": "boolean",
+            "description": "False when the provider has published no weekly hours (or is paused): `days` then holds no slot, and that says nothing about whether he is free."
+          },
+          "weeklyHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyRangeDto"
+            }
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityDayDto"
+            }
+          }
+        },
+        "required": [
+          "timeZone",
+          "published",
+          "weeklyHours",
+          "days"
         ]
       }
     }

@@ -42,7 +42,16 @@ export function Nav({ isProvider }: { isProvider: boolean }) {
     // 5.1 — toujours affiché : n'importe quel compte peut détenir une carte,
     // prestataire compris (§13.1 nº 19a et 19g).
     { href: '/account/payment-methods', label: 'Mes cartes' },
-    ...(isProvider ? [{ href: '/dashboard', label: 'Espace pro' }] : []),
+    // Prestataire seulement. « Calendrier » est une entrée à part, pas un
+    // onglet de l'Espace pro : la grille demande toute la largeur, et son
+    // chemin (`/calendrier`) n'est pas sous `/dashboard`, sinon les deux liens
+    // s'allumeraient ensemble (règle des sous-routes de `nav-active.ts`).
+    ...(isProvider
+      ? [
+          { href: '/dashboard', label: 'Espace pro' },
+          { href: '/calendrier', label: 'Calendrier' },
+        ]
+      : []),
   ];
 
   return (

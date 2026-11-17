@@ -73,6 +73,8 @@ export const DELETE_ORDER = [
   'service_requests',
   'payment_methods',
   'portfolio_items',
+  'provider_time_off',
+  'provider_calendars',
   'verification_documents',
   'professional_services',
   'professional_service_categories',
@@ -299,8 +301,13 @@ export function roleGrantSql(): string {
  * mot de passe ni de jeton. La purge n'a besoin que de `id` et `user_id`.
  */
 export const COLUMN_SCOPED_SELECT: Readonly<
-  Record<'user_auth_providers' | 'email_verification_tokens' | 'password_reset_tokens', readonly string[]>
+  Record<
+    'provider_calendars' | 'user_auth_providers' | 'email_verification_tokens' | 'password_reset_tokens',
+    readonly string[]
+  >
 > = {
+  // Calendrier : jamais le haché du jeton du flux iCal.
+  provider_calendars: ['id', 'service_provider_id'],
   user_auth_providers: ['id', 'user_id'],
   // L1 : ni le haché du jeton ni l'adresse pour laquelle il a été émis.
   email_verification_tokens: ['id', 'user_id'],
@@ -309,6 +316,7 @@ export const COLUMN_SCOPED_SELECT: Readonly<
 
 /** Colonnes que le rôle ne doit JAMAIS pouvoir lire (vérifié au démarrage). */
 export const FORBIDDEN_COLUMNS: ReadonlyArray<readonly [table: string, column: string]> = [
+  ['provider_calendars', 'feed_token_hash'],
   ['user_auth_providers', 'password_hash'],
   ['password_reset_tokens', 'token_hash'],
   ['email_verification_tokens', 'token_hash'],

@@ -68,6 +68,8 @@ function emptyRows(): Record<ModifiableTable, string[]> {
     service_requests: [],
     payment_methods: [],
     portfolio_items: [],
+    provider_time_off: [],
+    provider_calendars: [],
     verification_documents: [],
     professional_services: [],
     professional_service_categories: [],
@@ -348,6 +350,20 @@ export async function buildPlan(db: Queryable): Promise<PurgePlan> {
   );
   rows.portfolio_items = portfolio.rows.map((r) => r.id);
   fileKeys.push(...portfolio.rows.map((r) => r.storage_key));
+
+  // Calendrier (heures d'ouverture, indisponibilités) : part avec le
+  // prestataire supprimé en entier. Un compte fixe GARDE le sien, comme il
+  // garde ses métiers et ses services.
+  const timeOff = await db.query<{ id: string }>(
+    `SELECT id FROM provider_time_off WHERE service_provider_id = ANY($1::uuid[])`,
+    [TPF],
+  );
+  rows.provider_time_off = timeOff.rows.map((r) => r.id);
+  const calendars = await db.query<{ id: string }>(
+    `SELECT id FROM provider_calendars WHERE service_provider_id = ANY($1::uuid[])`,
+    [TPF],
+  );
+  rows.provider_calendars = calendars.rows.map((r) => r.id);
 
   const connect = await db.query<{ id: string; stripe_account_id: string }>(
     `SELECT id, stripe_account_id FROM stripe_connect_accounts WHERE service_provider_id = ANY($1::uuid[])`,

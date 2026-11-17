@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import type { components } from '@linkr/api-client';
 import type { ProviderReviewList } from '@/lib/reviews/types';
 
+import { AvailabilityBlock } from './_components/availability-block';
 import { PortfolioGallery } from './_components/portfolio-gallery';
 import { ReviewsBlock } from './_components/reviews-block';
 import { pickTranslation } from '@/lib/i18n/translations';
@@ -233,6 +235,38 @@ async function readPortfolio(
   return galleryToShow(read);
 }
 
+type ProviderAvailability = components['schemas']['ProviderAvailabilityDto'];
+
+/**
+ * The provider's availability, or `null` → NO « Disponibilités » section.
+ *
+ * Same contract as its siblings: a server read with the session cookie, its
+ * own try/catch, never a reason to take the page down. `null` covers three
+ * cases that all call for silence: the read failed; the provider published no
+ * hours; the provider is paused. An empty block would read « indisponible »,
+ * which is not what any of the three means — a provider without published
+ * hours can still be booked, his calendar simply says nothing.
+ */
+async function readAvailability(
+  client: ServerApiClient,
+  id: string,
+): Promise<ProviderAvailability | null> {
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-providers/{id}/availability',
+      { params: { path: { id } } },
+    );
+    if (error || !response.ok || !data) {
+      console.error(`Availability read for provider ${id} failed: HTTP ${response.status}`);
+      return null;
+    }
+    return data.published ? data : null;
+  } catch (err) {
+    console.error(`Availability read for provider ${id} failed:`, err);
+    return null;
+  }
+}
+
 export default async function ProviderProfilePage({
   params,
   searchParams,
@@ -298,14 +332,15 @@ export default async function ProviderProfilePage({
     );
   }
 
-  // --- Catalogue, reviews, portfolio — three INDEPENDENT reads, in parallel.
+  // --- Catalogue, reviews, portfolio, availability — four INDEPENDENT reads, in parallel.
   // Each degrades on its own: the identity must stay readable whatever else
   // fails. They run only once the identity has answered, so a 404 profile
   // costs no extra call.
-  const [services, reviews, gallery] = await Promise.all([
+  const [services, reviews, gallery, availability] = await Promise.all([
     readServices(client, id),
     readReviews(client, id),
     readPortfolio(client, id),
+    readAvailability(client, id),
   ]);
 
   // `businessName` is nullable and the DTO carries no first/last-name fallback,
@@ -359,6 +394,10 @@ export default async function ProviderProfilePage({
             </ul>
           )}
         </section>
+
+        {/* Right after the services: « what can I book » then « when ». Nothing
+            published (or the read failed) → no section at all. */}
+        {availability && <AvailabilityBlock availability={availability} />}
 
         <ReviewsBlock reviews={reviews} />
       </section>
