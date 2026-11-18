@@ -6,10 +6,16 @@ import { type FreeSlot, startsWithinSlots } from '@/lib/calendar/calendar-rules'
 
 import { AvailabilityPicker, type AvailabilityDayOption } from './availability-picker';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { components } from '@linkr/api-client';
 import { tooManyCreatedMessage } from '@/lib/http/retry-after';
 import { formatDateTime, formatDateTimeRange } from '@/lib/dates/format';
 import { EMAIL_NOT_VERIFIED_MESSAGE, isEmailNotVerified } from '@/lib/email-verification/states';
+import {
+  SLOT_TAKEN_CODE,
+  SLOT_TAKEN_MESSAGE,
+  hasConflictCode,
+} from '@/lib/service-requests/slot-conflict';
 
 /**
  * Client service-request creation form (Phase 3.13-3-front) — the piece that
@@ -257,6 +263,7 @@ export function CreateRequestForm({
   const [serviceAddress, setServiceAddress] = useState('');
   // Wall-clock strings straight from the two inputs — converted to instants
   // only at submit (see `readDesiredWindow`), never stored as Dates.
+  const router = useRouter();
   const [desiredStart, setDesiredStart] = useState('');
   const [desiredEnd, setDesiredEnd] = useState('');
   const [pending, setPending] = useState(false);
@@ -507,6 +514,16 @@ export function CreateRequestForm({
     }
 
     if (!response.ok) {
+      // CAL-3: someone else booked this hour between the page load and now (or
+      // the page was left open). Say so, and refresh the server-rendered
+      // availability so the taken time disappears from the picker. The form's
+      // own state is client state: every field the client typed stays filled.
+      if (await hasConflictCode(response, SLOT_TAKEN_CODE)) {
+        setError(SLOT_TAKEN_MESSAGE);
+        setPending(false);
+        router.refresh();
+        return;
+      }
       // Status-only mapping (locked). The user can correct and re-submit.
       // L3: only this 403 is told apart by its `code`; every other status keeps the status-only mapping.
       const notVerified = await isEmailNotVerified(response);

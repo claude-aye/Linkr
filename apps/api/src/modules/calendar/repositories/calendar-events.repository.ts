@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { QuoteStatus } from '../../quotes/enums/quote-status.enum';
 import { ServiceRequestStatus } from '../../service-requests/enums/service-request-status.enum';
 import { ServiceRequestType } from '../../service-requests/enums/service-request-type.enum';
+import {
+  AVAILABILITY_BLOCKING_STATUSES,
+  BUSY_JOB_STATUSES,
+} from '../../service-requests/appointment-slots';
 import { ProviderCalendar } from '../entities/provider-calendar.entity';
 
 /**
@@ -98,27 +102,10 @@ const JOB_STATUSES = [
   ServiceRequestStatus.PAID,
 ];
 
-/** Statuses that still TAKE time ahead: the job is his and not done. */
-export const BUSY_JOB_STATUSES: readonly ServiceRequestStatus[] = [
-  ServiceRequestStatus.ASSIGNED,
-  ServiceRequestStatus.IN_PROGRESS,
-];
-
-/**
- * Statuses whose TIMED entries remove time from the public availability
- * (decision of 17 November 2026): the jobs still ahead, AND a direct booking
- * still OPEN — the client asked for that hour, so it is not offered to a
- * second client while the provider has not answered. A pending booking never
- * blocks for long: its response deadline is min(desired start, now + 48 h),
- * and the 5-minute expiry sweep turns it EXPIRED once that passes.
- *
- * Only TIMED entries count — an accepted tender names a day, not an hour, and
- * blocks nothing (the provider adds a blocked period if he wants the day).
- */
-export const AVAILABILITY_BLOCKING_STATUSES: readonly ServiceRequestStatus[] = [
-  ServiceRequestStatus.OPEN,
-  ...BUSY_JOB_STATUSES,
-];
+// BUSY_JOB_STATUSES and AVAILABILITY_BLOCKING_STATUSES live in the requests
+// module (CAL-3): the same list refuses a booking that overlaps a taken slot.
+// Re-exported so this module's readers keep importing them from here.
+export { AVAILABILITY_BLOCKING_STATUSES, BUSY_JOB_STATUSES };
 
 function inList(values: readonly string[]): string {
   return values.map((v) => `'${v}'`).join(', ');

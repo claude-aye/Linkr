@@ -111,6 +111,8 @@ function buildHarness(
     findById: jest.fn().mockResolvedValue(preflight),
     findByIdForUpdate: jest.fn().mockResolvedValue(locked),
     update: jest.fn().mockResolvedValue(undefined),
+    // CAL-3: no confirmed appointment overlaps; the refusal is covered in `slot-conflict.spec.ts`.
+    hasConfirmedSlotConflict: jest.fn().mockResolvedValue(false),
   } as unknown as ServiceRequestRepository;
 
   const assignmentCreate = jest.fn().mockResolvedValue({ id: 'assignment-1' });

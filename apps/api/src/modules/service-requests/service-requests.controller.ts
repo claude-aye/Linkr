@@ -55,6 +55,11 @@ export class ServiceRequestsController {
   @ApiResponse({ status: 201, type: ServiceRequestResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error or inactive/unknown provider' })
   @ApiResponse({ status: 403, description: EMAIL_NOT_VERIFIED_RESPONSE_DESCRIPTION })
+  @ApiResponse({
+    status: 409,
+    description:
+      'DIRECT_BOOKING only: the window overlaps a timed appointment of the same provider that is OPEN, ASSIGNED or IN_PROGRESS. Body carries code SLOT_TAKEN. Opening hours and blocked periods never refuse; a PROJECT_TENDER is never refused.',
+  })
   @ApiResponse({ status: 429, description: 'Too many requests created (20 per hour per caller); see Retry-After' })
   create(
     @CurrentUser() user: JwtPayload,
@@ -137,7 +142,11 @@ export class ServiceRequestsController {
       'Caller is not the targeted provider, or the targeted provider can no longer practise the request’s service category (paused, removed, or its verification is no longer valid)',
   })
   @ApiResponse({ status: 404, description: 'Not found' })
-  @ApiResponse({ status: 409, description: 'Invalid state transition' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Invalid state transition, or the provider is not payable; or the request overlaps an appointment the provider has already confirmed (ASSIGNED or IN_PROGRESS): body carries code SLOT_CONFLICT. Another request still OPEN on the same hour does not refuse.',
+  })
   @ApiResponse({ status: 422, description: 'ORGANIZATION dispatch not supported, or no amount to base a deposit on' })
   async accept(
     @CurrentUser() user: JwtPayload,

@@ -105,3 +105,48 @@ export class ProviderNotEligibleToAcceptException extends HttpException {
     super(message, HttpStatus.FORBIDDEN);
   }
 }
+
+/** Machine-readable code of {@link SlotTakenException}. Part of the contract: the booking form maps on it. */
+export const SLOT_TAKEN = 'SLOT_TAKEN';
+
+/** Machine-readable code of {@link SlotConflictException}. Part of the contract: « Accepter » maps on it. */
+export const SLOT_CONFLICT = 'SLOT_CONFLICT';
+
+/**
+ * 409 — CAL-3. The window of a new DIRECT_BOOKING overlaps a timed appointment
+ * of the same provider that still takes time (`AVAILABILITY_BLOCKING_STATUSES`:
+ * OPEN, ASSIGNED, IN_PROGRESS). The body carries an explicit `code`: a 409
+ * means several things on these routes, and this one must be told apart.
+ */
+export class SlotTakenException extends HttpException {
+  constructor() {
+    super(
+      {
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: SLOT_TAKEN,
+        message: 'This time slot is already taken for this provider; choose another one',
+      },
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
+/**
+ * 409 — CAL-3. Accepting this DIRECT_BOOKING would overlap an appointment the
+ * provider has already confirmed (ASSIGNED or IN_PROGRESS). Another request
+ * still OPEN on the same hour does NOT refuse: only a commitment does.
+ */
+export class SlotConflictException extends HttpException {
+  constructor() {
+    super(
+      {
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: SLOT_CONFLICT,
+        message: 'You already have a confirmed appointment overlapping this request',
+      },
+      HttpStatus.CONFLICT,
+    );
+  }
+}

@@ -17,6 +17,14 @@ import {
 } from '../../service-providers/repositories/eligibility.sql';
 import { DEPOSIT_LIVE_REQUEST_STATUSES } from '../constants';
 import { CLIENT_CONFIRMABLE_DEPOSIT_STATUSES_SQL } from '../../payments/client-confirmable-deposit';
+import {
+  AVAILABILITY_BLOCKING_STATUSES,
+  BUSY_JOB_STATUSES,
+  findSlotConflict,
+  SlotCandidate,
+  SlotInterval,
+  timedIntervalOf,
+} from '../appointment-slots';
 
 export interface ServiceRequestRecord {
   id: string;
@@ -272,6 +280,18 @@ interface DepositAwaitingConfirmationRawRow {
 
 /** SQL list literal of the live request statuses, e.g. 'ASSIGNED','IN_PROGRESS',… */
 const DEPOSIT_LIVE_STATUSES_SQL = DEPOSIT_LIVE_REQUEST_STATUSES.map((s) => `'${s}'`).join(', ');
+
+/** Outcome of {@link ServiceRequestRepository.insertDirectBookingIfSlotFree}. */
+export type InsertDirectBookingResult =
+  | { inserted: true; record: ServiceRequestReadRecord }
+  | { inserted: false; reason: 'SLOT_TAKEN' | 'PROVIDER_GONE' };
+
+/**
+ * WHEN a direct booking happens: the start the provider retained, else the
+ * start of the window the client offered. Same as the calendar's ANCHOR_SQL
+ * for a DIRECT_BOOKING, the only kind the slot check reads.
+ */
+const SLOT_ANCHOR_SQL = 'COALESCE(sr.scheduled_at_utc, sr.desired_start_at_utc)';
 
 export interface CreateServiceRequestData {
   clientUserId: string;
@@ -787,7 +807,213 @@ export class ServiceRequestRepository {
   }
 
   async create(data: CreateServiceRequestData): Promise<ServiceRequestReadRecord> {
-    const rows: Array<{ id: string }> = await this.repo.query(
+    const id = await this.insertRow(this.repo.manager, data);
+    const created = await this.findById(id);
+    if (!created) throw new Error('Service request insert succeeded but read-back failed');
+    return created;
+  }
+
+  /**
+   * CAL-3 — inserts a DIRECT_BOOKING only if the time it will OCCUPY takes no
+   * time the provider has already given away.
+   *
+   * `requested` is the window the client offered. What is checked is its timed
+   * interval (`timedIntervalOf`: start + the duration the provider lists for
+   * this service, else the window end, else 60 min) — the SAME rule as the
+   * acceptance check and the calendar. A 45-min haircut offered « between 10 h
+   * and 17 h » occupies 10 h – 10 h 45, not the whole afternoon. The duration
+   * is read under the lock, by the same `svc` join.
+   *
+   * Lock, read and insert happen in ONE transaction, under `FOR UPDATE` on the
+   * PROVIDER row — the lock the portfolio and the blocked periods already take
+   * on the same row. Two clients posting the same hour at the same instant both
+   * wait on it; the second reads the first's committed row and is refused. A
+   * read is not a lock: without it, both would see a free slot.
+   *
+   * What collides is decided by `findSlotConflict` over
+   * `AVAILABILITY_BLOCKING_STATUSES` (OPEN, ASSIGNED, IN_PROGRESS): exactly what
+   * the public availability hides. Opening hours and blocked periods are NOT
+   * read here — they inform, they never refuse (§13.1 nº 32 c).
+   */
+  async insertDirectBookingIfSlotFree(
+    data: CreateServiceRequestData,
+    providerId: string,
+    requested: SlotInterval,
+  ): Promise<InsertDirectBookingResult> {
+    const outcome = await this.repo.manager.transaction(
+      async (manager): Promise<{ id: string } | { reason: 'SLOT_TAKEN' | 'PROVIDER_GONE' }> => {
+        if (!(await this.lockProviderForSlots(manager, providerId))) {
+          return { reason: 'PROVIDER_GONE' };
+        }
+        const durations: Array<{ minutes: number | null }> = await manager.query(
+          `SELECT ps.estimated_duration_minutes AS minutes
+             FROM professional_services ps
+             JOIN professional_service_categories psc
+               ON psc.id = ps.professional_service_category_id
+            WHERE psc.service_provider_id = $1
+              AND ps.service_item_id = $2
+              AND ps.deleted_at_utc IS NULL
+            ORDER BY ps.created_at_utc DESC, ps.id DESC
+            LIMIT 1`,
+          [providerId, data.serviceItemId ?? null],
+        );
+        const minutes = durations.length ? durations[0].minutes : null;
+        const window = timedIntervalOf({
+          requestType: ServiceRequestType.DIRECT_BOOKING,
+          anchorAtUtc: new Date(requested.startMs),
+          desiredEndAtUtc: new Date(requested.endMs),
+          serviceDurationMinutes: minutes === null ? null : Number(minutes),
+        });
+        if (!window) throw new Error('A direct booking with a start always has a timed interval');
+        const candidates = await this.findSlotCandidates(
+          manager,
+          providerId,
+          new Date(window.startMs),
+          new Date(window.endMs),
+        );
+        if (findSlotConflict(window, candidates, AVAILABILITY_BLOCKING_STATUSES)) {
+          return { reason: 'SLOT_TAKEN' };
+        }
+        return { id: await this.insertRow(manager, data) };
+      },
+    );
+    if ('reason' in outcome) return { inserted: false, reason: outcome.reason };
+
+    // Read back AFTER the commit: `findById` reads outside the transaction.
+    const created = await this.findById(outcome.id);
+    if (!created) throw new Error('Service request insert succeeded but read-back failed');
+    return { inserted: true, record: created };
+  }
+
+  /**
+   * CAL-3 — would accepting `requestId` overlap an appointment the provider has
+   * already CONFIRMED (`BUSY_JOB_STATUSES`: ASSIGNED, IN_PROGRESS)? Another
+   * request still OPEN on the same hour does not count: only a commitment does.
+   *
+   * Runs in the CALLER'S transaction and takes `FOR UPDATE` on the provider row
+   * first, so two accepts of overlapping requests are serialized: the second
+   * reads the first's committed ASSIGNED row. Lock order is request row (taken
+   * by the caller) then provider row; no writer takes them the other way round
+   * (the guarded insert above locks the provider and only INSERTS a request).
+   *
+   * The request's own time is its timed interval (start + listed duration, …),
+   * the same rule as the calendar: accepting retains the START (§13.1 nº 15c),
+   * so the appointment is what the calendar will draw, not the whole window
+   * the client offered. A request with no start occupies no hour: no conflict.
+   */
+  async hasConfirmedSlotConflict(
+    manager: EntityManager,
+    requestId: string,
+    providerId: string,
+  ): Promise<boolean> {
+    if (!(await this.lockProviderForSlots(manager, providerId))) return false;
+    const own = await this.selectSlotCandidates(manager, 'sr.id = $2', [providerId, requestId]);
+    const interval = own.length ? timedIntervalOf(own[0]) : null;
+    if (!interval) return false;
+    const candidates = await this.findSlotCandidates(
+      manager,
+      providerId,
+      new Date(interval.startMs),
+      new Date(interval.endMs),
+    );
+    return findSlotConflict(interval, candidates, BUSY_JOB_STATUSES, requestId) !== null;
+  }
+
+  /** `FOR UPDATE` on the provider row — false when it is gone (deleted). */
+  private async lockProviderForSlots(manager: EntityManager, providerId: string): Promise<boolean> {
+    const rows: Array<{ id: string }> = await manager.query(
+      `SELECT id FROM service_providers
+        WHERE id = $1 AND deleted_at_utc IS NULL
+        FOR UPDATE`,
+      [providerId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * The provider's timed appointments that may meet `[from, to)`: direct
+   * bookings still OPEN and aimed at it, and the ones ASSIGNED / IN_PROGRESS
+   * to it. Same ownership, same anchor and same one-day slack as the calendar's
+   * read (`calendar-events.repository.ts`), so both see the same entries; the
+   * caller narrows by status and clips precisely.
+   */
+  private findSlotCandidates(
+    manager: EntityManager,
+    providerId: string,
+    from: Date,
+    to: Date,
+  ): Promise<SlotCandidate[]> {
+    const busy = BUSY_JOB_STATUSES.map((v) => `'${v}'`).join(', ');
+    return this.selectSlotCandidates(
+      manager,
+      `sr.request_type = '${ServiceRequestType.DIRECT_BOOKING}'
+       AND (
+         (sr.requested_service_provider_id = $1 AND sr.status = '${ServiceRequestStatus.OPEN}')
+         OR (sr.assigned_service_provider_id = $1 AND sr.status IN (${busy}))
+       )
+       AND (${SLOT_ANCHOR_SQL}) >= ($2::timestamptz - interval '1 day')
+       AND (${SLOT_ANCHOR_SQL}) < $3::timestamptz`,
+      [providerId, from, to],
+    );
+  }
+
+  /**
+   * One SELECT for both reads. `$1` is ALWAYS the provider: the `svc` LATERAL
+   * reads ITS listing of the requested service, for the duration (a deleted
+   * listing says nothing; a paused one still does) — as the calendar does.
+   * Statuses and types are interpolated from their enums (compile-time
+   * constants, never caller data).
+   */
+  private async selectSlotCandidates(
+    manager: EntityManager,
+    whereSql: string,
+    params: unknown[],
+  ): Promise<SlotCandidate[]> {
+    const rows: Array<{
+      id: string;
+      status: ServiceRequestStatus;
+      request_type: ServiceRequestType;
+      anchor_at_utc: Date | null;
+      desired_end_at_utc: Date | null;
+      service_duration_minutes: number | null;
+    }> = await manager.query(
+      `SELECT sr.id, sr.status, sr.request_type,
+              ${SLOT_ANCHOR_SQL} AS anchor_at_utc,
+              sr.desired_end_at_utc,
+              svc.estimated_duration_minutes AS service_duration_minutes
+         FROM service_requests sr
+         LEFT JOIN LATERAL (
+           SELECT ps.estimated_duration_minutes
+             FROM professional_services ps
+             JOIN professional_service_categories psc
+               ON psc.id = ps.professional_service_category_id
+            WHERE psc.service_provider_id = $1
+              AND ps.service_item_id = sr.service_item_id
+              AND ps.deleted_at_utc IS NULL
+            ORDER BY ps.created_at_utc DESC, ps.id DESC
+            LIMIT 1
+         ) svc ON true
+        WHERE sr.deleted_at_utc IS NULL
+          AND ${whereSql}`,
+      params,
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      requestType: row.request_type,
+      anchorAtUtc: row.anchor_at_utc,
+      desiredEndAtUtc: row.desired_end_at_utc,
+      serviceDurationMinutes:
+        row.service_duration_minutes === null ? null : Number(row.service_duration_minutes),
+    }));
+  }
+
+  /** The INSERT itself, on whichever runner the caller holds. Returns the new id. */
+  private async insertRow(
+    runner: Pick<EntityManager, 'query'>,
+    data: CreateServiceRequestData,
+  ): Promise<string> {
+    const rows: Array<{ id: string }> = await runner.query(
       `INSERT INTO service_requests (
          client_user_id, request_type, status,
          service_category_id, service_item_id,
@@ -829,10 +1055,7 @@ export class ServiceRequestRepository {
         data.serviceLocationPrecision ?? ServiceRequestLocationPrecision.UNKNOWN,
       ],
     );
-
-    const created = await this.findById(rows[0].id);
-    if (!created) throw new Error('Service request insert succeeded but read-back failed');
-    return created;
+    return rows[0].id;
   }
 
   async update(
