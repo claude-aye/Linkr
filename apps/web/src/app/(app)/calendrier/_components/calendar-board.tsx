@@ -392,7 +392,7 @@ function MonthGrid({
             >
               <Link
                 href={day.weekHref}
-                className={`mx-auto flex size-9 items-center justify-center rounded-full text-sm font-semibold transition hover:bg-text/10 motion-reduce:transition-none md:mx-0 ${
+                className={`flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold transition hover:bg-text/10 motion-reduce:transition-none md:w-11 md:rounded-full ${
                   day.isToday
                     ? 'bg-accent text-on-accent hover:bg-accent/90'
                     : day.inMonth

@@ -122,7 +122,8 @@ export function CalendarSyncPanel({
         Affichez vos rendez-vous Linkr dans Outlook, Google Agenda ou Calendrier Apple. Par respect
         pour vos clients, ni leur nom, ni leur adresse, ni le titre de leur demande ne quittent
         Linkr : chaque rendez-vous porte le nom du métier et du service, et un lien vers ce
-        calendrier.
+        calendrier. Vos indisponibilités y figurent sous le seul titre « Indisponible » : vos notes
+        restent dans Linkr.
       </p>
 
       <div className="space-y-3 rounded-2xl border border-edge bg-surface p-4">
@@ -153,8 +154,7 @@ export function CalendarSyncPanel({
             </div>
 
             <p className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Copiez cette adresse maintenant : elle ne sera plus affichée. Toute personne qui la
-              détient peut lire votre calendrier ; ne la partagez pas.
+              Copiez cette adresse maintenant : elle ne sera plus affichée.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -192,6 +192,16 @@ export function CalendarSyncPanel({
           </p>
         ) : (
           <p className="text-sm text-text-muted">Aucun lien d’abonnement pour le moment.</p>
+        )}
+
+        {/* Decision of 17 November 2026, verbatim. Shown as long as a link is
+            active — not only at the moment it is generated — because it is
+            the sentence that makes « Désactiver » make sense. */}
+        {active && (
+          <p className="text-sm font-medium text-text">
+            Toute personne qui possède ce lien voit votre agenda. Désactivez-le s’il a été partagé
+            par erreur.
+          </p>
         )}
 
         {error && (

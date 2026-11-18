@@ -1,6 +1,7 @@
 import type { components } from '@linkr/api-client';
 
 import {
+  dateKeyInZone,
   dayMediumLabel,
   isoWeekday,
   rangesOfWeekday,
@@ -40,7 +41,9 @@ function currentTimeMs(): number {
 export function AvailabilityBlock({ availability }: { availability: Availability }) {
   const { timeZone, weeklyHours } = availability;
   const days = availability.days.slice(0, DAYS_SHOWN);
-  const zone = zoneGenericLabel(timeZone, currentTimeMs());
+  const nowMs = currentTimeMs();
+  const zone = zoneGenericLabel(timeZone, nowMs);
+  const today = dateKeyInZone(nowMs, timeZone);
 
   return (
     <section aria-labelledby="availability-title" className="mt-10">
@@ -86,7 +89,11 @@ export function AvailabilityBlock({ availability }: { availability: Availability
                       ))}
                     </span>
                   ) : (
-                    <span className="text-text-muted">{opens ? 'Complet' : 'Fermé'}</span>
+                    <span className="text-text-muted">
+                      {/* Today with nothing left is not « full »: the hours may
+                          simply be over, or inside the booking lead time. */}
+                      {!opens ? 'Fermé' : day.date === today ? 'Plus de créneau aujourd’hui' : 'Complet'}
+                    </span>
                   )}
                 </li>
               );

@@ -403,7 +403,8 @@ describe('CalendarService', () => {
       expect(lines).toContain('SUMMARY:Linkr · Coiffure — Coupe homme');
       expect(lines).toContain('SUMMARY:Linkr · Coiffure — Coupe homme (à confirmer)');
       expect(lines).toContain('SUMMARY:Linkr · Coiffure');
-      expect(lines).toContain('SUMMARY:Indisponible — Vacances');
+      // Decision of 17 November: the period leaves as « Indisponible », alone.
+      expect(lines).toContain('SUMMARY:Indisponible');
       expect(lines).toContain('UID:demande-req-1@linkr');
       expect(lines).toContain('URL:https://linkr.test/calendrier');
       expect(lines).toContain('DTSTART:20261117T150000Z');
@@ -412,6 +413,25 @@ describe('CalendarService', () => {
       expect(lines.filter((l) => l === 'STATUS:TENTATIVE')).toHaveLength(1);
       // The undated job has nowhere to sit on a calendar.
       expect(lines.filter((l) => l === 'BEGIN:VEVENT')).toHaveLength(4);
+    });
+
+    it('never lets the private note of a blocked period leave Linkr — feed AND export', async () => {
+      const { service, calendars } = withFeed();
+      calendars.findTimeOffOverlapping.mockResolvedValue([
+        timeOff({ label: 'Chimio' }),
+        timeOff({ id: 'off-2', label: 'Tribunal, 3e étage' }),
+        timeOff({ id: 'off-3', label: null }),
+      ]);
+      for (const ics of [await service.feed(TOKEN), await service.exportMine(USER)]) {
+        expect(ics).not.toContain('Chimio');
+        expect(ics).not.toContain('Tribunal');
+        const summaries = ics.split(/\r\n/).filter((l) => l.startsWith('SUMMARY:'));
+        expect(summaries).toEqual([
+          'SUMMARY:Indisponible',
+          'SUMMARY:Indisponible',
+          'SUMMARY:Indisponible',
+        ]);
+      }
     });
 
     it('covers a bounded window around now', async () => {
@@ -480,11 +500,21 @@ describe('CalendarService', () => {
       expect(slotsOf(dto, '2026-11-18')).toEqual([]);
     });
 
+    it('removes the hour of a booking still OPEN (decision of 17 November)', async () => {
+      const { service, events } = setup();
+      // Tuesday 10 h, 60-minute service: the client asked for that hour.
+      events.findDated.mockResolvedValue([baseEvent({ status: ServiceRequestStatus.OPEN })]);
+      const dto = await service.availability(PROVIDER, 2);
+      expect(slotsOf(dto, '2026-11-17')).toEqual([
+        ['2026-11-17T14:00:00.000Z', '2026-11-17T15:00:00.000Z'],
+        ['2026-11-17T16:00:00.000Z', '2026-11-17T22:00:00.000Z'],
+      ]);
+    });
+
     it.each([
-      ['a booking still OPEN', { status: ServiceRequestStatus.OPEN }],
       ['a job already COMPLETED', { status: ServiceRequestStatus.COMPLETED }],
       [
-        'an accepted tender (a day, not an hour)',
+        'an accepted tender with no hour (a day, not an hour)',
         {
           requestType: ServiceRequestType.PROJECT_TENDER,
           anchorAtUtc: new Date('2026-11-17T12:00:00Z'),

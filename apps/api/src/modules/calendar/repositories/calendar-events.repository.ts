@@ -104,6 +104,22 @@ export const BUSY_JOB_STATUSES: readonly ServiceRequestStatus[] = [
   ServiceRequestStatus.IN_PROGRESS,
 ];
 
+/**
+ * Statuses whose TIMED entries remove time from the public availability
+ * (decision of 17 November 2026): the jobs still ahead, AND a direct booking
+ * still OPEN — the client asked for that hour, so it is not offered to a
+ * second client while the provider has not answered. A pending booking never
+ * blocks for long: its response deadline is min(desired start, now + 48 h),
+ * and the 5-minute expiry sweep turns it EXPIRED once that passes.
+ *
+ * Only TIMED entries count — an accepted tender names a day, not an hour, and
+ * blocks nothing (the provider adds a blocked period if he wants the day).
+ */
+export const AVAILABILITY_BLOCKING_STATUSES: readonly ServiceRequestStatus[] = [
+  ServiceRequestStatus.OPEN,
+  ...BUSY_JOB_STATUSES,
+];
+
 function inList(values: readonly string[]): string {
   return values.map((v) => `'${v}'`).join(', ');
 }

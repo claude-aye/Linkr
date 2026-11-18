@@ -38,7 +38,7 @@ import {
 } from './exceptions/calendar-exceptions';
 import { type IcalEvent, buildIcalendar } from './ical';
 import {
-  BUSY_JOB_STATUSES,
+  AVAILABILITY_BLOCKING_STATUSES,
   CalendarEventsRepository,
 } from './repositories/calendar-events.repository';
 import {
@@ -252,8 +252,13 @@ export class CalendarService {
    * ⚠️ NOTHING HERE IDENTIFIES A CLIENT, BY CONSTRUCTION: `findDated` reads
    * neither the request's title, nor its address, nor the client. An entry is
    * named after the catalogue trade and service, and links back to the Linkr
-   * calendar for the details. A blocked period carries the provider's OWN
-   * label: it is his note, in a file he chose to export.
+   * calendar for the details.
+   *
+   * ⚠️ A BLOCKED PERIOD LEAVES AS « Indisponible », AND NOTHING ELSE (decision
+   * of 17 November 2026). Its label is the provider's private note — « chimio »,
+   * « tribunal » — and a subscribed calendar copies it onto Google's or
+   * Microsoft's servers, outside anything Linkr controls or the privacy policy
+   * covers. The label never leaves Linkr: it is not even read on this path.
    */
   private async buildIcs(providerId: string): Promise<string> {
     const nowMs = Date.now();
@@ -292,7 +297,7 @@ export class CalendarService {
     for (const period of timeOff) {
       events.push({
         uid: `indisponibilite-${period.id}@linkr`,
-        summary: period.label ? `Indisponible — ${period.label}` : 'Indisponible',
+        summary: 'Indisponible',
         status: 'CONFIRMED',
         timing: {
           kind: 'TIMED',
@@ -315,19 +320,18 @@ export class CalendarService {
    * PAUSED provider keeps a profile but takes no booking, so nothing is
    * published for him — neither slots nor hours.
    *
-   * What removes time from the published hours:
+   * What removes time from the published hours (decision of 17 November
+   * 2026, `AVAILABILITY_BLOCKING_STATUSES`):
    * - blocked periods;
-   * - appointments still ahead that have an HOUR (direct bookings ASSIGNED or
-   *   IN_PROGRESS).
+   * - appointments still ahead that have an HOUR: direct bookings ASSIGNED or
+   *   IN_PROGRESS, AND direct bookings still OPEN — the client asked for that
+   *   hour, so a second client is not offered it while the provider has not
+   *   answered. Bounded: an OPEN booking expires at min(start, now + 48 h).
    *
    * What deliberately does NOT:
-   * - a booking still OPEN: nothing is agreed, and letting an unanswered
-   *   request hide a slot would let anyone empty a provider's calendar by
-   *   sending requests;
    * - an accepted tender: its quote names a day, not an hour, and blocking the
    *   whole day for a job that may take one hour would hide real availability.
-   *   Showing a slot that turns out taken costs a declined request; hiding a
-   *   free one costs a booking nobody ever sees was lost.
+   *   The provider adds a blocked period if he wants the day.
    */
   async availability(providerId: string, days: number): Promise<ProviderAvailabilityDto> {
     const provider = await this.providers.findById(providerId);
@@ -368,7 +372,7 @@ export class CalendarService {
       endMs: t.endsAtUtc.getTime(),
     }));
     for (const record of dated) {
-      if (!BUSY_JOB_STATUSES.includes(record.status)) continue;
+      if (!AVAILABILITY_BLOCKING_STATUSES.includes(record.status)) continue;
       const timing = resolveEventTiming(record);
       if (timing.kind === 'TIMED') {
         blocked.push({ startMs: timing.startMs, endMs: timing.endMs });

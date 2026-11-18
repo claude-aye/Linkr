@@ -150,7 +150,7 @@ function toEventEntry(event: CalendarEvent, timeZone: string): EntryView {
     }
     if (event.kind === 'PENDING_REQUEST') {
       note =
-        'Cette demande attend votre réponse : le créneau n’est pas encore confirmé, et il reste offert aux autres clients.';
+        'Cette demande attend votre réponse. En attendant, ce créneau n’est plus proposé aux autres clients ; sans réponse de votre part, la demande expire au plus tard à l’heure demandée.';
     }
   } else if (event.timing === 'ALL_DAY' && event.date) {
     whenLabel = `${dayLongLabel(event.date)}, date proposée dans votre devis`;
@@ -158,7 +158,7 @@ function toEventEntry(event: CalendarEvent, timeZone: string): EntryView {
       details.push({ term: 'Durée annoncée', value: durationLabel(event.durationMinutes) });
     }
     note =
-      'Votre devis propose une date, pas une heure : ce rendez-vous ne retire aucun créneau de vos disponibilités.';
+      'Votre devis propose une date, pas une heure : ce rendez-vous ne retire aucun créneau de vos disponibilités. Ajoutez une indisponibilité si vous voulez bloquer la journée.';
   } else {
     whenLabel = 'Date à convenir';
     note = 'Rien ne date encore ce travail : il n’apparaît pas dans la grille.';

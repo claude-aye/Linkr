@@ -187,7 +187,7 @@ export function TimeOffPanel({
     <div className="space-y-5">
       <p className={hintClass}>
         Vacances, congé, rendez-vous personnel : pendant une indisponibilité, aucun créneau n’est
-        proposé aux clients. Votre note reste privée.
+        proposé aux clients. Votre note reste privée : elle n’apparaît ni aux clients ni dans les calendriers synchronisés.
       </p>
 
       <form method="post" onSubmit={add} noValidate className="space-y-3">

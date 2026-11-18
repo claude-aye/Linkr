@@ -23,6 +23,8 @@ on:
       - 'apps/web/src/lib/legal/legal-pages.ts'
       - 'apps/api/src/modules/portfolio/constants.ts'
       - 'apps/web/src/lib/portfolio/portfolio-limits.ts'
+      - 'apps/api/src/modules/calendar/constants.ts'
+      - 'apps/web/src/lib/calendar/calendar-rules.ts'
       - 'scripts/check-mirrored-constants.mjs'
       - '.github/workflows/mirror-guard.yml'
 
