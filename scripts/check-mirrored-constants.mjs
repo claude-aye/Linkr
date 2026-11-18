@@ -45,6 +45,9 @@ const API_TERMS_VERSION = 'apps/api/src/modules/auth/terms-version.ts';
 const WEB_LEGAL_PAGES = 'apps/web/src/lib/legal/legal-pages.ts';
 const API_PORTFOLIO = 'apps/api/src/modules/portfolio/constants.ts';
 const WEB_PORTFOLIO = 'apps/web/src/lib/portfolio/portfolio-limits.ts';
+const API_CALENDAR = 'apps/api/src/modules/calendar/constants.ts';
+// The calendar's rules live in a pure module (tested under `node --test`).
+const WEB_CALENDAR = 'apps/web/src/lib/calendar/calendar-rules.ts';
 
 /**
  * Every constant that must hold the same value in more than one place.
@@ -116,6 +119,31 @@ const MIRRORS = [
     name: 'PORTFOLIO_CAPTION_MAX',
     why: 'portfolio P1 — a caption the screen accepts must not be a 400 from the API (also a column CHECK)',
     files: [API_PORTFOLIO, WEB_PORTFOLIO],
+  },
+  {
+    name: 'WEEKLY_HOURS_STEP_MINUTES',
+    why: 'calendar — the time options the editor offers must be on the grid the API accepts (422 OFF_GRID)',
+    files: [API_CALENDAR, WEB_CALENDAR],
+  },
+  {
+    name: 'WEEKLY_HOURS_MAX_RANGES_PER_DAY',
+    why: 'calendar — the « Ajouter » button must stop where the API refuses (422 TOO_MANY_RANGES)',
+    files: [API_CALENDAR, WEB_CALENDAR],
+  },
+  {
+    name: 'TIME_OFF_LABEL_MAX',
+    why: 'calendar — a private note the screen accepts must not be a 400 from the API (also a column CHECK)',
+    files: [API_CALENDAR, WEB_CALENDAR],
+  },
+  {
+    name: 'TIME_OFF_MAX_DAYS',
+    why: 'calendar — a blocked period the screen accepts must not be a 422 TOO_LONG from the API',
+    files: [API_CALENDAR, WEB_CALENDAR],
+  },
+  {
+    name: 'TIME_OFF_MAX_UPCOMING',
+    why: 'calendar — the form must close at the period the API refuses with 409 TIME_OFF_LIMIT_REACHED',
+    files: [API_CALENDAR, WEB_CALENDAR],
   },
 ];
 

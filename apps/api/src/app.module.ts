@@ -26,6 +26,7 @@ import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { DemandSignalsModule } from './modules/demand-signals/demand-signals.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { PortfolioModule } from './modules/portfolio/portfolio.module';
     DemandSignalsModule,
     ReviewsModule,
     PortfolioModule,
+    CalendarModule,
   ],
 })
 export class AppModule {}

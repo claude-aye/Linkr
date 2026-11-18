@@ -108,6 +108,13 @@ const ZONE_LEG = id(321);
 const DOC_LEG = id(331);
 const PORT_LEG = id(341);
 const PORT_REAL = id(342);
+// Calendrier (CAL-2) : réglages et indisponibilités des trois prestataires.
+const CAL_FIX = id(351);
+const CAL_LEG = id(352);
+const CAL_REAL = id(353);
+const OFF_FIX = id(361);
+const OFF_LEG = id(362);
+const OFF_REAL = id(363);
 // Connect, cartes
 const CON_FIX = id(401);
 const CON_LEG = id(402);
@@ -241,6 +248,24 @@ async function seed(db: Client, storage: string): Promise<void> {
       `INSERT INTO portfolio_items (id, service_provider_id, storage_key, position, content_type, width, height, byte_size)
        VALUES ($1, $2, $3, 0, 'image/webp', 10, 10, 10)`,
       [pi, pid, key],
+    );
+  }
+  // Calendrier : l'ancien prestataire porte AUSSI un haché de flux iCal — la
+  // colonne que le rôle ne doit jamais pouvoir lire (FORBIDDEN_COLUMNS).
+  for (const [cal, off, pid, feed] of [
+    [CAL_FIX, OFF_FIX, P_FIX, null],
+    [CAL_LEG, OFF_LEG, P_LEG, 'f'.repeat(64)],
+    [CAL_REAL, OFF_REAL, P_REAL, null],
+  ]) {
+    await db.query(
+      `INSERT INTO provider_calendars (id, service_provider_id, weekly_hours, feed_token_hash, feed_token_created_at_utc)
+       VALUES ($1, $2, '[{"weekday":1,"startMinute":540,"endMinute":1020}]'::jsonb, $3, $4)`,
+      [cal, pid, feed, feed === null ? null : new Date()],
+    );
+    await db.query(
+      `INSERT INTO provider_time_off (id, service_provider_id, starts_at_utc, ends_at_utc, label)
+       VALUES ($1, $2, now() + interval '1 day', now() + interval '2 days', 'Note privée sonde')`,
+      [off, pid],
     );
   }
   for (const [cid, pid, acct] of [[CON_FIX, P_FIX, 'acct_sonde_fixe'], [CON_LEG, P_LEG, 'acct_sonde_ancien']]) {
@@ -596,6 +621,8 @@ async function main(): Promise<void> {
         service_requests: 3,
         payment_methods: 2,
         portfolio_items: 1,
+        provider_time_off: 1,
+        provider_calendars: 1,
         verification_documents: 1,
         professional_services: 1,
         professional_service_categories: 1,
@@ -661,6 +688,27 @@ async function main(): Promise<void> {
     check('données réelles, ADMIN, adresses proches et sosies intacts (8 comptes, 2 demandes, 1 photo, 2 cartes)', real.rows.length, 13);
     check('fichier d’un vrai prestataire gardé', existsSync(join(storage, KEY_PORT_REAL)), true);
     check('catalogue identique (compte et md5)', sameCatalog(catalogBefore, await catalogFingerprint(admin)), true);
+
+    // Calendrier : zéro ligne pour l'ancien prestataire, ET les lignes du
+    // compte fixe et du vrai prestataire toujours là — sans ce contrôle, un
+    // « zéro » pourrait venir d'une table vidée en entier (anti-faux-positif).
+    const cal = await admin.query<{ k: string }>(
+      `SELECT 'calendar:'||service_provider_id AS k FROM provider_calendars
+       UNION ALL SELECT 'time-off:'||service_provider_id FROM provider_time_off
+       ORDER BY 1`,
+    );
+    check('calendrier : seules les lignes du compte fixe et du vrai prestataire restent', cal.rows.map((r) => r.k), [
+      `calendar:${P_FIX}`,
+      `calendar:${P_REAL}`,
+      `time-off:${P_FIX}`,
+      `time-off:${P_REAL}`,
+    ]);
+    const calLeft = await admin.query<{ n: number }>(
+      `SELECT (SELECT count(*) FROM provider_calendars WHERE service_provider_id = $1)
+            + (SELECT count(*) FROM provider_time_off WHERE service_provider_id = $1) AS n`,
+      [P_LEG],
+    );
+    check('calendrier : zéro ligne restante pour l’ancien prestataire', Number(calLeft.rows[0].n), 0);
 
     const left = await admin.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM (

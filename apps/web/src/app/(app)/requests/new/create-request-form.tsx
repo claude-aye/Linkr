@@ -1,6 +1,10 @@
 'use client';
 
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+
+import { type FreeSlot, startsWithinSlots } from '@/lib/calendar/calendar-rules';
+
+import { AvailabilityPicker, type AvailabilityDayOption } from './availability-picker';
 import Link from 'next/link';
 import type { components } from '@linkr/api-client';
 import { tooManyCreatedMessage } from '@/lib/http/retry-after';
@@ -218,6 +222,21 @@ export interface CreateRequestFormProps {
    */
   searchLat?: string;
   searchLng?: string;
+  /**
+   * The provider's published availability, prepared by the server page (every
+   * label already formatted in the provider's zone). `null` when it could not
+   * be read or when nothing is published: the form then shows NOTHING about
+   * availability — never an empty box that would read « indisponible ».
+   *
+   * It only ever HELPS fill the two date fields and words a hint: it never
+   * blocks a submit (the provider answers every request himself).
+   */
+  availability: {
+    days: AvailabilityDayOption[];
+    /** Every free interval of the window, as instants — for the hint below. */
+    slots: FreeSlot[];
+    zoneLabel: string;
+  } | null;
 }
 
 export function CreateRequestForm({
@@ -231,6 +250,7 @@ export function CreateRequestForm({
   priceCurrency,
   searchLat,
   searchLng,
+  availability,
 }: CreateRequestFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -358,6 +378,27 @@ export function CreateRequestForm({
       setDesiredEnd(toLocalInputValue(new Date(start.getTime() + DEFAULT_WINDOW_HOURS * MS_PER_HOUR)));
     }
   }
+
+  /**
+   * A time picked in the provider's availability fills BOTH bounds. The picker
+   * hands over instants; they are written into the fields as the browser's
+   * wall time, which is what a `datetime-local` holds.
+   */
+  function handleAvailabilityPick(startIso: string, endIso: string) {
+    setDesiredStart(toLocalInputValue(new Date(startIso)));
+    setDesiredEnd(toLocalInputValue(new Date(endIso)));
+    if (errorField !== null) setErrorField(null);
+  }
+
+  // The start currently typed, as an instant (null while empty or unreadable).
+  const desiredStartMs = desiredStart ? new Date(desiredStart).getTime() : Number.NaN;
+  const selectedStartMs = Number.isNaN(desiredStartMs) ? null : desiredStartMs;
+  // Worded only when the provider PUBLISHES availability and the chosen start
+  // falls outside it. Information, never an error: the submit stays open.
+  const outsideAvailability =
+    availability !== null &&
+    selectedStartMs !== null &&
+    !startsWithinSlots(selectedStartMs, availability.slots);
 
   const priceLabel = formatMoney(priceAmount, priceCurrency);
   const geocoding = locationState.kind === 'geocoding';
@@ -942,6 +983,16 @@ export function CreateRequestForm({
             facultatifs : la contrainte serveur arrive avec la PR qui corrige
             aussi le seeder. `required` est doublé par le contrôle JS, parce que
             le formulaire porte `noValidate`. */}
+        {availability && (
+          <AvailabilityPicker
+            providerName={businessName}
+            days={availability.days}
+            zoneLabel={availability.zoneLabel}
+            selectedStartMs={selectedStartMs}
+            onPick={handleAvailabilityPick}
+          />
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="desiredStart" className={labelClass}>
@@ -1005,6 +1056,13 @@ export function CreateRequestForm({
             </p>
           </div>
         </div>
+
+        {/* Present even when empty, so the change is announced. */}
+        <p aria-live="polite" className="text-sm text-text-muted empty:hidden">
+          {outsideAvailability
+            ? `Ce moment est en dehors des disponibilités publiées par ${businessName}. Vous pouvez tout de même envoyer votre demande : elle pourra être acceptée ou refusée.`
+            : ''}
+        </p>
 
         {error && (
           <p

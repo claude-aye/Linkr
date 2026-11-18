@@ -126,6 +126,8 @@ const REFERENCE_EDGES: Array<[child: string, column: string, parent: ModifiableT
   ['service_requests', 'assigned_service_provider_id', 'service_providers'],
   ['payment_methods', 'owner_user_id', 'users'],
   ['portfolio_items', 'service_provider_id', 'service_providers'],
+  ['provider_time_off', 'service_provider_id', 'service_providers'],
+  ['provider_calendars', 'service_provider_id', 'service_providers'],
   ['verification_documents', 'professional_service_category_id', 'professional_service_categories'],
   ['verification_documents', 'reviewed_by_user_id', 'users'],
   ['professional_services', 'professional_service_category_id', 'professional_service_categories'],

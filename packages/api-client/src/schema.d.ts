@@ -1705,6 +1705,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-providers/me/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The authenticated provider's calendar over a window: appointments (read live from the service requests), blocked periods, published weekly hours and feed status. 404 if the user has no provider. */
+        get: operations["CalendarController_getMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/calendar/weekly-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace the published weekly opening hours as a whole (wall time of the calendar's zone, quarter-hours, at most 4 ranges per weekday, no overlap). An empty array unpublishes them. */
+        put: operations["CalendarController_saveWeeklyHours"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/calendar/time-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Block a period (no appointment offered during it). It must not be over already, nor exceed 366 days; at most 50 periods not over yet. The label is private. */
+        post: operations["CalendarController_addTimeOff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/calendar/time-off/{timeOffId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove one of your blocked periods (soft delete). */
+        delete: operations["CalendarController_removeTimeOff"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/calendar/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate the iCal subscription link (Outlook, Google Calendar, Apple Calendar…). The token is returned ONCE and stored hashed; calling again replaces it and revokes the previous link. */
+        post: operations["CalendarController_createFeed"];
+        /** Revoke the iCal subscription link. Idempotent. */
+        delete: operations["CalendarController_revokeFeed"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/me/calendar/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The provider's calendar as an .ics file, for a one-off import. Same content as the feed: appointments named after the catalogue trade and service, blocked periods — no client name, title or address. */
+        get: operations["CalendarController_exportMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-providers/{id}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A provider's availability over the coming days: published weekly hours and the FREE time left (blocked periods and timed appointments removed, booking lead time applied). Free time only — never why an hour is taken. 404 when the provider is not visible. */
+        get: operations["CalendarController_availability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/calendar/feed/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The iCal feed behind a subscription link. One 404 for every failure (malformed, unknown or revoked token, provider or account gone). No client name, title or address. */
+        get: operations["CalendarFeedController_feed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3063,6 +3200,145 @@ export interface components {
         };
         PublicPortfolioListDto: {
             items: components["schemas"]["PublicPortfolioItemDto"][];
+        };
+        WeeklyRangeDto: {
+            /** @description ISO weekday: 1 = Monday … 7 = Sunday */
+            weekday: number;
+            /** @description Minutes after local midnight */
+            startMinute: number;
+            /** @description Minutes after local midnight; 1440 = until midnight */
+            endMinute: number;
+        };
+        /** @enum {string} */
+        CalendarEventKind: "JOB" | "PENDING_REQUEST";
+        /** @enum {string} */
+        CalendarEventTiming: "TIMED" | "ALL_DAY" | "UNSCHEDULED";
+        CalendarEventDto: {
+            /** @description Id of the underlying service request */
+            id: string;
+            kind: components["schemas"]["CalendarEventKind"];
+            status: components["schemas"]["ServiceRequestStatus"];
+            requestType: components["schemas"]["ServiceRequestType"];
+            timing: components["schemas"]["CalendarEventTiming"];
+            /**
+             * Format: date-time
+             * @description TIMED only
+             */
+            startAtUtc: string | null;
+            /**
+             * Format: date-time
+             * @description TIMED only
+             */
+            endAtUtc: string | null;
+            /**
+             * @description ALL_DAY only: the civil day, YYYY-MM-DD
+             * @example 2026-11-20
+             */
+            date: string | null;
+            /**
+             * Format: date-time
+             * @description End of the window the client offered (direct booking), for information
+             */
+            windowEndAtUtc: string | null;
+            /** @description Announced duration, when one is known (listed service or accepted quote) */
+            durationMinutes: number | null;
+            title: string;
+            serviceAddress: string;
+            /**
+             * @description Display name of the client
+             * @example Marie Tremblay
+             */
+            clientDisplayName: string;
+            /**
+             * @example {
+             *       "fr-CA": "Coiffure",
+             *       "en-CA": "Hairdressing"
+             *     }
+             */
+            serviceCategoryNameTranslations: {
+                [key: string]: string;
+            };
+            serviceItemNameTranslations: {
+                [key: string]: string;
+            } | null;
+        };
+        TimeOffDto: {
+            id: string;
+            /** Format: date-time */
+            startsAtUtc: string;
+            /** Format: date-time */
+            endsAtUtc: string;
+            label: string | null;
+        };
+        ProviderCalendarDto: {
+            /** @example America/Toronto */
+            timeZone: string;
+            weeklyHours: components["schemas"]["WeeklyRangeDto"][];
+            /** @description Dated appointments touching the window (timed or day-long), in order */
+            events: components["schemas"]["CalendarEventDto"][];
+            /** @description Jobs still to do that nothing dates yet — whatever the window */
+            unscheduled: components["schemas"]["CalendarEventDto"][];
+            /** @description Blocked periods overlapping the window */
+            timeOff: components["schemas"]["TimeOffDto"][];
+            /** @description Every blocked period not over yet — the management list */
+            upcomingTimeOff: components["schemas"]["TimeOffDto"][];
+            /** @description Whether an iCal feed link is active */
+            feedEnabled: boolean;
+            /** Format: date-time */
+            feedCreatedAtUtc: string | null;
+        };
+        UpdateWeeklyHoursDto: {
+            /** @description The WHOLE weekly schedule (it replaces the previous one). An empty array unpublishes it. */
+            weeklyHours: components["schemas"]["WeeklyRangeDto"][];
+        };
+        WeeklyHoursDto: {
+            /**
+             * @description IANA time zone the hours are expressed in
+             * @example America/Toronto
+             */
+            timeZone: string;
+            weeklyHours: components["schemas"]["WeeklyRangeDto"][];
+        };
+        CreateTimeOffDto: {
+            /** Format: date-time */
+            startsAtUtc: string;
+            /** Format: date-time */
+            endsAtUtc: string;
+            /** @description Private note of the provider. Never shown to clients. */
+            label?: string | null;
+        };
+        CalendarFeedDto: {
+            /** @description The secret token. Shown once. */
+            token: string;
+            /**
+             * @description Feed path RELATIVE to the web origin (the API itself is not reachable from the Internet).
+             * @example /calendrier/flux/3q2-7wEhk0P…
+             */
+            path: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
+        AvailabilitySlotDto: {
+            /** Format: date-time */
+            startAtUtc: string;
+            /** Format: date-time */
+            endAtUtc: string;
+        };
+        AvailabilityDayDto: {
+            /**
+             * @description Civil day in the provider's time zone
+             * @example 2026-11-20
+             */
+            date: string;
+            slots: components["schemas"]["AvailabilitySlotDto"][];
+        };
+        ProviderAvailabilityDto: {
+            /** @example America/Toronto */
+            timeZone: string;
+            /** @description False when the provider has published no weekly hours (or is paused): `days` then holds no slot, and that says nothing about whether he is free. */
+            published: boolean;
+            weeklyHours: components["schemas"]["WeeklyRangeDto"][];
+            days: components["schemas"]["AvailabilityDayDto"][];
         };
     };
     responses: never;
@@ -6905,6 +7181,353 @@ export interface operations {
             };
             /** @description No such live photo. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_getMine: {
+        parameters: {
+            query: {
+                /** @description Start of the window (inclusive) */
+                from: string;
+                /** @description End of the window (exclusive) */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCalendarDto"];
+                };
+            };
+            /** @description Malformed, inverted or too wide window. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_saveWeeklyHours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWeeklyHoursDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyHoursDto"];
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a valid schedule. Body carries a code: WEEKLY_HOURS_BAD_RANGE, _OFF_GRID, _TOO_MANY_RANGES or _OVERLAP. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many updates. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_addTimeOff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTimeOffDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeOffDto"];
+                };
+            };
+            /** @description Malformed body, or label too long. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already 50 upcoming periods. Body carries code TIME_OFF_LIMIT_REACHED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The period ends before it starts, is already over, or is too long. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many additions. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_removeTimeOff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                timeOffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such live period of yours. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_createFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedDto"];
+                };
+            };
+            /** @description Email address not confirmed (code EMAIL_NOT_VERIFIED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many links generated. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_revokeFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_exportMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The iCalendar document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The authenticated user has no provider. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarController_availability: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderAvailabilityDto"];
+                };
+            };
+            /** @description Malformed id or `days` out of bounds. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider not visible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CalendarFeedController_feed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The iCalendar document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such feed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many reads from this address. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

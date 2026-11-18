@@ -71,6 +71,10 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'PUT /service-providers/me/portfolio/order': 'Own: edits an own object whose creation is guarded.',
   'PATCH /service-providers/me/portfolio/:itemId': 'Own: edits an own object whose creation is guarded.',
   'DELETE /service-providers/me/portfolio/:itemId': 'Own: removing a portfolio photo.',
+  'DELETE /service-providers/me/calendar/time-off/:timeOffId':
+    'Own: removing an own blocked period, which only gives availability back; its creation is guarded.',
+  'DELETE /service-providers/me/calendar/feed':
+    'Own: revoking an own calendar link is a protective gesture; its creation is guarded.',
   'PATCH /organizations/:id': 'Own: edits an own object whose creation is guarded.',
   'DELETE /organizations/:id': 'Own: removes an own organization whose creation is guarded.',
   'DELETE /organizations/:orgId/members/me': 'Own: leaving an organization.',
@@ -97,7 +101,7 @@ export const UNGUARDED_WRITE_ROUTES: Readonly<Record<string, string>> = {
   'POST /admin/verifications/run-expiry-check': 'Admin.',
 };
 
-/** D1 + L3b-A — the writes that create an object or an effect on a third party (19). Pinned so a removal is noticed too. */
+/** D1 + L3b-A — the writes that create an object or an effect on a third party (22: 19 + the 3 calendar writes). Pinned so a removal is noticed too. */
 const GUARDED_WRITE_ROUTES = [
   'POST /reviews/:id/response',
   'POST /service-requests/:id/attachments',
@@ -113,6 +117,9 @@ const GUARDED_WRITE_ROUTES = [
   'POST /service-providers/:providerId/categories',
   'POST /service-providers/:providerId/categories/:pscId/services',
   'POST /service-providers/me/portfolio',
+  'PUT /service-providers/me/calendar/weekly-hours',
+  'POST /service-providers/me/calendar/time-off',
+  'POST /service-providers/me/calendar/feed',
   'POST /service-providers/:providerId/categories/:pscId/documents',
   'POST /service-providers/:id/connect/onboard',
   'POST /service-providers/:id/connect/refresh-link',

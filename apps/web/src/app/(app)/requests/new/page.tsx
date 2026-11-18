@@ -1,10 +1,25 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { getCurrentUser, getServerApiClient } from '@/lib/auth/session';
+import {
+  startTimeDays,
+  toFreeSlots,
+  zoneGenericLabel,
+} from '@/lib/calendar/calendar-rules';
 import { pickTranslation } from '@/lib/i18n/translations';
 import type { ProviderCatalogItem } from '@/lib/providers/types';
 
-import { CreateRequestForm } from './create-request-form';
+import { CreateRequestForm, type CreateRequestFormProps } from './create-request-form';
+
+/** Days of availability offered in the picker (the API's default window). */
+const AVAILABILITY_DAYS = 14;
+/** A service with no listed duration is assumed to take this long when offering start times. */
+const DEFAULT_SERVICE_MINUTES = 60;
+
+/** Read once per render, outside the component. */
+function currentTimeMs(): number {
+  return Date.now();
+}
 
 // Reads the access cookie + live provider data — always rendered per request.
 export const dynamic = 'force-dynamic';
@@ -115,6 +130,31 @@ export default async function NewRequestPage({
   // Fallback reads naturally inside « Demande à … » / « … envoyée à … ».
   const providerName = businessName ?? 'ce prestataire';
 
+  // --- Availability (best-effort — it only helps fill the dates) -------------
+  // Its own try/catch: a failure, or a provider who publishes nothing, leaves
+  // `null` and the form simply shows no availability. Never a reason to refuse
+  // the page: the client can always type a window.
+  let availability: CreateRequestFormProps['availability'] = null;
+  try {
+    const { data, error, response } = await client.GET(
+      '/service-providers/{id}/availability',
+      { params: { path: { id: providerId }, query: { days: AVAILABILITY_DAYS } } },
+    );
+    if (!error && response.ok && data && data.published) {
+      availability = {
+        days: startTimeDays(
+          data.days,
+          data.timeZone,
+          item.estimatedDurationMinutes ?? DEFAULT_SERVICE_MINUTES,
+        ),
+        slots: toFreeSlots(data.days),
+        zoneLabel: zoneGenericLabel(data.timeZone, currentTimeMs()),
+      };
+    }
+  } catch {
+    availability = null;
+  }
+
   return (
     <main className="flex flex-1 justify-center bg-bg p-6">
       <CreateRequestForm
@@ -128,6 +168,7 @@ export default async function NewRequestPage({
         priceCurrency={item.priceCurrency}
         searchLat={searchLat}
         searchLng={searchLng}
+        availability={availability}
       />
     </main>
   );

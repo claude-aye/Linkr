@@ -11,6 +11,7 @@ import { decideProxyRoute } from '@/lib/auth/proxy-decision';
 import { refreshTokens } from '@/lib/auth/refresh';
 import { resolveClientIp } from '@/lib/http/client-ip';
 import { GUIDE_TESTEUR_PATH, LEGAL_PATHS } from '@/lib/legal/legal-pages';
+import { isCalendarFeedPath } from '@/lib/calendar/calendar-rules';
 import { isPortfolioMediaPath } from '@/lib/portfolio/portfolio-media';
 
 /**
@@ -20,8 +21,9 @@ import { isPortfolioMediaPath } from '@/lib/portfolio/portfolio-media';
  * Node.js runtime — edge is no longer offered for this file). Node runtime is what
  * lets the refresh branch below issue a server-to-server `fetch`. The guard stays
  * dependency-light: it imports ONLY the cookie contract, the refresh helper, the
- * client-IP helper, the routing decision, the legal-pages registry and the
- * portfolio-media predicate (the last three import-free by contract) —
+ * client-IP helper, the routing decision, the legal-pages registry, the
+ * portfolio-media predicate and the calendar-feed predicate (the last four
+ * import-free by contract) —
  * never `session.ts` (server-only), the api-client, or any crypto lib.
  *
  * Design — presence guard (Option 1): routing is decided ONLY on cookie EXISTENCE.
@@ -66,10 +68,14 @@ export async function proxy(request: NextRequest) {
     // logged-in user clicking « Confidentialité » would never reach the policy.
     // Portfolio images are public (the API route is `@Public()`); an `<img>`
     // that received the `/login` page would show nothing.
+    // The iCal feed (`/calendrier/flux/{token}`) is read by calendar apps,
+    // which send no cookie: the token in the path is the credential. The
+    // calendar PAGE (`/calendrier`) stays protected like any other.
     isAlwaysOpen:
       LEGAL_PATHS.includes(pathname) ||
       pathname === GUIDE_TESTEUR_PATH ||
-      isPortfolioMediaPath(pathname),
+      isPortfolioMediaPath(pathname) ||
+      isCalendarFeedPath(pathname),
   });
 
   switch (decision.kind) {
