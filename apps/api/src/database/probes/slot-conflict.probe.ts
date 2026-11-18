@@ -261,6 +261,14 @@ async function main(): Promise<void> {
     await fixture(ds, repo, P, d2, d2 + 2 * H, ServiceRequestStatus.OPEN);
     check('10 h 30 – 11 h 30 overlaps', await tryBook(repo, P, d2 + 30 * M, d2 + 90 * M), 'SLOT_TAKEN');
 
+    console.log('D2. creation reads the occupied time (10 h – 17 h offered, 45 min service)');
+    const g = day(13);
+    await fixture(ds, repo, P, g + 4 * H, g + 5 * H, ServiceRequestStatus.ASSIGNED);
+    check('confirmed at 14 h: accepted', await tryBook(repo, P, g, g + 7 * H), 'inserted');
+    const g2 = day(14);
+    await fixture(ds, repo, P, g2 + 30 * M, g2 + 90 * M, ServiceRequestStatus.ASSIGNED);
+    check('confirmed at 10 h 30: refused', await tryBook(repo, P, g2, g2 + 7 * H), 'SLOT_TAKEN');
+
     console.log('E. acceptance: only a CONFIRMED appointment refuses');
     const e = day(12);
     const self = await fixture(ds, repo, P, e, e + 2 * H, ServiceRequestStatus.OPEN);

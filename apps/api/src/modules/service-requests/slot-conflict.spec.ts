@@ -136,6 +136,30 @@ describe('findSlotConflict — creation (blocking statuses), existing 10 h – 1
   });
 });
 
+describe('creation checks the OCCUPIED time, not the whole offered window', () => {
+  // 10 h – 17 h offered for a 45-min service: what the booking occupies is
+  // timedIntervalOf(...) = 10 h – 10 h 45, exactly what the repository checks.
+  const offered = candidate({
+    id: 'new',
+    status: ServiceRequestStatus.OPEN,
+    desiredEndAtUtc: new Date(T10 + 7 * H),
+    serviceDurationMinutes: 45,
+  });
+
+  it('a confirmed appointment at 14 h does not refuse it', () => {
+    const occupied = timedIntervalOf(offered);
+    expect(occupied).toEqual({ startMs: T10, endMs: T10 + 45 * 60_000 });
+    const at14 = candidate({ anchorAtUtc: new Date(T10 + 4 * H) });
+    expect(findSlotConflict(occupied!, [at14], AVAILABILITY_BLOCKING_STATUSES)).toBeNull();
+  });
+
+  it('a confirmed appointment at 10 h 30 refuses it', () => {
+    const occupied = timedIntervalOf(offered);
+    const at1030 = candidate({ anchorAtUtc: new Date(T10 + 0.5 * H) });
+    expect(findSlotConflict(occupied!, [at1030], AVAILABILITY_BLOCKING_STATUSES)).not.toBeNull();
+  });
+});
+
 describe('findSlotConflict — acceptance (confirmed statuses only)', () => {
   it.each([
     [ServiceRequestStatus.ASSIGNED, true],

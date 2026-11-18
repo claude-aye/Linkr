@@ -814,8 +814,15 @@ export class ServiceRequestRepository {
   }
 
   /**
-   * CAL-3 — inserts a DIRECT_BOOKING only if its window `[start, end)` takes
-   * no time the provider has already given away.
+   * CAL-3 — inserts a DIRECT_BOOKING only if the time it will OCCUPY takes no
+   * time the provider has already given away.
+   *
+   * `requested` is the window the client offered. What is checked is its timed
+   * interval (`timedIntervalOf`: start + the duration the provider lists for
+   * this service, else the window end, else 60 min) — the SAME rule as the
+   * acceptance check and the calendar. A 45-min haircut offered « between 10 h
+   * and 17 h » occupies 10 h – 10 h 45, not the whole afternoon. The duration
+   * is read under the lock, by the same `svc` join.
    *
    * Lock, read and insert happen in ONE transaction, under `FOR UPDATE` on the
    * PROVIDER row — the lock the portfolio and the blocked periods already take
@@ -831,13 +838,33 @@ export class ServiceRequestRepository {
   async insertDirectBookingIfSlotFree(
     data: CreateServiceRequestData,
     providerId: string,
-    window: SlotInterval,
+    requested: SlotInterval,
   ): Promise<InsertDirectBookingResult> {
     const outcome = await this.repo.manager.transaction(
       async (manager): Promise<{ id: string } | { reason: 'SLOT_TAKEN' | 'PROVIDER_GONE' }> => {
         if (!(await this.lockProviderForSlots(manager, providerId))) {
           return { reason: 'PROVIDER_GONE' };
         }
+        const durations: Array<{ minutes: number | null }> = await manager.query(
+          `SELECT ps.estimated_duration_minutes AS minutes
+             FROM professional_services ps
+             JOIN professional_service_categories psc
+               ON psc.id = ps.professional_service_category_id
+            WHERE psc.service_provider_id = $1
+              AND ps.service_item_id = $2
+              AND ps.deleted_at_utc IS NULL
+            ORDER BY ps.created_at_utc DESC, ps.id DESC
+            LIMIT 1`,
+          [providerId, data.serviceItemId ?? null],
+        );
+        const minutes = durations.length ? durations[0].minutes : null;
+        const window = timedIntervalOf({
+          requestType: ServiceRequestType.DIRECT_BOOKING,
+          anchorAtUtc: new Date(requested.startMs),
+          desiredEndAtUtc: new Date(requested.endMs),
+          serviceDurationMinutes: minutes === null ? null : Number(minutes),
+        });
+        if (!window) throw new Error('A direct booking with a start always has a timed interval');
         const candidates = await this.findSlotCandidates(
           manager,
           providerId,

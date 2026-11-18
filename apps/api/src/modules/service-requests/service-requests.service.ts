@@ -405,7 +405,9 @@ export class ServiceRequestsService {
     };
 
     // CAL-3 (§13.1 nº 32 c, amended 18 November 2026) — a DIRECT_BOOKING whose
-    // window overlaps a timed appointment of the same provider that still takes
+    // OCCUPIED time (the repository turns the offered window into its timed
+    // interval: start + listed duration, else window end, else 60 min — the
+    // same rule as acceptance) overlaps a timed appointment of the same provider that still takes
     // time (OPEN, ASSIGNED, IN_PROGRESS) is REFUSED: 409 SLOT_TAKEN. Lock, check
     // and insert are one transaction under FOR UPDATE on the provider row, so
     // two clients posting the same hour cannot both pass. Opening hours and
