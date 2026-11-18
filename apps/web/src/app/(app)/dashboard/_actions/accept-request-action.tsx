@@ -7,6 +7,11 @@ import { useRouter } from 'next/navigation';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SUPPORT_EMAIL } from '@/lib/constants';
 import {
+  SLOT_CONFLICT_CODE,
+  SLOT_CONFLICT_MESSAGE,
+  hasConflictCode,
+} from '@/lib/service-requests/slot-conflict';
+import {
   MISSING_AMOUNT_MESSAGE,
   UNEXPECTED_MESSAGE,
   acceptErrorMessage,
@@ -144,6 +149,11 @@ export function AcceptRequestAction({
 
     if (!response.ok) {
       setTradeLost(response.status === 403);
+      // CAL-3: the only 409 told apart by its body `code` — accepting would
+      // double-book the provider. Nothing was written and nothing was charged.
+      if (await hasConflictCode(response, SLOT_CONFLICT_CODE)) {
+        throw new Error(SLOT_CONFLICT_MESSAGE);
+      }
       // Status-only mapping (locked), in `lib/service-requests/accept-error-message`
       // so `node --test` can pin it. ConfirmDialog shows this verbatim.
       throw new Error(acceptErrorMessage(response.status, SUPPORT_EMAIL));

@@ -5115,6 +5115,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description DIRECT_BOOKING only: the window overlaps a timed appointment of the same provider that is OPEN, ASSIGNED or IN_PROGRESS. Body carries code SLOT_TAKEN. Opening hours and blocked periods never refuse; a PROJECT_TENDER is never refused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Too many requests created (20 per hour per caller); see Retry-After */
             429: {
                 headers: {
@@ -5273,7 +5280,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid state transition */
+            /** @description Invalid state transition, or the provider is not payable; or the request overlaps an appointment the provider has already confirmed (ASSIGNED or IN_PROGRESS): body carries code SLOT_CONFLICT. Another request still OPEN on the same hour does not refuse. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -131,6 +131,12 @@ function buildService(): {
       captured = data;
       return recordFrom(data);
     }),
+    // CAL-3: a DIRECT_BOOKING inserts through the slot guard. Free slot here;
+    // the refusals are covered in `slot-conflict.spec.ts`.
+    insertDirectBookingIfSlotFree: jest.fn(async (data: CreateServiceRequestData) => {
+      captured = data;
+      return { inserted: true, record: recordFrom(data) };
+    }),
   } as unknown as ServiceRequestRepository;
 
   const providerRepo = {

@@ -40,8 +40,12 @@ export const AVAILABILITY_GRID_MINUTES = 15;
 export const ICAL_PAST_DAYS = 30;
 export const ICAL_FUTURE_DAYS = 180;
 
-/** A timed appointment with no known duration is drawn this long. */
-export const DEFAULT_EVENT_MINUTES = 60;
+/**
+ * A timed appointment with no known duration is drawn this long. Declared once,
+ * in the requests module (CAL-3), so the slot-conflict refusal reads the same
+ * value as the availability.
+ */
+export { APPOINTMENT_DEFAULT_MINUTES as DEFAULT_EVENT_MINUTES } from '../service-requests/appointment-slots';
 
 /** Shape of a feed token: 32 random bytes, base64url. Checked before any lookup. */
 export const FEED_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;

@@ -10,6 +10,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { ServiceRequestRepository } from './repositories/service-request.repository';
 import {
+  CreateServiceRequestData,
   ServiceRequestReadRecord,
   ServiceRequestRecord,
 } from './repositories/service-request.repository';
@@ -62,8 +63,11 @@ import {
   RequestAlreadyContestedException,
   RequestContestedException,
   RequestNotCompletedException,
+  SlotConflictException,
+  SlotTakenException,
   TenderValidationException,
 } from './exceptions/service-request.exceptions';
+import type { SlotInterval } from './appointment-slots';
 import { ProviderType } from '../service-providers/enums/provider-type.enum';
 import { SystemRole } from '../users/enums/system-role.enum';
 import { CaptureDepositParams, PaymentsService } from '../payments/payments.service';
@@ -187,6 +191,10 @@ export class ServiceRequestsService {
     // door R3 closes.
     let responseDeadlineUtc: Date | null = null;
 
+    // CAL-3 — the window a DIRECT_BOOKING asks for, set once both bounds are
+    // validated below. Non-null ⇒ the insert goes through the slot guard.
+    let directWindow: SlotInterval | null = null;
+
     // R4 — before either branch: the budget's shape does not depend on the type.
     assertBudgetShape(dto);
 
@@ -267,6 +275,11 @@ export class ServiceRequestsService {
       const windowEnd = new Date(now.getTime() + RESPONSE_WINDOW_HOURS * MS_PER_HOUR);
       responseDeadlineUtc =
         desiredStartAtUtc.getTime() < windowEnd.getTime() ? desiredStartAtUtc : windowEnd;
+
+      directWindow = {
+        startMs: desiredStartAtUtc.getTime(),
+        endMs: desiredEndAtUtc.getTime(),
+      };
     }
 
     if (dto.requestType === ServiceRequestType.PROJECT_TENDER) {
@@ -366,7 +379,7 @@ export class ServiceRequestsService {
 
     const transition = buildTransition(null, ServiceRequestStatus.OPEN);
 
-    const record = await this.requestRepo.create({
+    const data: CreateServiceRequestData = {
       clientUserId,
       requestType: dto.requestType,
       status: transition.status,
@@ -389,7 +402,31 @@ export class ServiceRequestsService {
       // which is refused if it sends one (R3).
       responseDeadlineUtc,
       quotesDeadlineUtc,
-    });
+    };
+
+    // CAL-3 (§13.1 nº 32 c, amended 18 November 2026) — a DIRECT_BOOKING whose
+    // window overlaps a timed appointment of the same provider that still takes
+    // time (OPEN, ASSIGNED, IN_PROGRESS) is REFUSED: 409 SLOT_TAKEN. Lock, check
+    // and insert are one transaction under FOR UPDATE on the provider row, so
+    // two clients posting the same hour cannot both pass. Opening hours and
+    // blocked periods still only inform; a PROJECT_TENDER is never refused.
+    let record: ServiceRequestReadRecord;
+    if (directWindow && dto.requestedServiceProviderId) {
+      const result = await this.requestRepo.insertDirectBookingIfSlotFree(
+        data,
+        dto.requestedServiceProviderId,
+        directWindow,
+      );
+      if (!result.inserted) {
+        if (result.reason === 'PROVIDER_GONE') {
+          throw new NotFoundException('Service provider not found');
+        }
+        throw new SlotTakenException();
+      }
+      record = result.record;
+    } else {
+      record = await this.requestRepo.create(data);
+    }
 
     // Best-effort broadcast: notify eligible providers when a PROJECT_TENDER
     // is created. Failures are logged and swallowed — they must never rollback
@@ -752,6 +789,23 @@ export class ServiceRequestsService {
       );
       if (!eligible) {
         throw new ProviderNotEligibleToAcceptException();
+      }
+
+      // CAL-3 — accepting must not double-book the provider: 409 SLOT_CONFLICT
+      // when this request's time overlaps an appointment he has already
+      // CONFIRMED (ASSIGNED / IN_PROGRESS). Another request still OPEN on the
+      // same hour does not refuse — only a commitment does. Under FOR UPDATE on
+      // the provider row (two overlapping accepts serialize), inside this
+      // transaction, BEFORE `assertDepositBasis` / `assertPayable` and long
+      // before any Stripe call (the capture runs after the commit).
+      if (
+        await this.requestRepo.hasConfirmedSlotConflict(
+          qr.manager,
+          requestId,
+          locked.requestedServiceProviderId,
+        )
+      ) {
+        throw new SlotConflictException();
       }
 
       // "There is no amount to take a deposit from" is a precondition of the
